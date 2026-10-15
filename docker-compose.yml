@@ -1,0 +1,31 @@
+# Coletor + raspador do Google Maps (gosom).
+#   docker compose up --build
+# Coletor: http://localhost:8000/docs
+# gosom:   http://localhost:8080
+services:
+  gosom:
+    image: gosom/google-maps-scraper
+    command: ["-data-folder", "/gmapsdata", "-c", "2"]
+    environment:
+      - DISABLE_TELEMETRY=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gmapsdata:/gmapsdata
+      - gmaps-playwright-cache:/opt
+
+  coletor:
+    build: ./services/coletor
+    environment:
+      - PV_GOSOM_URL=http://gosom:8080
+      - PV_USER_AGENT=desvio/0.1 (troque-pelo-seu-email@exemplo.com)
+      - PV_DB=/dados/desvio.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./dados:/dados
+    depends_on:
+      - gosom
+
+volumes:
+  gmaps-playwright-cache:

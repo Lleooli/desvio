@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Detalhe do lugar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <x-import component-from-global-scope="Desvio.Ceu" style="height: 300px; flex: none;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: -8px;">
+      <x-import component-from-global-scope="Desvio.Chip" categoria="restaurante" on-photo="{{yes}}"></x-import>
+      <a href="Swipe.dc.html" aria-label="Fechar detalhes" style="display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--vidro); color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="x" size="{{n22}}"></x-import></a>
+    </div>
+    <div style="display: grid; place-items: center; height: 150px; color: var(--ink); opacity: 0.35;"><x-import component-from-global-scope="Desvio.Icon" name="food" size="{{n72}}" stroke-width="{{n14}}"></x-import></div>
+  </x-import>
+  <div style="position: relative; flex: 1 1 auto; margin-top: -28px; padding: 24px 16px 0; background: var(--surface-200); border-radius: 28px 28px 0 0; box-shadow: var(--shadow-sheet); display: flex; flex-direction: column; gap: 14px;">
+    <span aria-hidden="true" style="position: absolute; left: 50%; top: 10px; width: 40px; height: 4px; margin-left: -20px; border-radius: 999px; background: var(--line);"></span>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+      <h1 style="margin: 0; font-family: var(--font-display); font-size: 30px; line-height: 31px; font-weight: 700; letter-spacing: -0.03em;">Cantina do Nono</h1>
+      <span class="dv-km" style="background: var(--asfalto); color: var(--on-asfalto); flex: none;">KM 719<small style="color: var(--on-asfalto);">+9,5H</small></span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;">
+      <x-import component-from-global-scope="Desvio.Rating" nota="{{nota}}" avaliacoes="{{aval}}"></x-import>
+      <span style="font-size: 14px; line-height: 20px; color: var(--ink-muted);">Italiana · R$ 50–100</span>
+    </div>
+    <p style="margin: 0; font-size: 16px; line-height: 24px;">Massa caseira e polenta frita, a 2 km da saída da BR-116. Bom para almoço no meio da viagem.</p>
+    <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 20px;">
+      <li style="display: flex; gap: 10px; align-items: center;"><x-import component-from-global-scope="Desvio.Icon" name="pin"></x-import>[Endereço do lugar], Curitiba, PR</li>
+      <li style="display: flex; gap: 10px; align-items: center;"><x-import component-from-global-scope="Desvio.Icon" name="clock"></x-import>Aberto hoje, 11h30 às 23h</li>
+      <li style="display: flex; gap: 10px; align-items: center;"><x-import component-from-global-scope="Desvio.Icon" name="at"></x-import><a href="https://instagram.com/" style="font-weight: 600;">cantinadonono</a></li>
+    </ul>
+    <a href="https://www.google.com/maps" style="font-size: 15px; line-height: 20px; font-weight: 600;">Abrir no Google Maps</a>
+  </div>
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 32px; display: flex; gap: 12px;">
+    <a class="dv-btn dv-btn--secondary" href="Swipe.dc.html" style="flex: 1; text-decoration: none;"><x-import component-from-global-scope="Desvio.Icon" name="x"></x-import>Passo</a>
+    <a class="dv-btn dv-btn--primary" href="Swipe.dc.html" style="flex: 1; text-decoration: none;"><x-import component-from-global-scope="Desvio.Icon" name="check"></x-import>Bora</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return { yes: true, n22: 22, n72: 72, n14: 1.4, nota: 4.6, aval: 1834 }; }
+}
+</script>
+</body>
+</html>

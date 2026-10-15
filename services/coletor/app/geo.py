@@ -1,0 +1,132 @@
+"""Geocodificação, rota de carro e utilidades geográficas.
+
+Tudo gratuito e sem chave de API:
+- Nominatim (OpenStreetMap) para transformar "Alegrete, RS" em coordenadas
+- OSRM para calcular a rota de carro
+Os servidores públicos têm política de uso justo (Nominatim: 1 req/s, sem uso
+pesado). Para produção, suba os seus via Docker (ver README).
+"""
+from __future__ import annotations
+
+import asyncio
+import math
+import os
+
+import httpx
+
+USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-email@exemplo.com)")
+HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
+NOMINATIM = os.getenv("PV_NOMINATIM_URL", "https://nominatim.openstreetmap.org")
+OSRM = os.getenv("PV_OSRM_URL", "https://router.project-osrm.org")
+
+Ponto = tuple[float, float]  # (lat, lon)
+
+_cache: dict[str, dict] = {}
+_trava_nominatim = asyncio.Lock()
+
+
+async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> object:
+    """Chamada ao Nominatim respeitando 1 requisição por segundo."""
+    chave = caminho + repr(sorted(params.items()))
+    if chave in _cache:
+        return _cache[chave]
+    async with _trava_nominatim:
+        r = await client.get(f"{NOMINATIM}/{caminho}", params=params, headers=HEADERS, timeout=30)
+        await asyncio.sleep(1.1)
+    r.raise_for_status()
+    _cache[chave] = r.json()
+    return _cache[chave]
+
+
+async def geocodificar(client: httpx.AsyncClient, lugar: str) -> dict:
+    dados = await _nominatim(client, "search", {"q": lugar, "format": "jsonv2", "limit": 1, "addressdetails": 1})
+    if not dados:
+        raise ValueError(f"Lugar não encontrado: {lugar}")
+    d = dados[0]
+    end = d.get("address", {})
+    return {
+        "nome": end.get("city") or end.get("town") or end.get("village") or lugar,
+        "uf": _uf(end),
+        "lat": float(d["lat"]),
+        "lon": float(d["lon"]),
+        "exibicao": d.get("display_name"),
+    }
+
+
+async def cidade_e_uf(client: httpx.AsyncClient, ponto: Ponto) -> tuple[str | None, str | None]:
+    """Geocodificação reversa no nível de município."""
+    d = await _nominatim(client, "reverse", {"lat": ponto[0], "lon": ponto[1], "format": "jsonv2", "zoom": 10, "addressdetails": 1})
+    end = (d or {}).get("address", {}) if isinstance(d, dict) else {}
+    nome = end.get("city") or end.get("town") or end.get("municipality") or end.get("village")
+    return nome, _uf(end)
+
+
+def _uf(endereco: dict) -> str | None:
+    iso = endereco.get("ISO3166-2-lvl4", "")  # ex.: "BR-RS"
+    return iso.split("-")[-1] if iso.startswith("BR-") else endereco.get("state")
+
+
+async def rota_carro(client: httpx.AsyncClient, origem: Ponto, destino: Ponto) -> dict:
+    (la1, lo1), (la2, lo2) = origem, destino
+    url = f"{OSRM}/route/v1/driving/{lo1},{la1};{lo2},{la2}"
+    r = await client.get(url, params={"overview": "full", "geometries": "geojson"}, headers=HEADERS, timeout=60)
+    r.raise_for_status()
+    dados = r.json()
+    if dados.get("code") != "Ok" or not dados.get("routes"):
+        raise ValueError(f"OSRM não achou rota: {dados.get('message', dados.get('code'))}")
+    rota = dados["routes"][0]
+    pontos = [(lat, lon) for lon, lat in rota["geometry"]["coordinates"]]
+    return {
+        "distancia_km": rota["distance"] / 1000,
+        "duracao_h": rota["duration"] / 3600,
+        "pontos": pontos,
+    }
+
+
+def distancia_km(a: Ponto, b: Ponto) -> float:
+    """Distância em linha reta (haversine)."""
+    lat1, lon1, lat2, lon2 = map(math.radians, (*a, *b))
+    h = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    return 2 * 6371.0088 * math.asin(math.sqrt(h))
+
+
+def acumuladas(pontos: list[Ponto]) -> list[float]:
+    acc = [0.0]
+    for a, b in zip(pontos, pontos[1:]):
+        acc.append(acc[-1] + distancia_km(a, b))
+    return acc
+
+
+def amostrar(pontos: list[Ponto], intervalo_km: float) -> list[tuple[float, Ponto]]:
+    """Pontos a cada `intervalo_km` ao longo da rota: [(km, (lat, lon)), ...]."""
+    acc = acumuladas(pontos)
+    total = acc[-1]
+    res, alvo, i = [], intervalo_km, 1
+    while alvo < total:
+        while acc[i] < alvo:
+            i += 1
+        a, b = pontos[i - 1], pontos[i]
+        seg = acc[i] - acc[i - 1]
+        f = (alvo - acc[i - 1]) / seg if seg else 0.0
+        res.append((alvo, (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)))
+        alvo += intervalo_km
+    return res
+
+
+def km_na_rota(pontos: list[Ponto], acc: list[float], p: Ponto) -> float:
+    """Em que km da rota fica o ponto mais próximo de `p` (para ordenar as paradas)."""
+    coslat = math.cos(math.radians(p[0]))
+    melhor_i, melhor_d = 0, float("inf")
+    for i, (la, lo) in enumerate(pontos):
+        d = (la - p[0]) ** 2 + ((lo - p[1]) * coslat) ** 2
+        if d < melhor_d:
+            melhor_i, melhor_d = i, d
+    return acc[melhor_i]
+
+
+def simplificar(pontos: list[Ponto], maximo: int = 600) -> list[Ponto]:
+    """Reduz a polilinha para o front-end desenhar no mapa."""
+    if len(pontos) <= maximo:
+        return pontos
+    passo = len(pontos) / (maximo - 1)
+    return [pontos[int(i * passo)] for i in range(maximo - 1)] + [pontos[-1]]

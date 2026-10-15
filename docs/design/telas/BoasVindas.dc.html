@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Boas-vindas</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <x-import component-from-global-scope="Desvio.Ceu" serra="{{yes}}" style="flex: 1 1 auto;">
+    <p style="margin: 8px 0 0; font-family: var(--font-placa); font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase;">Desvio</p>
+    <div style="margin: 40px -16px 24px;">
+      <x-import component-from-global-scope="Desvio.Estrada" cidades="{{cidades}}" variante="subida"></x-import>
+    </div>
+    <h1 style="margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 40px; font-weight: 700; letter-spacing: -0.035em;">Cada parada, escolhida a <x-import component-from-global-scope="Desvio.Destaque">dedo</x-import></h1>
+    <p style="margin: 16px 0 0; font-size: 17px; line-height: 26px; color: var(--ink-muted);">Diga para onde vai. A gente acha mirantes, restaurantes e postos no caminho, e você escolhe deslizando.</p>
+  </x-import>
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 40px;">
+    <a class="dv-btn dv-btn--primary dv-btn--block" href="Entrar.dc.html" style="text-decoration: none;">Começar</a>
+    <a class="dv-btn dv-btn--ghost dv-btn--block" href="Entrar.dc.html" style="text-decoration: none;">Já tenho conta</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true, cidades: ['Alegrete', 'Lages', 'Curitiba', 'Belo Horizonte', 'Vitória da Conquista'] };
+  }
+}
+</script>
+</body>
+</html>

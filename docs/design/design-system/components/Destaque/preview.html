@@ -1,0 +1,14 @@
+<!-- @dsCard group="Base" height=150 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" style="padding:16px"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h('div', null,
+    h('h1', { style: { margin: '0 0 8px', font: '700 40px/40px var(--font-display)', letterSpacing: '-.035em' } }, 'Escolha suas ', h(D.Destaque, null, 'paradas')),
+    h('h2', { style: { margin: 0, font: '650 22px/26px var(--font-display)', letterSpacing: '-.02em' } }, 'Seu roteiro está ', h(D.Destaque, null, 'pronto'))));
+</script>
+</body>
+</html>

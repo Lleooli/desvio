@@ -1,0 +1,14 @@
+<!-- @dsCard group="Superfícies" height=260 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" style="max-width:440px;padding:16px"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(D.Estrada, {
+    cidades: ['Alegrete', 'Lages', 'Curitiba', 'Montes Claros', 'Vitória da Conquista'], variante: 'curva'
+  }));
+</script>
+</body>
+</html>

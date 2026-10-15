@@ -1,0 +1,21 @@
+<!-- @dsCard group="Lugares" height=120 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" class="dv-stack"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  function Filtros() {
+    var s = React.useState({ turismo: true, restaurante: true, posto: false, natureza: false, hospedagem: false });
+    var sel = s[0], set = s[1];
+    return h('div', { className: 'dv-row', style: { padding: 0 } }, Object.keys(D.CATEGORIAS).map(function (k) {
+      return h(D.Chip, { key: k, categoria: k, selected: sel[k], onClick: function () { var n = Object.assign({}, sel); n[k] = !n[k]; set(n); } });
+    }));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h(Filtros),
+    h('div', { className: 'dv-row', style: { padding: 0 } }, h(D.Chip, { categoria: 'restaurante' }), h(D.Chip, { categoria: 'natureza' }))));
+</script>
+</body>
+</html>

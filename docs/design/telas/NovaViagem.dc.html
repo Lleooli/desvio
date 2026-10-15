@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Nova viagem</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <x-import component-from-global-scope="Desvio.Ceu" serra="{{yes}}">
+    <a href="Viagens.dc.html" aria-label="Voltar para suas viagens" style="display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -12px 0 12px -10px; border-radius: 999px; color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="x" size="{{n22}}"></x-import></a>
+    <h1 style="margin: 0; font-family: var(--font-display); font-size: 36px; line-height: 37px; font-weight: 700; letter-spacing: -0.035em;">Para onde a <x-import component-from-global-scope="Desvio.Destaque">estrada</x-import> te leva?</h1>
+  </x-import>
+  <div style="display: flex; flex-direction: column; gap: 20px; padding: 4px 16px 0;">
+    <x-import component-from-global-scope="Desvio.Segmented" block="{{yes}}" rotulo="Como você vai?" opcoes="{{modos}}" valor="{{modo}}" on-change="{{mudarModo}}"></x-import>
+    <x-import component-from-global-scope="Desvio.TextField" label="De onde você sai?" icon="pin" placeholder="Cidade, UF" default-value="Alegrete, RS"></x-import>
+    <x-import component-from-global-scope="Desvio.TextField" label="Para onde vai?" icon="pin" placeholder="Cidade, UF" default-value="Vitória da Conquista, BA"></x-import>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 15px; line-height: 20px; font-weight: 600;">Parar a cada</span>
+      <x-import component-from-global-scope="Desvio.Segmented" block="{{yes}}" rotulo="Distância entre paradas" opcoes="{{intervalos}}" padrao="200"></x-import>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 15px; line-height: 20px; font-weight: 600;">O que procurar no caminho</span>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <sc-for list="{{categorias}}" as="c" hint-placeholder-count="5">
+          <x-import component-from-global-scope="Desvio.Chip" categoria="{{c.id}}" selected="{{c.selected}}" on-click="{{c.toggle}}"></x-import>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 32px;">
+    <sc-if value="{{deCarro}}" hint-placeholder-val="{{true}}">
+      <a class="dv-btn dv-btn--primary dv-btn--block" href="Carregando.dc.html">Buscar paradas</a>
+    </sc-if>
+    <sc-if value="{{deAviao}}" hint-placeholder-val="{{false}}">
+      <a class="dv-btn dv-btn--primary dv-btn--block" href="Escalas.dc.html">Continuar para as escalas</a>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { modo: 'carro', sel: { turismo: true, restaurante: true, posto: true, natureza: false, hospedagem: false } };
+  }
+  renderVals() {
+    const sel = this.state.sel;
+    const ids = ['turismo', 'restaurante', 'posto', 'natureza', 'hospedagem'];
+    return {
+      yes: true,
+      n22: 22,
+      modo: this.state.modo,
+      deCarro: this.state.modo === 'carro',
+      deAviao: this.state.modo === 'aviao',
+      mudarModo: (v) => this.setState({ modo: v }),
+      modos: [{ valor: 'carro', label: 'Carro', icon: 'car' }, { valor: 'aviao', label: 'Avião', icon: 'plane' }],
+      intervalos: [{ valor: '150', label: '150 km' }, { valor: '200', label: '200 km' }, { valor: '300', label: '300 km' }],
+      categorias: ids.map((id) => ({
+        id: id,
+        selected: !!sel[id],
+        toggle: () => this.setState({ sel: Object.assign({}, sel, { [id]: !sel[id] }) })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

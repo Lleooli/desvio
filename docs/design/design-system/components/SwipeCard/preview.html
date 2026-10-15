@@ -1,0 +1,24 @@
+<!-- @dsCard group="Swipe" height=470 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" class="dv-row" style="justify-content:center;align-items:flex-start"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h('div', { style: { width: 300 } }, h(D.SwipeCard, {
+      nome: 'Churrascaria Gaúcha', categoria: 'restaurante', cidade: 'Lages', uf: 'SC',
+      nota: 4.7, avaliacoes: 1834, km: 512, horas: 6.8, instagram: 'https://instagram.com/churrascariagaucha',
+      descricao: 'Rodízio tradicional a 2 km da BR-116, aberto até as 23h.'
+    })),
+    h('div', { style: { width: 300 } }, h(D.SwipeCard, {
+      nome: 'Mirante do Vale', categoria: 'turismo', foto: null, cidade: 'Vitória da Conquista', uf: 'BA',
+      nota: 4.5, avaliacoes: 642, stamp: 'bora'
+    })),
+    h('div', { style: { width: 300 } }, h(D.SwipeCard, {
+      nome: 'Posto Serra Azul', categoria: 'posto', cidade: 'Montes Claros', uf: 'MG', km: 2104, horas: 27, nota: 4.3, avaliacoes: 211, stamp: 'passo'
+    }))));
+</script>
+</body>
+</html>

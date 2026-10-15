@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Entrar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <x-import component-from-global-scope="Desvio.Ceu" serra="{{yes}}" style="flex: none;">
+    <a href="BoasVindas.dc.html" aria-label="Voltar" style="display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -12px 0 40px -10px; border-radius: 999px; color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="x" size="{{n22}}"></x-import></a>
+    <h1 style="margin: 0; font-family: var(--font-display); font-size: 36px; line-height: 37px; font-weight: 700; letter-spacing: -0.035em;">Entre para guardar suas <x-import component-from-global-scope="Desvio.Destaque">viagens</x-import></h1>
+    <p style="margin: 12px 0 0; font-size: 16px; line-height: 24px; color: var(--ink-muted);">Seus roteiros e o que você curte ficam salvos em qualquer celular.</p>
+  </x-import>
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 8px 16px 0;">
+    <a class="dv-btn dv-btn--secondary dv-btn--block" href="Triagem.dc.html">Continuar com Google</a>
+    <a class="dv-btn dv-btn--secondary dv-btn--block" href="Triagem.dc.html">Continuar com Apple</a>
+    <div style="display: flex; align-items: center; gap: 12px; margin: 4px 0; color: var(--ink-muted); font-size: 14px;">
+      <span style="flex: 1; height: 1px; background: var(--line);"></span>ou com e-mail<span style="flex: 1; height: 1px; background: var(--line);"></span>
+    </div>
+    <x-import component-from-global-scope="Desvio.TextField" label="Qual é o seu e-mail?" icon="at" type="email" placeholder="voce@email.com" hint="Mandamos um link de acesso, sem senha."></x-import>
+  </div>
+  <div style="position: absolute; left: 16px; right: 16px; bottom: 28px; display: flex; flex-direction: column; gap: 12px; text-align: center;">
+    <a class="dv-btn dv-btn--primary dv-btn--block" href="Triagem.dc.html">Receber link de acesso</a>
+    <span style="font-size: 13px; line-height: 18px; color: var(--ink-muted);">Ao continuar, você aceita os <a href="#">Termos de uso</a> e a <a href="#">Política de privacidade</a>.</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return { yes: true, n22: 22 }; }
+}
+</script>
+</body>
+</html>

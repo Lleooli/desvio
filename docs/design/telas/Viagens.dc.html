@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Minhas viagens</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <div style="padding: 48px 16px 0; display: flex; flex-direction: column; gap: 24px;">
+    <h1 style="margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 40px; font-weight: 700; letter-spacing: -0.035em;">Suas <x-import component-from-global-scope="Desvio.Destaque">viagens</x-import></h1>
+    <a class="dv-btn dv-btn--primary dv-btn--block" href="NovaViagem.dc.html" style="text-decoration: none;">
+      <x-import component-from-global-scope="Desvio.Icon" name="route"></x-import>
+      Nova viagem
+    </a>
+  </div>
+  <div style="padding: 24px 16px 0; display: flex; flex-direction: column; gap: 12px;">
+    <p style="margin: 0; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted);">Em planejamento</p>
+    <a href="Paradas.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; background: var(--surface-200); border-radius: 16px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow-1);">
+      <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 999px; background: var(--placa); color: var(--on-placa);"><x-import component-from-global-scope="Desvio.Icon" name="car" size="{{n22}}"></x-import></span>
+      <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+        <span style="font-family: var(--font-display); font-size: 19px; line-height: 22px; font-weight: 650; letter-spacing: -0.02em;">Alegrete → Vitória da Conquista</span>
+        <span style="font-family: var(--font-placa); font-size: 16px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-muted);">KM 2.731 · ~35H · 5 paradas</span>
+        <span style="font-size: 14px; line-height: 20px; color: var(--placa); font-weight: 600;">8 lugares escolhidos · continuar</span>
+      </span>
+    </a>
+    <a href="Paradas.dc.html" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; background: var(--surface-200); border-radius: 16px; text-decoration: none; color: var(--ink);">
+      <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 999px; background: var(--surface-300); color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="plane" size="{{n22}}"></x-import></span>
+      <span style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+        <span style="font-family: var(--font-display); font-size: 19px; line-height: 22px; font-weight: 650; letter-spacing: -0.02em;">São Paulo → Salvador</span>
+        <span style="font-family: var(--font-placa); font-size: 16px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-muted);">1 escala · 4 dias</span>
+        <span style="font-size: 14px; line-height: 20px; color: var(--ink-muted);">Nenhum lugar escolhido ainda</span>
+      </span>
+    </a>
+    <p style="margin: 12px 0 0; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted);">Feitas</p>
+    <a href="Roteiro.dc.html" style="display: flex; gap: 12px; align-items: center; padding: 16px; border: 1.5px solid var(--line); border-radius: 16px; text-decoration: none; color: var(--ink);">
+      <span style="display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 999px; background: var(--surface-300); color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="car" size="{{n22}}"></x-import></span>
+      <span style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-weight: 600; font-size: 16px; line-height: 24px;">Alegrete → Gramado</span>
+        <span style="font-size: 14px; line-height: 20px; color: var(--ink-muted);">Março · 6 lugares visitados</span>
+      </span>
+    </a>
+  </div>
+  <nav class="dv-nav" aria-label="Navegação principal" style="position: absolute; left: 0; right: 0; bottom: 0;">
+    <a class="dv-nav__item" href="Viagens.dc.html" aria-current="page" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="suitcase" size="{{n22}}"></x-import></span>Viagens</a>
+    <a class="dv-nav__item" href="Paradas.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="compass" size="{{n22}}"></x-import></span>Descobrir</a>
+    <a class="dv-nav__item" href="Roteiro.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="route" size="{{n22}}"></x-import></span>Roteiro</a>
+    <a class="dv-nav__item" href="Perfil.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="user" size="{{n22}}"></x-import></span>Perfil</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return { n22: 22 }; }
+}
+</script>
+</body>
+</html>

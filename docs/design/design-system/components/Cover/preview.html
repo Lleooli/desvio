@@ -1,0 +1,49 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Desvio — capa</title>
+<style>
+  html, body { margin: 0; background: var(--surface-100); }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; background: var(--surface-100); }
+  .cover svg { position: absolute; inset: 0; }
+  .placa { fill: var(--placa); }
+  .borda-placa { fill: none; stroke: var(--on-placa); stroke-width: 3; }
+  .ceu { fill: var(--ceu-sol); }
+  .azul { fill: var(--ceu-azul); }
+  .faixa { fill: var(--faixa); }
+  .r-md { rx: var(--radius-md); }
+  .r-sm { rx: var(--radius-sm); }
+  .r-lg { rx: var(--radius-lg); }
+  .estrada-borda { fill: none; stroke: var(--faixa); stroke-width: 52; stroke-linecap: round; }
+  .estrada-pista { fill: none; stroke: var(--asfalto); stroke-width: 44; stroke-linecap: round; }
+  .texto { position: absolute; left: 40px; bottom: 36px; max-width: 440px; }
+  .nome { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 120px; line-height: .92; letter-spacing: -0.045em; color: var(--ink); }
+  .lema { margin: 8px 0 0; font-family: var(--font-sans); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+  <svg width="960" height="288" viewBox="0 0 960 288" aria-hidden="true">
+    <!--
+      blocks: placa 176x104 (radius-md) com borda on-placa recuada space-2; ceu-sol 256x170 e ceu-azul 160x96 (radius-lg), o laranja do pôr do sol sangrando à direita e embaixo, o azul do céu sangrando no topo; faixa 128x96 (radius-lg) sangrando no topo e à direita; asfalto como a pista
+      arrangement: a placa de rodovia à esquerda da zona, os blocos de céu e faixa cortados pelas bordas, a pista curva subindo da esquerda para a direita por cima de tudo
+      pattern: motivo literal, a Estrada — uma pista asfalto de 44px com bordas faixa, a mesma curva do componente; o README a chama de assinatura visual
+      scales: space-2 (recuo da borda), space-8 (margens), radius-md, radius-sm, radius-lg
+    -->
+    <rect class="azul r-lg" x="704" y="-32" width="160" height="128"/>
+    <rect class="ceu r-lg" x="736" y="150" width="256" height="170"/>
+    <rect class="faixa r-lg" x="864" y="-32" width="128" height="128"/>
+    <rect class="placa r-md" x="512" y="32" width="176" height="104"/>
+    <rect class="borda-placa r-sm" x="520" y="40" width="160" height="88"/>
+    <path class="estrada-borda" d="M508 250 C 600 250 630 182 720 176 S 850 150 990 64"/>
+    <path class="estrada-pista" d="M508 250 C 600 250 630 182 720 176 S 850 150 990 64"/>
+  </svg>
+  <div class="texto">
+    <h1 class="nome">Desvio</h1>
+    <p class="lema">Cada parada, escolhida a dedo.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!-- @dsCard group="Lugares" height=300 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" class="dv-row" style="align-items:flex-start"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  function Demo() {
+    var s = React.useState('Salvador'), sel = s[0], set = s[1];
+    var cidades = [{ cidade: 'São Paulo', uf: 'SP', dias: 1 }, { cidade: 'Salvador', uf: 'BA', dias: 3, variante: 'placa' }, { cidade: 'Vitória da Conquista', uf: 'BA', dias: 2 }];
+    return h(React.Fragment, null, cidades.map(function (c) {
+      return h(D.JanelaCidade, Object.assign({ key: c.cidade, selecionada: sel === c.cidade, onClick: function () { set(c.cidade); } }, c));
+    }));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!-- @dsCard group="Ações" height=96 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" class="dv-row"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h(D.Button, { icon: 'route' }, 'Montar roteiro'),
+    h(D.Button, { variant: 'secondary' }, 'Editar paradas'),
+    h(D.Button, { variant: 'ghost' }, 'Pular esta cidade'),
+    h(D.Button, { variant: 'favorito', icon: 'star' }, 'Ver favoritos'),
+    h(D.Button, { size: 'sm', icon: 'plane', variant: 'secondary' }, 'Adicionar escala'),
+    h(D.Button, { disabled: true }, 'Montar roteiro')));
+</script>
+</body>
+</html>

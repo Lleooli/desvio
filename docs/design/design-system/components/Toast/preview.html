@@ -1,0 +1,14 @@
+<!-- @dsCard group="Swipe" height=150 -->
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>preview</title></head>
+<body>
+<div id="root" class="dv-stack" style="align-items:flex-start"></div>
+<script>
+  var D = window.Desvio, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null,
+    h(D.Toast, { acao: 'Desfazer' }, 'Churrascaria Gaúcha entrou no roteiro'),
+    h(D.Toast, { icon: 'star' }, 'Favorito: sobe para o começo do dia')));
+</script>
+</body>
+</html>

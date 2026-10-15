@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Swipe da parada</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 40px 12px 8px;">
+    <a href="Paradas.dc.html" aria-label="Voltar para as paradas" style="display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; color: var(--ink);"><x-import component-from-global-scope="Desvio.Icon" name="x" size="{{n22}}"></x-import></a>
+    <div style="display: flex; flex-direction: column; align-items: center;">
+      <span style="font-family: var(--font-display); font-size: 19px; line-height: 22px; font-weight: 650; letter-spacing: -0.02em;">Curitiba, PR</span>
+      <span style="font-family: var(--font-placa); font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted);">KM 718 · {{contagem}}</span>
+    </div>
+    <a href="Paradas.dc.html" style="display: grid; place-items: center; min-width: 44px; height: 44px; padding: 0 8px; font-weight: 600; text-decoration: none;">Pronto</a>
+  </div>
+  <div style="display: flex; gap: 8px; padding: 4px 16px 12px; overflow-x: auto;">
+    <sc-for list="{{filtros}}" as="f" hint-placeholder-count="3">
+      <x-import component-from-global-scope="Desvio.Chip" categoria="{{f.id}}" selected="{{f.selected}}" on-click="{{f.toggle}}"></x-import>
+    </sc-for>
+  </div>
+  <div style="position: relative; width: 330px; margin: 4px auto 0;">
+    <div aria-hidden="true" style="position: absolute; left: 14px; right: 14px; top: 12px; bottom: -8px; border-radius: 28px; background: var(--surface-300);"></div>
+    <div style="position: relative; width: 330px;">
+      <x-import component-from-global-scope="Desvio.SwipeCard" nome="{{card.nome}}" categoria="{{card.categoria}}" cidade="Curitiba" uf="PR" nota="{{card.nota}}" avaliacoes="{{card.avaliacoes}}" km="{{card.km}}" horas="{{card.horas}}" descricao="{{card.descricao}}" instagram="{{card.instagram}}" instagram-provavel="{{card.provavel}}" stamp="{{stamp}}" style="display: block; width: 330px;"></x-import>
+    </div>
+  </div>
+  <div style="flex: 1 1 auto;"></div>
+  <x-import component-from-global-scope="Desvio.SwipeActions" on-passo="{{passo}}" on-favorito="{{favorito}}" on-bora="{{bora}}"></x-import>
+  <div style="display: flex; justify-content: center; padding: 0 16px 24px;">
+    <a href="Lugar.dc.html" style="font-size: 15px; line-height: 20px; font-weight: 600;">Ver detalhes do lugar</a>
+  </div>
+  <sc-if value="{{temToast}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; left: 16px; right: 16px; bottom: 172px; display: flex; justify-content: center;">
+      <x-import component-from-global-scope="Desvio.Toast" icon="{{toastIcone}}" acao="Desfazer" on-acao="{{desfazer}}">{{toast}}</x-import>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { i: 0, aceitos: 3, stamp: null, toast: null, sel: { turismo: true, restaurante: true, posto: false } };
+    this.cards = [
+      { nome: 'Mirante da Serra', categoria: 'turismo', nota: 4.7, avaliacoes: 2310, km: 722, horas: 9.6, descricao: 'Vista do vale ao fim da tarde, a 4 km da BR-116.', instagram: null, provavel: false },
+      { nome: 'Cantina do Nono', categoria: 'restaurante', nota: 4.6, avaliacoes: 1834, km: 719, horas: 9.5, descricao: 'Massa caseira e polenta frita, aberto até as 23h.', instagram: '@cantinadonono', provavel: false },
+      { nome: 'Parque das Araucárias', categoria: 'turismo', nota: 4.5, avaliacoes: 642, km: 725, horas: 9.7, descricao: 'Trilha curta de 40 minutos e lago para piquenique.', instagram: null, provavel: false },
+      { nome: 'Lanchonete Pé na Estrada', categoria: 'restaurante', nota: 4.4, avaliacoes: 211, km: 716, horas: 9.4, descricao: 'Pastel e caldo de cana na beira da rodovia.', instagram: '@penaestrada', provavel: true }
+    ];
+  }
+  decidir(tipo) {
+    const c = this.cards[this.state.i % this.cards.length];
+    const txt = tipo === 'bora' ? c.nome + ' entrou no roteiro' : tipo === 'favorito' ? c.nome + ' virou favorito' : null;
+    this.setState({ stamp: tipo });
+    clearTimeout(this.t1); clearTimeout(this.t2);
+    this.t1 = setTimeout(() => {
+      this.setState((s) => ({ i: s.i + 1, stamp: null, aceitos: s.aceitos + (tipo === 'passo' ? 0 : 1), toast: txt ? { txt: txt, tipo: tipo } : null }));
+      this.t2 = setTimeout(() => this.setState({ toast: null }), 4000);
+    }, 450);
+  }
+  componentWillUnmount() { clearTimeout(this.t1); clearTimeout(this.t2); }
+  renderVals() {
+    const s = this.state;
+    const card = this.cards[s.i % this.cards.length];
+    const sel = s.sel;
+    return {
+      n22: 22,
+      card: card,
+      stamp: s.stamp,
+      contagem: s.aceitos + ' de 12 escolhidos',
+      filtros: ['turismo', 'restaurante', 'posto'].map((id) => ({ id: id, selected: !!sel[id], toggle: () => this.setState({ sel: Object.assign({}, sel, { [id]: !sel[id] }) }) })),
+      passo: () => this.decidir('passo'),
+      favorito: () => this.decidir('favorito'),
+      bora: () => this.decidir('bora'),
+      temToast: !!s.toast,
+      toast: s.toast ? s.toast.txt : '',
+      toastIcone: s.toast && s.toast.tipo === 'favorito' ? 'star' : 'check',
+      desfazer: () => this.setState((st) => ({ toast: null, i: Math.max(0, st.i - 1), aceitos: Math.max(0, st.aceitos - 1) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Perfil e gosto</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/desvio/tokens.css">
+<link rel="stylesheet" href="ds/desvio/components/bundle.css">
+<script src="ds/desvio/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Barlow+Condensed:wght@600;700&amp;family=Barlow:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--placa)}a:hover{color:var(--ink)}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-100); color: var(--ink); font-family: var(--font-sans);">
+  <div style="padding: 48px 16px 0; display: flex; flex-direction: column; gap: 6px;">
+    <h1 style="margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 40px; font-weight: 700; letter-spacing: -0.035em;">O que você <x-import component-from-global-scope="Desvio.Destaque">curte</x-import></h1>
+    <p style="margin: 0; font-size: 15px; line-height: 22px; color: var(--ink-muted);">Aprendido com 148 lugares que você deslizou. Usamos isso para ordenar os próximos cards.</p>
+    <a href="Triagem.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; font-weight: 600;">Refazer as perguntas</a>
+  </div>
+  <div style="margin: 8px 16px 0; padding: 16px; background: var(--surface-200); border-radius: 16px; display: flex; flex-direction: column; gap: 14px;">
+    <sc-for list="{{gostos}}" as="g" hint-placeholder-count="4">
+      <div style="display: grid; grid-template-columns: 120px 1fr 44px; gap: 12px; align-items: center;">
+        <span style="display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 15px;"><x-import component-from-global-scope="Desvio.Icon" name="{{g.icon}}" size="{{n18}}"></x-import>{{g.label}}</span>
+        <span style="height: 10px; border-radius: 999px; background: var(--surface-300); overflow: hidden;"><span style="display: block; height: 100%; border-radius: 999px; background: var(--placa); width: {{g.largura}};"></span></span>
+        <span style="text-align: right; font-family: var(--font-placa); font-size: 17px; color: var(--ink-muted);">{{g.pct}}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="padding: 20px 16px 0; display: flex; flex-direction: column; gap: 8px;">
+    <p style="margin: 0; font-family: var(--font-display); font-size: 22px; line-height: 26px; font-weight: 650; letter-spacing: -0.02em;">Preferências</p>
+    <span style="font-size: 15px; line-height: 20px; font-weight: 600;">Parar a cada</span>
+    <x-import component-from-global-scope="Desvio.Segmented" block="{{yes}}" rotulo="Distância padrão entre paradas" opcoes="{{intervalos}}" padrao="200"></x-import>
+    <span style="font-size: 15px; line-height: 20px; font-weight: 600; margin-top: 8px;">Tema</span>
+    <x-import component-from-global-scope="Desvio.Segmented" block="{{yes}}" rotulo="Tema" opcoes="{{temas}}" padrao="sistema"></x-import>
+  </div>
+  <nav class="dv-nav" aria-label="Navegação principal" style="position: absolute; left: 0; right: 0; bottom: 0;">
+    <a class="dv-nav__item" href="Viagens.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="suitcase" size="{{n22}}"></x-import></span>Viagens</a>
+    <a class="dv-nav__item" href="Paradas.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="compass" size="{{n22}}"></x-import></span>Descobrir</a>
+    <a class="dv-nav__item" href="Roteiro.dc.html" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="route" size="{{n22}}"></x-import></span>Roteiro</a>
+    <a class="dv-nav__item" href="Perfil.dc.html" aria-current="page" style="text-decoration: none;"><span class="dv-nav__pill"><x-import component-from-global-scope="Desvio.Icon" name="user" size="{{n22}}"></x-import></span>Perfil</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const g = [
+      { label: 'Natureza', icon: 'leaf', taxa: 0.82 },
+      { label: 'Turismo', icon: 'camera', taxa: 0.71 },
+      { label: 'Restaurante', icon: 'food', taxa: 0.54 },
+      { label: 'Posto', icon: 'fuel', taxa: 0.18 }
+    ];
+    return {
+      yes: true, n18: 18, n22: 22,
+      gostos: g.map((x) => ({ label: x.label, icon: x.icon, largura: Math.round(x.taxa * 100) + '%', pct: Math.round(x.taxa * 100) + '%' })),
+      intervalos: [{ valor: '150', label: '150 km' }, { valor: '200', label: '200 km' }, { valor: '300', label: '300 km' }],
+      temas: [{ valor: 'claro', label: 'Claro' }, { valor: 'escuro', label: 'Escuro' }, { valor: 'sistema', label: 'Sistema' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

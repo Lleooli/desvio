@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.db
+viagem.json
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+*.tsbuildinfo
+ios/
+android/
+
+# Dados locais
+gmapsdata/
+dados/
+
+# Sistema e editores
+.DS_Store
+.env
+.env.*
+.idea/
+.vscode/
