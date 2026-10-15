@@ -42,6 +42,16 @@ def _json(v: str):
         return None
 
 
+def sobre_de_about(valor: str, limite: int = 8) -> list[str]:
+    """Opções ativas do campo "about" do gosom: "Aceita pets", "Entrada acessível"…"""
+    secoes = _json(valor)
+    if not isinstance(secoes, list):
+        return []
+    nomes = [op["name"] for s in secoes if isinstance(s, dict)
+             for op in s.get("options") or [] if isinstance(op, dict) and op.get("enabled") and op.get("name")]
+    return nomes[:limite]
+
+
 def linha_para_lugar(linha: dict) -> dict:
     """Converte uma linha do CSV do gosom no formato usado pelos cards."""
     imagens = [i.get("image") for i in (_json(linha.get("images", "")) or []) if isinstance(i, dict) and i.get("image")]
@@ -59,6 +69,7 @@ def linha_para_lugar(linha: dict) -> dict:
         "foto": linha.get("thumbnail") or (imagens[0] if imagens else None),
         "fotos": imagens[:6],
         "descricao": linha.get("descriptions") or None,
+        "sobre": sobre_de_about(linha.get("about", "")),
         "faixa_preco": linha.get("price_range") or None,
         "horarios": _json(linha.get("open_hours", "")),
         "status": linha.get("status") or None,
