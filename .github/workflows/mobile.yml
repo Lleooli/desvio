@@ -1,0 +1,26 @@
+name: mobile
+
+on:
+  push:
+    paths: ["apps/mobile/**", "packages/design-tokens/**", ".github/workflows/mobile.yml"]
+  pull_request:
+    paths: ["apps/mobile/**", "packages/design-tokens/**", ".github/workflows/mobile.yml"]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      # falha se alguém mudou packages/design-tokens/tokens.json e esqueceu de rodar npm run tokens
+      - run: npm run tokens
+      - run: git diff --exit-code src/tema/tokens.gerado.ts
+      - run: npm run typecheck
