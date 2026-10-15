@@ -1,0 +1,68 @@
+"""Fila de jobs de coleta em SQLite.
+
+A API cria o job e responde na hora; o worker (app/worker.py) pega o mais
+antigo, roda a coleta e grava o resultado. A interface (criar, pegar_proximo,
+concluir, falhar, obter) é a mesma que a versão em Postgres vai ter.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import uuid
+from contextlib import closing
+
+DB = os.getenv("PV_DB", "planejador.db")
+
+
+def _con() -> sqlite3.Connection:
+    con = sqlite3.connect(DB, timeout=30)
+    con.execute("""CREATE TABLE IF NOT EXISTS jobs (
+        id TEXT PRIMARY KEY, tipo TEXT NOT NULL, entrada TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente', resultado TEXT, erro TEXT,
+        criado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')))""")
+    return con
+
+
+def criar(tipo: str, entrada: dict) -> str:
+    jid = uuid.uuid4().hex
+    with closing(_con()) as con, con:
+        con.execute("INSERT INTO jobs (id, tipo, entrada) VALUES (?,?,?)",
+                    (jid, tipo, json.dumps(entrada, ensure_ascii=False)))
+    return jid
+
+
+def pegar_proximo() -> dict | None:
+    with closing(_con()) as con, con:
+        linha = con.execute(
+            "UPDATE jobs SET status='rodando', atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
+            "WHERE id = (SELECT id FROM jobs WHERE status='pendente' ORDER BY criado_em, rowid LIMIT 1) "
+            "RETURNING id, tipo, entrada").fetchone()
+    return {"id": linha[0], "tipo": linha[1], "entrada": json.loads(linha[2])} if linha else None
+
+
+def _fechar(job_id: str, status: str, resultado: dict | None, erro: str | None) -> None:
+    with closing(_con()) as con, con:
+        con.execute("UPDATE jobs SET status=?, resultado=?, erro=?, "
+                    "atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id=?",
+                    (status, json.dumps(resultado, ensure_ascii=False) if resultado is not None else None,
+                     erro, job_id))
+
+
+def concluir(job_id: str, resultado: dict) -> None:
+    _fechar(job_id, "pronto", resultado, None)
+
+
+def falhar(job_id: str, erro: str) -> None:
+    _fechar(job_id, "falhou", None, erro)
+
+
+def obter(job_id: str) -> dict | None:
+    with closing(_con()) as con:
+        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em "
+                        "FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not l:
+        return None
+    return {"id": l[0], "tipo": l[1], "status": l[2], "resultado": json.loads(l[3]) if l[3] else None,
+            "erro": l[4], "criado_em": l[5], "atualizado_em": l[6]}

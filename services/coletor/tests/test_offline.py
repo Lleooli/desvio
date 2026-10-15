@@ -174,13 +174,28 @@ def test_fluxo_carro_com_google(mock_http, monkeypatch):
 
 def test_api(mock_http, tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
+    from app import fila, worker
     from app.main import app
     monkeypatch.setattr(preferencias, "DB", str(tmp_path / "api.db"))
+    monkeypatch.setattr(fila, "DB", str(tmp_path / "api.db"))
     cli = TestClient(app)
     r = cli.post("/viagem/aviao", json={"cidades": [{"cidade": "Destino, BA", "dias": 2}], "usuario": "leo"})
-    assert r.status_code == 200, r.text
-    cards = r.json()["paradas"][0]["cards"]
+    assert r.status_code == 202, r.text
+    jid = r.json()["job_id"]
+    assert cli.get(f"/jobs/{jid}").json()["status"] == "pendente"
+    assert asyncio.run(worker.rodar_uma_vez())
+    j = cli.get(f"/jobs/{jid}").json()
+    assert j["status"] == "pronto", j
+    cards = j["resultado"]["paradas"][0]["cards"]
     assert cli.post("/swipe", json={"usuario": "leo", "card": cards[0], "gostou": True}).json()["ok"]
     assert cli.get("/perfil/leo").json()["aceitos"] == 1
     dias = cli.post("/roteiro/cidade", json={"cards": cards, "dias": 2}).json()
     assert len(dias) == 2
+
+
+def test_api_job_inexistente(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import fila
+    from app.main import app
+    monkeypatch.setattr(fila, "DB", str(tmp_path / "x.db"))
+    assert TestClient(app).get("/jobs/nao-existe").status_code == 404

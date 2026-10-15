@@ -65,3 +65,13 @@ def pontuar(cards: list[dict], p: dict) -> list[dict]:
                 s += info["taxa"] - 0.5
         return s + (c.get("nota") or 0) / 10
     return sorted(cards, key=score, reverse=True)
+
+
+def personalizar(resultado: dict, usuario: str | None) -> dict:
+    """Tira cards já avaliados e ordena os novos pelo gosto do usuário."""
+    if not usuario:
+        return resultado
+    vistos, p = ja_vistos(usuario), perfil(usuario)
+    for parada in resultado["paradas"]:
+        parada["cards"] = pontuar([c for c in parada["cards"] if c["id"] not in vistos], p)
+    return resultado

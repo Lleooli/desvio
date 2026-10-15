@@ -1,7 +1,8 @@
-# Coletor + raspador do Google Maps (gosom).
+# API + worker de coleta + raspador do Google Maps (gosom).
+#   cp .env.example .env   (e preencha)
 #   docker compose up --build
-# Coletor: http://localhost:8000/docs
-# gosom:   http://localhost:8080
+# API:   http://localhost:8000/docs
+# gosom: http://localhost:8080
 services:
   gosom:
     image: gosom/google-maps-scraper
@@ -16,12 +17,24 @@ services:
 
   coletor:
     build: ./services/coletor
+    env_file: .env
     environment:
       - PV_GOSOM_URL=http://gosom:8080
-      - PV_USER_AGENT=desvio/0.1 (troque-pelo-seu-email@exemplo.com)
       - PV_DB=/dados/desvio.db
     ports:
       - "8000:8000"
+    volumes:
+      - ./dados:/dados
+    depends_on:
+      - gosom
+
+  worker:
+    build: ./services/coletor
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      - PV_GOSOM_URL=http://gosom:8080
+      - PV_DB=/dados/desvio.db
     volumes:
       - ./dados:/dados
     depends_on:

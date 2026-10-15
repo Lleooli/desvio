@@ -1,21 +1,25 @@
 """API do planejador. Rode com:  uvicorn app.main:app --reload
 
 Fluxo pensado para o front (estilo Tinder):
-1. POST /viagem/carro ou /viagem/aviao      → paradas com cards
+1. POST /viagem/carro ou /viagem/aviao      → job_id (202); a coleta roda no worker
+   GET  /jobs/{id}                          → status; quando "pronto", paradas com cards
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro/carro ou /roteiro/cidade   → ordem de visita dos aceitos
 4. GET  /perfil/{usuario}                   → resumo do gosto, para a IA
 """
 from __future__ import annotations
 
-from fastapi import FastAPI
+import os
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import coletor, preferencias, roteiro
+from . import fila, preferencias, roteiro
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+ORIGENS = [o.strip() for o in os.getenv("PV_CORS_ORIGINS", "*").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["*"], allow_headers=["*"])
 
 Categoria = str  # turismo | restaurante | posto | natureza | hospedagem
 
@@ -62,27 +66,22 @@ class RoteiroCidade(BaseModel):
     inicio_lon: float | None = None
 
 
-def _personalizar(resultado: dict, usuario: str | None) -> dict:
-    """Tira cards já avaliados e ordena os novos pelo gosto do usuário."""
-    if not usuario:
-        return resultado
-    vistos, p = preferencias.ja_vistos(usuario), preferencias.perfil(usuario)
-    for parada in resultado["paradas"]:
-        parada["cards"] = preferencias.pontuar([c for c in parada["cards"] if c["id"] not in vistos], p)
-    return resultado
+@app.post("/viagem/carro", status_code=202)
+def viagem_carro(req: ViagemCarro):
+    return {"job_id": fila.criar("carro", req.model_dump()), "status": "pendente"}
 
 
-@app.post("/viagem/carro")
-async def viagem_carro(req: ViagemCarro):
-    dados = req.model_dump(exclude={"usuario"})
-    return _personalizar(await coletor.planejar_carro(**dados), req.usuario)
+@app.post("/viagem/aviao", status_code=202)
+def viagem_aviao(req: ViagemAviao):
+    return {"job_id": fila.criar("aviao", req.model_dump()), "status": "pendente"}
 
 
-@app.post("/viagem/aviao")
-async def viagem_aviao(req: ViagemAviao):
-    r = await coletor.planejar_cidades([c.model_dump() for c in req.cidades], req.categorias,
-                                       req.por_categoria, req.usar_google_maps, req.buscar_instagram)
-    return _personalizar(r, req.usuario)
+@app.get("/jobs/{job_id}")
+def job(job_id: str):
+    j = fila.obter(job_id)
+    if not j:
+        raise HTTPException(404, "Viagem não encontrada")
+    return j
 
 
 @app.post("/swipe")
