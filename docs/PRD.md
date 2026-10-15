@@ -178,7 +178,7 @@ flowchart TB
   app["App Expo (React Native)<br/>expo-router e design system Desvio"]
   api["API (FastAPI)<br/>contas, viagens, swipe, roteiro e perfil"]
   sb["Supabase<br/>Postgres, login, cache de cidades (30 dias)"]
-  llm["LLM<br/>triagem, ranqueamento e roteiro"]
+  llm["Groq (gpt-oss)<br/>triagem, ranqueamento e roteiro"]
   wk["Worker de coleta<br/>rota, paradas, cards e Instagram"]
   push["Expo Push<br/>avisa quando a busca termina"]
   subgraph fontes["Fontes externas"]
@@ -203,7 +203,8 @@ flowchart TB
 | API e worker | Python e FastAPI | O coletor já existe nessa stack, com 8 testes |
 | Banco e login | Supabase (Postgres e Auth) | Google, Apple e link por e-mail prontos; cache de cidades no mesmo banco |
 | Raspagem do Google | gosom/google-maps-scraper em Docker | Projeto mais maduro do GitHub, licença MIT, API REST |
-| IA | LLM via API, saída em JSON validada | Triagem, ranqueamento e roteiro (ver seção de IA) |
+| IA | Groq, plano gratuito: `openai/gpt-oss-120b` (triagem e roteiro) e `openai/gpt-oss-20b` (ranqueamento), com structured outputs estritos | Gratuito e rápido; limite de 1.000 requisições e 200 mil tokens por dia por modelo (ver [verificação da stack](verificacao-stack.md)) |
+| Fila de jobs | Tabela no Postgres do Supabase (`FOR UPDATE SKIP LOCKED`) | Sem Redis; a API cria o job e o worker consome |
 | Avisos | Expo Push | Avisa quando a busca termina |
 | Repositório | Monorepo [Lleooli/desvio](https://github.com/Lleooli/desvio) | apps/mobile, services/coletor, packages/design-tokens e docs |
 
@@ -214,13 +215,13 @@ flowchart TB
 | Google bloqueia o raspador ou muda o HTML | Cards sem foto e sem nota | OpenStreetMap continua funcionando; trocar pela Places API antes do lançamento público |
 | Busca demora (3 min ou mais por job) | Pessoa desiste antes do primeiro card | Cache por cidade; push quando terminar; começar a mostrar os cards do OSM enquanto o Google chega |
 | Instagram errado (homônimos) | Perde confiança no card | Só mostrar o de busca como "provável"; preferir o link do site do lugar |
-| Custo de IA por usuário | Inviável no plano gratuito | Ranqueamento estatístico primeiro; IA só nos 30 primeiros cards e no roteiro; cache das respostas |
+| Limite do Groq gratuito (8 mil tokens/min e 200 mil/dia por modelo) | De 7 a 14 viagens por dia | Ranqueamento estatístico primeiro; IA só nos 30 primeiros cards e no roteiro; cache das respostas; `reasoning_effort` baixo; plano Developer no beta |
 | Poucas cidades no interior com dados | Paradas vazias | Aumentar o raio de busca; sugerir a próxima cidade maior |
 
 **Em aberto**
 
 - [ ] Nome definitivo do app (Desvio é provisório)
-- [ ] Qual LLM usar na triagem e no roteiro, e o orçamento mensal
+- [x] Qual LLM usar: Groq gratuito com gpt-oss (decidido em 2026-10-15). Falta definir quando passar para o plano Developer
 - [ ] Modelo de receita: gratuito com limite de viagens, assinatura ou parcerias com restaurantes
 - [ ] Hospedagem entra no swipe ou vira uma etapa separada da viagem
 
