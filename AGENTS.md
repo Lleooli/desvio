@@ -23,6 +23,7 @@ apps/mobile/                Expo (React Native) + expo-router
   src/tema/                 tokens do design system; tokens.gerado.ts é gerado, não edite
   src/componentes/          componentes compartilhados
 services/coletor/           Python + FastAPI
+  app/__init__.py           carrega o .env (app/ambiente.py) antes dos outros módulos
   app/main.py               API HTTP
   app/fila.py               fila de jobs (SQLite hoje, Postgres do Supabase depois)
   app/worker.py             consome a fila e roda a coleta
@@ -41,7 +42,7 @@ docs/                       PRD, rotas, design, verificação, planos
 
 ## Comandos
 
-Configuração inicial: `cp .env.example .env` e preencha `PV_USER_AGENT` e `GROQ_API_KEY`. O passo a passo completo está em `CONTRIBUTING.md`.
+Configuração inicial: `cp .env.example .env` e preencha `PV_USER_AGENT` e `GROQ_API_KEY`. A API, o worker e o CLI leem esse `.env` sozinhos (`app/ambiente.py`); o docker compose também. O passo a passo completo está em `CONTRIBUTING.md`.
 
 **Coletor** (em `services/coletor`):
 

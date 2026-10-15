@@ -13,6 +13,8 @@ from . import coletor, fila, preferencias
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
+# um job do gosom leva minutos; "rodando" sem mudar por mais que isso é worker que morreu
+PRESO_MIN = float(os.getenv("PV_JOB_PRESO_MIN", "30"))
 
 
 async def processar(job: dict) -> dict:
@@ -41,8 +43,14 @@ async def rodar_uma_vez() -> bool:
 
 async def _laco() -> None:
     while True:
-        if not await rodar_uma_vez():
-            await asyncio.sleep(INTERVALO_S)
+        try:
+            if fila.recuperar_presos(PRESO_MIN):
+                log.warning("jobs presos em 'rodando' voltaram para a fila")
+            if await rodar_uma_vez():
+                continue
+        except Exception:  # banco travado etc.: espera e tenta de novo
+            log.exception("erro no laço do worker")
+        await asyncio.sleep(INTERVALO_S)
 
 
 def main() -> None:

@@ -113,7 +113,7 @@ def perfil(usuario: str):
 @app.post("/roteiro/carro")
 async def roteiro_carro(req: RoteiroCarro):
     if not req.usar_ia:
-        return roteiro.ordenar_carro(req.cards)
+        return {"itens": roteiro.ordenar_carro(req.cards), "explicacoes": {}, "fonte": "geometria"}
     async with httpx.AsyncClient() as client:
         return await ia.ajustar_roteiro(client, req.cards, req.contexto)
 

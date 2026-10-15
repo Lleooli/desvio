@@ -17,6 +17,7 @@ services:
 
   coletor:
     build: ./services/coletor
+    restart: unless-stopped
     env_file: .env
     environment:
       - PV_GOSOM_URL=http://gosom:8080
@@ -24,21 +25,24 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./dados:/dados
+      - dados:/dados
     depends_on:
       - gosom
 
   worker:
     build: ./services/coletor
+    restart: unless-stopped
     command: ["python", "-m", "app.worker"]
     env_file: .env
     environment:
       - PV_GOSOM_URL=http://gosom:8080
       - PV_DB=/dados/desvio.db
     volumes:
-      - ./dados:/dados
+      - dados:/dados
     depends_on:
       - gosom
 
 volumes:
+  # volume do Docker, não pasta do host: o SQLite trava mal em pasta compartilhada do Windows/macOS
+  dados:
   gmaps-playwright-cache:

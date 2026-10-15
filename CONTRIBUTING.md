@@ -17,6 +17,8 @@ No `.env`, preencha:
 - `PV_USER_AGENT` com o seu e-mail (o Nominatim exige)
 - `GROQ_API_KEY` com uma chave gratuita de https://console.groq.com/keys. Sem ela, tudo funciona, mas a IA usa o plano B.
 
+A API, o worker e o `cli.py` leem esse arquivo sozinhos, e o docker compose também. Não precisa exportar nada.
+
 **Coletor:**
 
 ```bash

@@ -58,15 +58,19 @@ docker compose up --build
 | GET | `/perfil/{usuario}` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
-| POST | `/roteiro/carro` | ordena os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
+| POST | `/roteiro/carro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
 | POST | `/roteiro/cidade` | divide os aceitos em dias, na melhor ordem de visita |
 
 Mandando `usuario` em `/viagem/*`, os cards já avaliados somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
 
 A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
-`docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`,
-com `"fonte": "fixa"` ou `"geometria"` no lugar de `"ia"`.
+`docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`:
+`/triagem` e `/roteiro/carro` trazem `"fonte": "fixa"` ou `"geometria"` no
+lugar de `"ia"`, e `/cards/ranquear` devolve os cards na ordem em que vieram.
+
+A API, o worker e o `cli.py` leem sozinhos o `.env` da raiz do repositório
+(`app/ambiente.py`). Variáveis que já existem no ambiente têm prioridade.
 
 Exemplo de card:
 

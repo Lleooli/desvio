@@ -15,7 +15,7 @@ DB = os.getenv("PV_DB", "planejador.db")
 
 
 def _con() -> sqlite3.Connection:
-    con = sqlite3.connect(DB)
+    con = sqlite3.connect(DB, timeout=30)
     con.execute("""CREATE TABLE IF NOT EXISTS swipes (
         usuario TEXT, card_id TEXT, gostou INTEGER, categoria TEXT, tipo TEXT,
         faixa_preco TEXT, nota REAL, cidade TEXT, card TEXT,

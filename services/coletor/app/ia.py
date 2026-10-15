@@ -42,6 +42,8 @@ class Limitador:
             self._uso.popleft()
 
     def espera(self, tokens: int) -> float:
+        if tokens > self.tpm:
+            return float("inf")  # nunca cabe: quem chama cai no plano B
         agora = self.relogio()
         self._limpar(agora)
         usados = sum(t for _, t in self._uso)
@@ -89,9 +91,12 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
     if r.status_code >= 400:
         raise IAIndisponivel(f"Groq {r.status_code}")
     try:
-        return json.loads(r.json()["choices"][0]["message"]["content"])
+        saida = json.loads(r.json()["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError, ValueError) as e:
         raise IAIndisponivel("Groq devolveu JSON inválido") from e
+    if not isinstance(saida, dict) or any(k not in saida for k in schema.get("required", [])):
+        raise IAIndisponivel("Groq devolveu JSON fora do schema")
+    return saida
 
 
 # --- Triagem -----------------------------------------------------------------
@@ -134,7 +139,7 @@ async def triagem(client: httpx.AsyncClient, respostas: list[dict]) -> dict:
         r = ({**PERGUNTAS_RESERVA[i], "fim": False, "resumo": None} if i < len(PERGUNTAS_RESERVA)
              else {"pergunta": None, "opcoes": [], "fim": True, "resumo": None})
         r["fonte"] = "fixa"
-    if len(respostas) >= MAX_PERGUNTAS or r["fim"]:
+    if len(respostas) >= MAX_PERGUNTAS or r["fim"] or not r.get("pergunta"):
         r.update(pergunta=None, opcoes=[], fim=True)
     return r
 
@@ -205,5 +210,6 @@ async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto
     except IAIndisponivel:
         return {"itens": base, "explicacoes": {}, "fonte": "geometria"}
     validos = {c["id"] for c in base}
-    explic = {o["id"]: o["porque"] for o in r["ordem"] if o["id"] in validos}
-    return {"itens": _reordenar(base, [o["id"] for o in r["ordem"]]), "explicacoes": explic, "fonte": "ia"}
+    ordem = [o for o in r["ordem"] if isinstance(o, dict) and o.get("id") in validos]
+    explic = {o["id"]: str(o.get("porque", "")) for o in ordem}
+    return {"itens": _reordenar(base, [o["id"] for o in ordem]), "explicacoes": explic, "fonte": "ia"}

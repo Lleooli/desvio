@@ -42,6 +42,15 @@ def pegar_proximo() -> dict | None:
     return {"id": linha[0], "tipo": linha[1], "entrada": json.loads(linha[2])} if linha else None
 
 
+def recuperar_presos(minutos: float = 30) -> int:
+    """Devolve à fila os jobs "rodando" sem atualização há `minutos` (worker morreu no meio)."""
+    with closing(_con()) as con, con:
+        cur = con.execute("UPDATE jobs SET status='pendente', atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
+                          "WHERE status='rodando' AND julianday('now') - julianday(atualizado_em) >= ?",
+                          (minutos / 1440,))
+    return cur.rowcount
+
+
 def _fechar(job_id: str, status: str, resultado: dict | None, erro: str | None) -> None:
     with closing(_con()) as con, con:
         con.execute("UPDATE jobs SET status=?, resultado=?, erro=?, "
