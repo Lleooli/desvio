@@ -1,10 +1,13 @@
-# Planejador de Viagem — coleta de lugares
+# Coletor do Desvio
 
-Backend de coleta para um planejador de viagem com tela de swipe (estilo Tinder).
-Você informa a viagem, ele devolve **cards** (foto, nota, Instagram, km na rota)
-para o usuário aceitar ou recusar. Depois monta a ordem de visita do que foi aceito.
+Backend do app. Você informa a viagem, ele devolve **cards** (foto, nota,
+Instagram, km na rota) para a pessoa aceitar ou recusar. Depois monta a ordem
+de visita do que foi aceito.
 
-Tudo gratuito, sem chave de API.
+A coleta leva minutos, então roda num **worker** separado da API: a API cria um
+job na fila (`app/fila.py`) e o worker (`app/worker.py`) processa. A IA
+(`app/ia.py`, Groq gratuito) faz triagem, ranqueamento e roteiro e tem plano B
+sem IA. A coleta é gratuita e sem chave; só a IA usa `GROQ_API_KEY`.
 
 | Peça | Projeto | Para quê |
 |---|---|---|
@@ -48,15 +51,22 @@ docker compose up --build
 
 | Método | Rota | O que faz |
 |---|---|---|
-| POST | `/viagem/carro` | origem, destino, intervalo entre paradas → paradas com cards |
-| POST | `/viagem/aviao` | `[{cidade, dias}]` (escalas e destino) → cards por cidade |
+| POST | `/viagem/carro` | origem, destino, intervalo entre paradas → `202 {job_id}` |
+| POST | `/viagem/aviao` | `[{cidade, dias}]` (escalas e destino) → `202 {job_id}` |
+| GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards |
 | POST | `/swipe` | grava `{usuario, card, gostou}` |
 | GET | `/perfil/{usuario}` | taxa de aceite por categoria, tipo e faixa de preço |
-| POST | `/roteiro/carro` | ordena os aceitos pelo km da estrada |
+| POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
+| POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
+| POST | `/roteiro/carro` | ordena os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
 | POST | `/roteiro/cidade` | divide os aceitos em dias, na melhor ordem de visita |
 
 Mandando `usuario` em `/viagem/*`, os cards já avaliados somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
+
+A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
+`docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`,
+com `"fonte": "fixa"` ou `"geometria"` no lugar de `"ia"`.
 
 Exemplo de card:
 
@@ -99,10 +109,8 @@ Exemplo de card:
 
 ## Próximos passos sugeridos
 
-- **IA de recomendação:** mande ao LLM o `GET /perfil/{usuario}`, os cards
-  aceitos e as restrições (dias, horários, onde dorme). Peça a ordem final e o
-  porquê. O `roteiro.py` já entrega uma ordem geográfica boa como ponto de partida.
-- **Cache** (SQLite/Redis) das respostas do OSM e do gosom por cidade, para não
+- **Fila e banco no Supabase:** trocar o SQLite de `fila.py` e `preferencias.py`
+  pelo Postgres (`SELECT … FOR UPDATE SKIP LOCKED`), com a mesma interface.
+- **Cache por cidade** (30 dias) das respostas do OSM e do gosom, para não
   raspar de novo a mesma cidade.
-- **Front:** tela de swipe consumindo `paradas[].cards`, mapa com
-  `rota.polilinha` e as paradas aceitas.
+- **Push:** o worker avisa o app pelo Expo Push quando o job termina.

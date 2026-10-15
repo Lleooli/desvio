@@ -13,6 +13,25 @@ Feita em 2026-10-15, sobre o PRD e o código da Fase 0. Decisões novas: IA no *
 | App Expo | Versões coerentes (SDK 57.0.30 é a última) | `npm view`; não instalei nem rodei o app |
 | Arquitetura | Faltam a fila de jobs e a separação entre API e worker | Leitura do PRD e do código |
 
+## Corrigido em 2026-10-15
+
+Feito pelo plano `docs/superpowers/plans/2026-10-15-organizacao-e-correcoes.md`:
+
+- **Fila e worker:** `app/fila.py` e `app/worker.py`. As viagens viram jobs (202 + `GET /jobs/{id}`), e o serviço `worker` está no `docker-compose.yml`.
+- **IA no Groq:** `app/ia.py` com schema estrito, `reasoning_effort: "low"`, limitador por modelo, cards enxutos e plano B. Os endpoints são `/triagem`, `/cards/ranquear` e `/roteiro/carro` com `usar_ia`.
+- **Instagram:** `escolher_handle` exige todas as palavras do nome e dá preferência à cidade. Testado ao vivo com "Cantina do Nono", em Curitiba.
+- **Dados do gosom:** os cards do Google trazem `sobre` (as opções ativas do `about`).
+- **Configuração:** `.env.example` com `PV_USER_AGENT`, `GROQ_API_KEY` e `PV_CORS_ORIGINS`; CORS configurável.
+- **Time:** `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, template de PR e CI do app (typecheck e tokens).
+
+Continua aberto:
+
+- Fila e banco no Postgres do Supabase (hoje é SQLite, com a mesma interface)
+- Cache de 30 dias por cidade
+- Push pelo Expo, com development build
+- VPS para o gosom
+- Cache das respostas da IA por (cidade, categoria, perfil)
+
 ## gosom/google-maps-scraper
 
 Rodei a imagem `gosom/google-maps-scraper` com `-data-folder` e mandei um job com a mesma forma que `services/coletor/app/gmaps.py` usa: `"restaurantes em Lages, SC #!#p1-restaurante"`, `lang: pt`, `depth: 1`, `zoom: 14`, `max_time: 240`.

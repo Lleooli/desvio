@@ -8,25 +8,29 @@ App de celular que monta viagens com paradas escolhidas por swipe. Você informa
 
 ```
 apps/mobile/            App Expo (React Native + expo-router), uma rota por tela do canvas
-services/coletor/       API FastAPI que coleta rota, paradas e lugares (OSM, Google Maps via gosom, Wikipedia)
+services/coletor/       API FastAPI + worker: rota, paradas e lugares (OSM, Google Maps via gosom, Wikipedia) e IA (Groq)
 packages/design-tokens/ Tokens do design system Desvio (fonte única de cores, tipos, espaços e raios)
-docs/                   PRD, mapa de rotas e guia do design system
+docs/                   PRD, rotas, design system e telas (docs/design), verificação da stack e planos
 ```
 
 ## Rodando
+
+Antes de tudo, `cp .env.example .env` e preencha. O passo a passo completo está em [CONTRIBUTING.md](CONTRIBUTING.md), e as regras do código em [AGENTS.md](AGENTS.md).
 
 **Coletor** (Python 3.11+):
 
 ```bash
 cd services/coletor
-pip install -r requirements.txt
-python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"   # teste rápido
+pip install -r requirements-dev.txt
+python -m pytest -q                                             # testes
+python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"   # teste rápido, sem API
 uvicorn app.main:app --reload                                   # API em http://localhost:8000/docs
+python -m app.worker                                            # worker de coleta (outro terminal)
 ```
 
-Com o raspador do Google Maps junto: `docker compose up --build` na raiz.
+API, worker e o raspador do Google Maps juntos: `docker compose up --build` na raiz.
 
-**App** (Node 20+):
+**App** (Node 22+):
 
 ```bash
 cd apps/mobile
