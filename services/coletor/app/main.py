@@ -6,16 +6,20 @@ Fluxo pensado para o front (estilo Tinder):
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro/carro ou /roteiro/cidade   → ordem de visita dos aceitos
 4. GET  /perfil/{usuario}                   → resumo do gosto, para a IA
+
+IA (Groq, com plano B sem IA): POST /triagem, POST /cards/ranquear e
+POST /roteiro/carro com "usar_ia": true.
 """
 from __future__ import annotations
 
 import os
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import fila, preferencias, roteiro
+from . import fila, ia, preferencias, roteiro
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
 ORIGENS = [o.strip() for o in os.getenv("PV_CORS_ORIGINS", "*").split(",") if o.strip()]
@@ -57,6 +61,17 @@ class Swipe(BaseModel):
 
 class RoteiroCarro(BaseModel):
     cards: list[dict]
+    usar_ia: bool = False
+    contexto: dict = {}
+
+
+class Triagem(BaseModel):
+    respostas: list[dict] = []
+
+
+class Ranquear(BaseModel):
+    cards: list[dict]
+    resumo: str = ""
 
 
 class RoteiroCidade(BaseModel):
@@ -96,8 +111,23 @@ def perfil(usuario: str):
 
 
 @app.post("/roteiro/carro")
-def roteiro_carro(req: RoteiroCarro):
-    return roteiro.ordenar_carro(req.cards)
+async def roteiro_carro(req: RoteiroCarro):
+    if not req.usar_ia:
+        return roteiro.ordenar_carro(req.cards)
+    async with httpx.AsyncClient() as client:
+        return await ia.ajustar_roteiro(client, req.cards, req.contexto)
+
+
+@app.post("/triagem")
+async def triagem(req: Triagem):
+    async with httpx.AsyncClient() as client:
+        return await ia.triagem(client, req.respostas)
+
+
+@app.post("/cards/ranquear")
+async def ranquear(req: Ranquear):
+    async with httpx.AsyncClient() as client:
+        return await ia.ranquear(client, req.cards, req.resumo)
 
 
 @app.post("/roteiro/cidade")
