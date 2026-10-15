@@ -12,6 +12,7 @@ restaurantes com nome parecido. Vale mostrar no card como "provável".
 from __future__ import annotations
 
 import asyncio
+import difflib
 import re
 import unicodedata
 
@@ -37,11 +38,35 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", " ", s)
 
 
-def parece_o_mesmo(nome: str, texto: str) -> bool:
-    """Pelo menos uma palavra significativa do nome aparece no resultado."""
+def _palavras(nome: str) -> list[str]:
+    return [p for p in _norm(nome).split() if len(p) > 3 and p not in {"restaurante", "pizzaria", "lanchonete", "cafe", "churrascaria", "bar"}]
+
+
+def parece_o_mesmo(nome: str, texto: str, todas: bool = False) -> bool:
+    """Uma palavra significativa do nome (ou todas, com todas=True) aparece no resultado."""
     alvo = _norm(texto).replace(" ", "")
-    palavras = [p for p in _norm(nome).split() if len(p) > 3 and p not in {"restaurante", "pizzaria", "lanchonete", "cafe", "churrascaria", "bar"}]
-    return any(p in alvo for p in palavras) if palavras else _norm(nome).replace(" ", "") in alvo
+    palavras = _palavras(nome)
+    if not palavras:
+        return _norm(nome).replace(" ", "") in alvo
+    return (all if todas else any)(p in alvo for p in palavras)
+
+
+def escolher_handle(nome: str, cidade: str, resultados: list[dict]) -> str | None:
+    """Melhor perfil entre os resultados da busca: nome parecido e, de preferência, da cidade."""
+    alvo = _norm(nome).replace(" ", "")
+    cid = _norm(cidade).replace(" ", "")
+    melhor, melhor_nota = None, 0.0
+    for res in resultados:
+        h = handle_de_texto(res.get("href", ""))
+        texto = f'{res.get("title", "")} {res.get("body", "")}'
+        if not h or not parece_o_mesmo(nome, f"{texto} {h}", todas=True):
+            continue
+        nota = difflib.SequenceMatcher(None, alvo, _norm(h).replace(" ", "")).ratio()
+        if cid and cid in _norm(texto).replace(" ", ""):
+            nota += 1.0
+        if nota > melhor_nota:
+            melhor, melhor_nota = h, nota
+    return melhor if melhor_nota >= 0.5 else None
 
 
 async def do_site(client: httpx.AsyncClient, url: str) -> str | None:
@@ -67,12 +92,7 @@ async def por_busca(nome: str, cidade: str) -> str | None:
         resultados = await asyncio.to_thread(_buscar)
     except Exception:  # bloqueio temporário, sem rede etc.
         return None
-    for r in resultados or []:
-        texto = f'{r.get("href", "")} {r.get("title", "")}'
-        h = handle_de_texto(r.get("href", ""))
-        if h and parece_o_mesmo(nome, texto + " " + h):
-            return h
-    return None
+    return escolher_handle(nome, cidade, resultados or [])
 
 
 async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bool = True,
