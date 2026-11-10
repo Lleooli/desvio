@@ -1,3 +1,4 @@
+import { createContext, createElement, useContext, type ReactNode } from "react";
 import { useColorScheme, type TextStyle } from "react-native";
 import { cores, espaco, raio, sombras, tipografia, type Cor, type Tema } from "./tokens.gerado";
 
@@ -62,9 +63,17 @@ export function estiloTexto(nome: keyof typeof tipografia): TextStyle {
   return { fontFamily, fontSize: t.tamanho, lineHeight: t.altura, letterSpacing };
 }
 
-/** Cores e sombras do tema atual (segue o sistema; a escolha do perfil entra aqui depois). */
+const TemaForcado = createContext<Tema | null>(null);
+
+/** Força um tema para tudo dentro dele (catálogo de componentes; depois, a escolha do perfil). */
+export function TemaProvider({ tema, children }: { tema: Tema; children: ReactNode }) {
+  return createElement(TemaForcado.Provider, { value: tema }, children);
+}
+
+/** Cores e sombras do tema atual: o do TemaProvider mais próximo ou, sem ele, o do sistema. */
 export function useCores() {
+  const forcado = useContext(TemaForcado);
   const esquema = useColorScheme();
-  const tema: Tema = esquema === "dark" ? "dark" : "light";
+  const tema: Tema = forcado ?? (esquema === "dark" ? "dark" : "light");
   return { tema, c: cores[tema], sombra: sombras[tema] };
 }
