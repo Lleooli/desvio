@@ -13,6 +13,14 @@ export const fontes = {
   sansForte: "Barlow_600SemiBold",
 } as const;
 
+/** Tamanhos de ícone do design system (Iconografia, em DESIGN-SYSTEM.md). */
+export const tamanhoIcone = {
+  chip: 16,
+  padrao: 20,
+  nav: 22,
+  swipe: 28,
+} as const;
+
 /** Cores do tema atual (segue o sistema; a escolha do perfil entra aqui depois). */
 export function useCores() {
   const esquema = useColorScheme();
