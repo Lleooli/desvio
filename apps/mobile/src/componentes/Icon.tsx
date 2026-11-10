@@ -48,10 +48,10 @@ export function Icon({ name, size = tamanhoIcone.padrao, color, filled = false, 
       strokeWidth={1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
-      accessible={!!label}
-      accessibilityRole={label ? "image" : undefined}
-      accessibilityLabel={label}
-      importantForAccessibility={label ? "yes" : "no-hide-descendants"}
+      // Só com label: no web essas props vão direto para o <svg> e o React reclama.
+      {...(label
+        ? { accessible: true, accessibilityRole: "image" as const, accessibilityLabel: label }
+        : { "aria-hidden": true })}
     >
       <Path d={caminhos[name]} />
     </Svg>
