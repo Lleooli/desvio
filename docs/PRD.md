@@ -235,3 +235,23 @@ A Fase 0 está pronta; a próxima entrega é a viagem de carro funcionando de po
 | 1 · Viagem de carro de ponta a ponta | Login, triagem com IA, nova viagem, swipe com desfazer, roteiro por km e abertura no mapa (histórias essenciais) | Uma viagem real planejada no app, do login ao roteiro aberto no mapa |
 | 2 · Avião e IA no roteiro | Escalas e dias, roteiro por dia, ajuste de horário pela IA, perfil de gosto, filtros e edição do roteiro | O aceite sobe 10 pontos da primeira para a segunda viagem |
 | 3 · Beta fechado | Places API no lugar do raspador, servidores próprios de OSM, aviso push, exportar e apagar dados (LGPD) e testes com usuários | — |
+
+## Entregas da disciplina
+
+O projeto é da disciplina Laboratório de Inteligência Artificial Aplicada e tem 8 entregas (Atividades 5 a 12). As datas do calendário marcam a divisão do progresso; o prazo que vale é o da entrega final. Cada entrega fecha com a tag `atividade-NN` na `main` e um release que diz o que mudou desde a anterior, a base da apresentação de 5 minutos. As issues de cada entrega têm o label `ANN`.
+
+Nas Atividades 7 e 8 a divisão é por área: Emilly (`lilydias24`) no app, Leonardo (`Lleooli`) no coletor e na IA, Guilherme (`GuiiVicent`) em infra, dados e qualidade. A partir da Atividade 9 a divisão roda, para equilibrar a carga.
+
+| Atividade | Foco | Emilly | Leonardo | Guilherme |
+| --- | --- | --- | --- | --- |
+| 5 (tag pronta) | Fase 0 · Fundação | — | — | — |
+| 6 (tag pronta) | IA no Groq com plano B, fila e worker assíncronos | — | — | — |
+| 7 | Base: Supabase, autenticação e design system | #11, #12, #20 | #7, #34, #35 | #1, #2, #3 |
+| 8 | API completa e app conectado | #14, #13, #17 | #5, #6, #4 | #10, #38, #8 |
+| 9 | Telas do fluxo de carro | #15, #16 | #18, #19, #9 | #22, #42, #41 |
+| 10 | Fechamento da Fase 1 | #21, #33 | #23, #27 | #36, #24 |
+| 11 | Fase 2: avião, detalhe e perfil | #25, #28, #29 | #31, #30 | #37, #43 |
+| 12 | Fim da Fase 2 e beta fechado | #26, #39 | #32, #40 | #44 |
+| 13 | Site individual `liaa-<nome>.github.io` | #45 | #46 | #47 |
+
+Dentro de cada entrega, nenhuma issue depende de outra pessoa na mesma entrega, salvo as de fechamento (#24 e #44), que ficam por último.
