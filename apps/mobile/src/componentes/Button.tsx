@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, tipografia, useCores } from "@/tema";
+import { useFoco } from "./foco";
 import { Icon, type IconName } from "./Icon";
 
 type Props = {
@@ -19,7 +19,7 @@ type Props = {
 /** Botão de ação para tudo que não é a decisão de swipe (essa é o SwipeActions). */
 export function Button({ children, onPress, variant = "primary", size = "md", icon, block = false, disabled = false }: Props) {
   const { c, sombra } = useCores();
-  const [focado, setFocado] = useState(false);
+  const foco = useFoco();
   const sm = size === "sm";
 
   const fundo = { primary: c.placa, secondary: "transparent", ghost: "transparent", favorito: c.faixa }[variant];
@@ -32,8 +32,7 @@ export function Button({ children, onPress, variant = "primary", size = "md", ic
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      onFocus={() => setFocado(true)}
-      onBlur={() => setFocado(false)}
+      {...foco.eventos}
       hitSlop={folga > 0 ? folga : undefined}
       accessibilityRole="button"
       accessibilityLabel={children}
@@ -48,7 +47,7 @@ export function Button({ children, onPress, variant = "primary", size = "md", ic
         },
         block && s.block,
         variant === "favorito" && !disabled && { boxShadow: sombra["shadow-favorito"] },
-        focado && { outlineColor: c.foco, outlineStyle: "solid", outlineWidth: medida.foco, outlineOffset: medida.foco },
+        foco.estilo,
         pressed && { transform: [{ scale: medida.pressionado }] },
         disabled && { opacity: medida.desabilitado },
       ]}
