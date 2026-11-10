@@ -55,6 +55,22 @@ export const cores = {
     "foco": "#F2B705"
   }
 } as const;
+export const sombras = {
+  "light": {
+    "shadow-1": "0 1px 2px rgba(35, 41, 43, 0.06), 0 4px 12px -4px rgba(35, 41, 43, 0.12)",
+    "shadow-2": "0 2px 4px rgba(35, 41, 43, 0.05), 0 22px 44px -18px rgba(35, 41, 43, 0.30)",
+    "shadow-card": "0 40px 90px -36px rgba(35, 41, 43, 0.48)",
+    "shadow-favorito": "inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 22px -10px rgba(201, 150, 0, 0.7)",
+    "shadow-sheet": "0 -4px 16px rgba(35, 41, 43, 0.10)"
+  },
+  "dark": {
+    "shadow-1": "0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px -4px rgba(0, 0, 0, 0.5)",
+    "shadow-2": "0 2px 4px rgba(0, 0, 0, 0.3), 0 22px 44px -18px rgba(0, 0, 0, 0.7)",
+    "shadow-card": "0 40px 90px -36px rgba(0, 0, 0, 0.8)",
+    "shadow-favorito": "inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 22px -10px rgba(201, 150, 0, 0.7)",
+    "shadow-sheet": "0 -4px 16px rgba(0, 0, 0, 0.45)"
+  }
+} as const;
 export const espaco = {
   "space-1": 4,
   "space-2": 8,
