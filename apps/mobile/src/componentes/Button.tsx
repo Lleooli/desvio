@@ -36,7 +36,7 @@ export function Button({ children, onPress, variant = "primary", size = "md", ic
       hitSlop={folga > 0 ? folga : undefined}
       accessibilityRole="button"
       accessibilityLabel={children}
-      accessibilityState={{ disabled }}
+      aria-disabled={disabled}
       style={({ pressed }) => [
         s.base,
         {

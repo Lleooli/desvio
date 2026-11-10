@@ -51,7 +51,7 @@ function ItemNav({ label, icon, atual, onPress }: ItemProps) {
       {...foco.eventos}
       accessibilityRole="tab"
       accessibilityLabel={label}
-      accessibilityState={{ selected: atual }}
+      aria-selected={atual}
       style={[s.item, foco.estilo]}
     >
       <View style={[s.pilula, atual && { backgroundColor: c["surface-300"] }]}>

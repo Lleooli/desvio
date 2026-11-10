@@ -54,7 +54,7 @@ function OpcaoSegmented<T>({ opcao, ativa, onPress }: { opcao: Opcao<T>; ativa: 
       hitSlop={(espaco.touch - medida.opcaoSegmented) / 2}
       accessibilityRole="radio"
       accessibilityLabel={opcao.label}
-      accessibilityState={{ checked: ativa }}
+      aria-checked={ativa}
       style={[s.opcao, ativa && { backgroundColor: c["surface-200"], boxShadow: sombra["shadow-1"] }, foco.estilo]}
     >
       {opcao.icon ? <Icon name={opcao.icon} size={tamanhoIcone.padrao} color={cor} /> : null}

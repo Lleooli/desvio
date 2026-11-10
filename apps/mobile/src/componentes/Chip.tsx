@@ -55,7 +55,7 @@ export function Chip({ categoria, label, icon, selected = false, onPress, onPhot
       hitSlop={(espaco.touch - medida.chipFiltro) / 2}
       accessibilityRole="togglebutton"
       accessibilityLabel={rotulo}
-      accessibilityState={{ checked: ativo }}
+      aria-checked={ativo}
       style={({ pressed }) => [
         s.base,
         { minHeight: medida.chipFiltro, paddingHorizontal: espaco["space-4"], backgroundColor: fundo },
