@@ -29,8 +29,16 @@ export const tamanhoIcone = {
 export const medida = {
   botaoSm: 40,
   chip: 32,
+  chipFiltro: 42,
+  opcaoSegmented: 44,
+  acaoToast: 36,
+  itemNav: 56,
+  pilulaNavLargura: 56,
+  pilulaNavAltura: 28,
   borda: 1.5,
   foco: 2,
+  haloCampo: 4,
+  entradaToast: 380,
   pressionado: 0.97,
   desabilitado: 0.45,
 } as const;
