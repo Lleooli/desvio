@@ -17,6 +17,12 @@ for (const c of t.color.tokens) {
     cores[tema][c.name] = v;
   }
 }
+const sombras = Object.fromEntries(temas.map((tema) => [tema, {}]));
+for (const s of t.shadow.tokens) {
+  for (const tema of temas) {
+    sombras[tema][s.name] = typeof s.value === "string" ? s.value : s.value[tema] ?? s.value[temas[0]];
+  }
+}
 const px = (v) => Number(String(v).replace("px", ""));
 const lista = (fam) => Object.fromEntries((t[fam]?.tokens ?? []).map((x) => [x.name, px(x.value)]));
 const estilos = {};
@@ -34,6 +40,7 @@ for (const g of t.type.groups) {
 
 const saida = `// Gerado por scripts/gerar-tokens.mjs a partir de packages/design-tokens/tokens.json. Não edite à mão.
 export const cores = ${JSON.stringify(cores, null, 2)} as const;
+export const sombras = ${JSON.stringify(sombras, null, 2)} as const;
 export const espaco = ${JSON.stringify(lista("spacing"), null, 2)} as const;
 export const raio = ${JSON.stringify(lista("radius"), null, 2)} as const;
 export const tipografia = ${JSON.stringify(estilos, null, 2)} as const;

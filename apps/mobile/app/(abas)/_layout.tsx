@@ -1,17 +1,24 @@
 import { Tabs } from "expo-router";
-import { fontes, useCores } from "@/tema";
+import { areas, BottomNav, type Area } from "@/componentes/BottomNav";
+
+const ehArea = (nome: string): nome is Area => areas.some((a) => a.id === nome);
 
 // As quatro abas da barra inferior. Descobrir e Roteiro sempre mostram a viagem ativa.
 export default function AbasLayout() {
-  const { c } = useCores();
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: c.placa,
-        tabBarInactiveTintColor: c["ink-muted"],
-        tabBarStyle: { backgroundColor: c["surface-200"], borderTopColor: c.line },
-        tabBarLabelStyle: { fontFamily: fontes.sansForte, fontSize: 12 },
+      screenOptions={{ headerShown: false }}
+      tabBar={({ state, navigation }) => {
+        const nome = state.routes[state.index].name;
+        // Igual à barra padrão do React Navigation: avisa o tabPress (rolar para o topo,
+        // recarregar) e só navega se ninguém cancelou e a aba ainda não está aberta.
+        const tocar = (area: Area) => {
+          const rota = state.routes.find((r) => r.name === area);
+          if (!rota) return;
+          const evento = navigation.emit({ type: "tabPress", target: rota.key, canPreventDefault: true });
+          if (area !== nome && !evento.defaultPrevented) navigation.navigate(area);
+        };
+        return <BottomNav ativo={ehArea(nome) ? nome : "viagens"} onChange={tocar} />;
       }}
     >
       <Tabs.Screen name="viagens" options={{ title: "Viagens" }} />
