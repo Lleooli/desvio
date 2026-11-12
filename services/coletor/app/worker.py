@@ -21,7 +21,9 @@ async def processar(job: dict) -> dict:
     e = dict(job["entrada"])
     usuario = e.pop("usuario", None)
     if job["tipo"] in ("viagem", "carro"):  # "carro": jobs criados antes do veículo existir
-        r = await coletor.planejar_viagem(**e)
+        def progresso(etapa: str, titulo: str, detalhe: str, percentual: int) -> None:
+            fila.progresso(job["id"], etapa, titulo, detalhe, percentual)
+        r = await coletor.planejar_viagem(**e, progresso=progresso)
     else:
         raise ValueError(f"Tipo de job desconhecido: {job['tipo']}")
     return preferencias.personalizar(r, usuario)

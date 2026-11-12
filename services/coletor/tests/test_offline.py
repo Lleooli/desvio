@@ -207,6 +207,20 @@ def test_moto_usa_a_rota_de_carro(mock_http):
     assert "router.project-osrm.org" in _handler.rotas[0]
 
 
+def test_coleta_avisa_as_4_etapas_em_ordem(mock_http):
+    etapas = []
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200,
+                                        progresso=lambda *a: etapas.append(a)))
+    ordem = [e[0] for e in etapas]
+    assert [e for i, e in enumerate(ordem) if i == 0 or ordem[i - 1] != e] == ["rota", "cidades", "lugares", "instagram"]
+    assert etapas[0][1:] == ("Rota calculada", "1.000 km, uns 14h de estrada", 20)
+    assert etapas[1][1].endswith("para parar") and etapas[1][2] == "Uma a cada 200 km, mais o destino"
+    lugares = [e for e in etapas if e[0] == "lugares"]
+    assert lugares[0][2].endswith("agora · leva menos de 1 minuto")
+    pct = [e[3] for e in etapas]
+    assert pct == sorted(pct) and pct[-1] == 90
+
+
 def test_veiculo_desconhecido_ou_aviao_da_422(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app import fila

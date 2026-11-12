@@ -14,12 +14,47 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import re
 import unicodedata
+from collections.abc import Callable
 
 import httpx
 
 from . import geo, gmaps, instagram, osm
+
+log = logging.getLogger("desvio.coletor")
+
+# progresso(etapa, titulo, detalhe, percentual); etapas: rota, cidades, lugares, instagram
+Progresso = Callable[[str, str, str, int], None]
+
+
+def _avisar(progresso: Progresso | None, etapa: str, titulo: str, detalhe: str, percentual: int) -> None:
+    if not progresso:
+        return
+    try:
+        progresso(etapa, titulo, detalhe, percentual)
+    except Exception:  # mostrar progresso nunca pode derrubar a coleta
+        log.warning("não consegui gravar o progresso (%s)", etapa, exc_info=True)
+
+
+def _numero(n: float) -> str:
+    """2731 -> "2.731" (formato brasileiro)."""
+    return f"{round(n):,}".replace(",", ".")
+
+
+def texto_rota(distancia_km: float, duracao_h: float, veiculo: str) -> str:
+    de = "de pedal" if veiculo == "bicicleta" else "de estrada"
+    horas = "menos de 1h" if duracao_h < 1 else f"uns {_numero(duracao_h)}h"
+    return f"{_numero(distancia_km)} km, {horas} {de}"
+
+
+def texto_cidades(n: int, intervalo_km: float) -> tuple[str, str]:
+    if n == 0:
+        return "Nenhuma cidade no caminho", "Só o destino"
+    titulo = f"{_numero(n)} cidade{'s' if n != 1 else ''} para parar"
+    return titulo, f"Uma a cada {_numero(intervalo_km)} km, mais o destino"
+
 
 CATEGORIAS_PADRAO = ["turismo", "restaurante", "posto"]
 CONSULTA_GOOGLE = {
@@ -75,17 +110,21 @@ def _consulta_cidade(cat: str, parada: dict) -> str:
 
 async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categorias: list[str],
                        por_categoria: int, usar_google_maps: bool, buscar_instagram: bool,
-                       nota_minima: float = 4.0) -> list[dict]:
+                       nota_minima: float = 4.0, progresso: Progresso | None = None) -> list[dict]:
     """Recebe paradas {nome, uf, lat, lon, raio_km} e devolve as mesmas com "cards"."""
     # 1) Base gratuita e estável: OpenStreetMap
+    leva = "leva uns 3 minutos" if usar_google_maps else "leva menos de 1 minuto"
     brutos = []
-    for p in paradas:
+    for i, p in enumerate(paradas):
+        _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
+                35 + 40 * i // len(paradas))
         brutos.append(await osm.pois(client, (p["lat"], p["lon"]), p["raio_km"], categorias))
 
     # 2) Google Maps (via gosom): um job só para a viagem inteira
     google: dict[str, list[dict]] = {}
     avisos: list[str] = []
     if usar_google_maps:
+        _avisar(progresso, "lugares", "Buscando fotos e notas", "Google Maps · leva uns 3 minutos", 75)
         consultas = {f"{i}|{cat}": _consulta_cidade(cat, p)
                      for i, p in enumerate(paradas) for cat in categorias if cat in CONSULTA_GOOGLE}
         try:
@@ -130,6 +169,9 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
         c["descricao"] = c.get("descricao") or resumo
 
     # 5) Instagram dos restaurantes
+    restaurantes = sum(1 for c in todos if c.get("categoria") == "restaurante")
+    _avisar(progresso, "instagram", "Instagram dos restaurantes",
+            f"{restaurantes} restaurante{'s' if restaurantes != 1 else ''}", 90)
     await instagram.completar(client, todos, usar_busca=buscar_instagram)
 
     if avisos:
@@ -142,8 +184,12 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           categorias: list[str] | None = None, por_categoria: int = 5,
                           usar_google_maps: bool = False, buscar_instagram: bool = True,
                           veiculo: str = "carro",
-                          raio_parada_km: float = 8, raio_destino_km: float = 15) -> dict:
-    """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`."""
+                          raio_parada_km: float = 8, raio_destino_km: float = 15,
+                          progresso: Progresso | None = None) -> dict:
+    """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
+
+    `progresso` recebe as etapas na ordem: rota, cidades, lugares, instagram.
+    """
     categorias = categorias or CATEGORIAS_PADRAO
     async with httpx.AsyncClient() as client:
         o = await geo.geocodificar(client, origem)
@@ -152,6 +198,8 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         pontos = rota["pontos"]
         acc = geo.acumuladas(pontos)
         total = acc[-1]
+        _avisar(progresso, "rota", "Rota calculada",
+                texto_rota(rota["distancia_km"], rota["duracao_h"], veiculo), 20)
 
         paradas: list[dict] = []
         vistas = {_norm(o["nome"]), _norm(d["nome"])}
@@ -166,8 +214,10 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
             paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km})
         paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
                         "tipo": "destino", "raio_km": raio_destino_km})
+        _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
 
-        await montar_cards(client, paradas, categorias, por_categoria, usar_google_maps, buscar_instagram)
+        await montar_cards(client, paradas, categorias, por_categoria, usar_google_maps, buscar_instagram,
+                           progresso=progresso)
 
     for p in paradas:
         p["km_na_rota"] = round(geo.km_na_rota(pontos, acc, (p["lat"], p["lon"])))
