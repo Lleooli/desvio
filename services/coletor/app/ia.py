@@ -12,6 +12,7 @@ import collections
 import json
 import os
 import time
+import unicodedata
 
 import httpx
 
@@ -31,11 +32,17 @@ def estimar_tokens(texto: str) -> int:
 
 
 class Limitador:
-    """Janela deslizante de 60 s com limite de requisições e de tokens."""
+    """Janela deslizante de 60 s com limite de requisições e de tokens.
 
-    def __init__(self, rpm: int = 30, tpm: int = 8000, relogio=time.monotonic):
-        self.rpm, self.tpm, self.relogio = rpm, tpm, relogio
+    `reservar` é a porta de entrada: um lock por limitador (um por modelo) faz as
+    chamadas simultâneas entrarem uma de cada vez, e a checagem é refeita depois
+    de cada espera, para duas chamadas não ocuparem a mesma vaga.
+    """
+
+    def __init__(self, rpm: int = 30, tpm: int = 8000, relogio=time.monotonic, dormir=asyncio.sleep):
+        self.rpm, self.tpm, self.relogio, self.dormir = rpm, tpm, relogio, dormir
         self._uso: collections.deque[tuple[float, int]] = collections.deque()
+        self._trava = asyncio.Lock()
 
     def _limpar(self, agora: float) -> None:
         while self._uso and agora - self._uso[0][0] >= 60:
@@ -54,24 +61,40 @@ class Limitador:
     def registrar(self, tokens: int) -> None:
         self._uso.append((self.relogio(), tokens))
 
+    async def reservar(self, tokens: int, prazo_s: float) -> None:
+        """Espera a vez e registra o uso; IAIndisponivel se a vaga só abrir depois do prazo."""
+        inicio = self.relogio()
+        async with self._trava:
+            while True:
+                espera = self.espera(tokens)
+                if espera == 0:
+                    self.registrar(tokens)
+                    return
+                if self.relogio() - inicio + espera > prazo_s:
+                    raise IAIndisponivel(f"limite do Groq: {espera:.0f}s de espera")
+                await self.dormir(espera)
+
 
 _limitadores: dict[str, Limitador] = {}
 
 
 async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, dados: dict,
                       schema: dict, nome: str, max_tokens: int = 1024, timeout: float = 10.0) -> dict:
+    """Chama o Groq. `timeout` é o prazo total: espera no limitador + requisição HTTP."""
     chave = os.getenv("GROQ_API_KEY")
     if not chave:
         raise IAIndisponivel("GROQ_API_KEY não configurada")
+    inicio = time.monotonic()
     conteudo = json.dumps(dados, ensure_ascii=False)
     tokens = estimar_tokens(sistema + conteudo) + max_tokens
     lim = _limitadores.setdefault(modelo, Limitador())
-    espera = lim.espera(tokens)
-    if espera > timeout:
-        raise IAIndisponivel(f"limite do Groq: {espera:.0f}s de espera para {modelo}")
-    if espera:
-        await asyncio.sleep(espera)
-    lim.registrar(tokens)
+    try:
+        await asyncio.wait_for(lim.reservar(tokens, timeout), timeout)
+    except TimeoutError as e:
+        raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {timeout:g}s") from e
+    restante = timeout - (time.monotonic() - inicio)
+    if restante <= 0:
+        raise IAIndisponivel(f"Groq: prazo de {timeout:g}s esgotado na fila")
     corpo = {
         "model": modelo,
         "messages": [{"role": "system", "content": sistema}, {"role": "user", "content": conteudo}],
@@ -82,8 +105,10 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
         "temperature": 0.3,
     }
     try:
-        r = await client.post(GROQ_URL, json=corpo, timeout=timeout,
-                              headers={"Authorization": f"Bearer {chave}"})
+        r = await asyncio.wait_for(client.post(GROQ_URL, json=corpo, timeout=restante,
+                                               headers={"Authorization": f"Bearer {chave}"}), restante)
+    except TimeoutError as e:
+        raise IAIndisponivel(f"Groq passou do prazo de {timeout:g}s") from e
     except httpx.HTTPError as e:
         raise IAIndisponivel(f"Groq não respondeu: {e.__class__.__name__}") from e
     if r.status_code == 429:
@@ -110,6 +135,37 @@ PERGUNTAS_RESERVA = [
     {"pergunta": "Quanto quer gastar por refeição?", "opcoes": ["Até R$ 50", "R$ 50 a 100", "Mais de R$ 100"]},
     {"pergunta": "Prefere lugares famosos ou escondidos?", "opcoes": ["Famosos", "Escondidos", "Um pouco de cada"]},
 ]
+# assunto de cada pergunta de reserva, reconhecido por palavras na pergunta (sem acento)
+_ASSUNTOS_RESERVA = [
+    ("companhia", ("com quem", "acompanh", "companhia", "sozinh", "familia", "pet")),
+    ("comida", ("comida", "comer", "culinaria", "gastronom", "restaurante", "prato")),
+    ("orcamento", ("gastar", "gasto", "orcamento", "preco", "quanto", "r$", "custo")),
+    ("fama", ("famos", "escondid", "conhecid", "fora do roteiro", "alternativ")),
+]
+
+
+def _sem_acento(s: str) -> str:
+    return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+
+
+def _assuntos(perguntas: list[str]) -> set[str]:
+    textos = [_sem_acento(p) for p in perguntas]
+    return {nome for nome, chaves in _ASSUNTOS_RESERVA if any(k in t for t in textos for k in chaves)}
+
+
+def resumo_simples(respostas: list[dict]) -> str | None:
+    """Resumo sem IA: as respostas da triagem em uma linha, para o ranqueamento usar."""
+    partes = [f'{str(r.get("pergunta") or "").rstrip(" ?")}: {r.get("resposta")}'
+              for r in respostas if r.get("resposta")]
+    return ". ".join(partes) + "." if partes else None
+
+
+def _proxima_reserva(respostas: list[dict]) -> dict | None:
+    ja = _assuntos([str(r.get("pergunta") or "") for r in respostas])
+    for (nome, _), p in zip(_ASSUNTOS_RESERVA, PERGUNTAS_RESERVA):
+        if nome not in ja:
+            return p
+    return None
 _SCHEMA_TRIAGEM = {
     "type": "object", "additionalProperties": False,
     "required": ["pergunta", "opcoes", "fim", "resumo"],
@@ -135,12 +191,13 @@ async def triagem(client: httpx.AsyncClient, respostas: list[dict]) -> dict:
                               schema=_SCHEMA_TRIAGEM, nome="triagem", max_tokens=400)
         r["fonte"] = "ia"
     except IAIndisponivel:
-        i = len(respostas) - 1
-        r = ({**PERGUNTAS_RESERVA[i], "fim": False, "resumo": None} if i < len(PERGUNTAS_RESERVA)
+        p = _proxima_reserva(respostas)
+        r = ({**p, "fim": False, "resumo": None} if p
              else {"pergunta": None, "opcoes": [], "fim": True, "resumo": None})
         r["fonte"] = "fixa"
     if len(respostas) >= MAX_PERGUNTAS or r["fim"] or not r.get("pergunta"):
         r.update(pergunta=None, opcoes=[], fim=True)
+        r["resumo"] = r.get("resumo") or resumo_simples(respostas)
     return r
 
 
