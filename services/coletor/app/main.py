@@ -22,9 +22,10 @@ O Desvio só monta viagens por terra; o modo avião saiu do escopo.
 from __future__ import annotations
 
 import os
+import secrets
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -32,7 +33,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import banco, conta, fila, gmaps, ia, preferencias, roteiro, viagens
+from . import banco, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -178,3 +179,13 @@ async def foto(nome: str, l: int = Query(gmaps.LARGURA_FOTO, ge=100, le=1600), a
     if not destino:
         raise HTTPException(404, "Foto não encontrada")
     return RedirectResponse(destino, status_code=302, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/uso/ia", include_in_schema=False)
+def uso_da_ia(dias: int = Query(7, ge=1, le=90), x_admin_token: str | None = Header(None)):
+    """Uso diário do Groq por modelo (painel da #41). Só com PV_ADMIN_TOKEN; sem ele, 404."""
+    esperado = os.getenv("PV_ADMIN_TOKEN")
+    if not esperado or not x_admin_token or not secrets.compare_digest(x_admin_token, esperado):
+        raise HTTPException(404, "Não encontrado")
+    return {"cota_requisicoes_dia": uso_ia.COTA_REQUISICOES_DIA, "cota_tokens_dia": uso_ia.COTA_TOKENS_DIA,
+            "dias": uso_ia.resumo(dias)}

@@ -4,6 +4,8 @@ import uuid
 
 import pytest
 
+import pytest
+
 # Os testes não leem o .env de quem roda: resultado igual em qualquer máquina.
 os.environ["PV_ENV_FILE"] = ""
 
@@ -79,3 +81,9 @@ def criar_pessoa(url: str) -> tuple[str, dict]:
 @pytest.fixture
 def pessoa(pg):
     return criar_pessoa(pg)
+
+@pytest.fixture(autouse=True)
+def _uso_ia_isolado(tmp_path, monkeypatch):
+    """Chamadas simuladas ao Groq não somam no uso de verdade (planejador.db)."""
+    from app import uso_ia
+    monkeypatch.setattr(uso_ia, "DB", str(tmp_path / "uso_ia.db"))

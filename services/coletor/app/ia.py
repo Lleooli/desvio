@@ -17,7 +17,7 @@ import unicodedata
 
 import httpx
 
-from . import roteiro
+from . import roteiro, uso_ia
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELO_RACIOCINIO = os.getenv("PV_MODELO_RACIOCINIO", "openai/gpt-oss-120b")
@@ -118,6 +118,11 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
         raise IAIndisponivel(f"Groq 429, tente em {r.headers.get('retry-after', '?')}s")
     if r.status_code >= 400:
         raise IAIndisponivel(f"Groq {r.status_code}")
+    try:
+        usados = int((r.json().get("usage") or {}).get("total_tokens") or tokens)
+    except (TypeError, ValueError, AttributeError):
+        usados = tokens
+    uso_ia.registrar(modelo, usados)  # conta na cota do dia, mesmo se a saída vier ruim
     try:
         saida = json.loads(r.json()["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError, ValueError) as e:
