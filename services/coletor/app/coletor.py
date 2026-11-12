@@ -22,7 +22,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import geo, gmaps, instagram, osm
+from . import cache, geo, gmaps, instagram, osm
 
 log = logging.getLogger("desvio.coletor")
 
@@ -190,6 +190,29 @@ async def _completar_wikipedia(client: httpx.AsyncClient, cards: list[dict]) -> 
         c["_wiki_tentada"] = True
 
 
+async def _cidade_proxima_com_cache(client: httpx.AsyncClient, ponto: tuple[float, float]) -> dict | None:
+    chave = f"cidade_proxima|{ponto[0]:.3f}|{ponto[1]:.3f}"
+    guardado = cache.obter(chave)
+    if guardado is not None:
+        return guardado["cidade"]
+    cidade = await osm.cidade_proxima(client, ponto)
+    cache.guardar(chave, {"cidade": cidade})
+    return cidade
+
+
+async def _pois_com_cache(client: httpx.AsyncClient, p: dict, categorias: list[str]) -> list[dict]:
+    """Lugares do OSM da parada; só pergunta ao Overpass as categorias que o cache não tem."""
+    chaves = {cat: f'osm|{_norm(p["nome"])}|{p.get("uf") or ""}|{p["raio_km"]:g}|{cat}' for cat in categorias}
+    por_cat = {cat: cache.obter(ch) for cat, ch in chaves.items()}
+    faltam = [cat for cat, v in por_cat.items() if v is None]
+    if faltam:
+        novos = await osm.pois(client, (p["lat"], p["lon"]), p["raio_km"], faltam)
+        for cat in faltam:
+            por_cat[cat] = [x for x in novos if x["categoria"] == cat]
+            cache.guardar(chaves[cat], por_cat[cat])
+    return [x for cat in categorias for x in por_cat[cat]]
+
+
 async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categorias: list[str],
                        por_categoria: int, usar_google_maps: bool, buscar_instagram: bool,
                        nota_minima: float = 4.0, progresso: Progresso | None = None,
@@ -198,20 +221,34 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
 
     Com o Google ligado, `ao_ter_parcial` recebe antes as paradas só com cards do OSM.
     """
-    # 1) Base gratuita e estável: OpenStreetMap
-    leva = "leva uns 3 minutos" if usar_google_maps else "leva menos de 1 minuto"
+    # O que o cache (30 dias, entre usuários) já tem do Google não vai para o gosom
+    google: dict[str, list[dict]] = {}
+    faltam_google: dict[str, str] = {}
+    if usar_google_maps:
+        for i, p in enumerate(paradas):
+            for cat in categorias:
+                if cat not in CONSULTA_GOOGLE:
+                    continue
+                texto = _consulta_cidade(cat, p)
+                guardado = cache.obter("gmaps|" + texto)
+                if guardado is None:
+                    faltam_google[f"{i}|{cat}"] = texto
+                else:
+                    google[f"{i}|{cat}"] = guardado
+
+    # 1) Base gratuita e estável: OpenStreetMap (com cache por cidade, UF e categoria)
+    leva = "leva uns 3 minutos" if faltam_google else "leva menos de 1 minuto"
     brutos = []
     for i, p in enumerate(paradas):
         _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
                 35 + 40 * i // len(paradas))
-        brutos.append(await osm.pois(client, (p["lat"], p["lon"]), p["raio_km"], categorias))
+        brutos.append(await _pois_com_cache(client, p, categorias))
 
     # 2) Google Maps (via gosom): um job só para a viagem inteira. Ele leva minutos, então
     #    antes entrega um parcial só com OpenStreetMap, para a pessoa já ir deslizando.
-    google: dict[str, list[dict]] = {}
     avisos: list[str] = []
     enviados: list[list[dict]] = []  # cards do parcial, por parada
-    if usar_google_maps:
+    if faltam_google:
         if ao_ter_parcial:
             enviados = [_escolher(i, p, brutos[i], {}, categorias, por_categoria, nota_minima)
                         for i, p in enumerate(paradas)]
@@ -219,10 +256,11 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
             ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
                             for p, cs in zip(paradas, enviados)])
         _avisar(progresso, "lugares", "Buscando fotos e notas", "Google Maps · leva uns 3 minutos", 75)
-        consultas = {f"{i}|{cat}": _consulta_cidade(cat, p)
-                     for i, p in enumerate(paradas) for cat in categorias if cat in CONSULTA_GOOGLE}
         try:
-            google = await gmaps.buscar_lote(client, consultas)
+            novos = await gmaps.buscar_lote(client, faltam_google)
+            for cid, lugares in novos.items():
+                cache.guardar("gmaps|" + faltam_google[cid], lugares)
+            google.update(novos)
         except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
             avisos.append(f"Google Maps indisponível, usei só OpenStreetMap: {e}")
 
@@ -280,7 +318,7 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         for km, ponto in geo.amostrar(pontos, intervalo_km):
             if total - km < intervalo_km * 0.5:
                 break  # muito perto do destino, que já entra separado
-            cidade = await osm.cidade_proxima(client, ponto)
+            cidade = await _cidade_proxima_com_cache(client, ponto)
             if not cidade or _norm(cidade["nome"]) in vistas:
                 continue
             vistas.add(_norm(cidade["nome"]))

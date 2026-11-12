@@ -15,6 +15,8 @@ import os
 
 import httpx
 
+from . import cache
+
 USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-email@exemplo.com)")
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
 NOMINATIM = os.getenv("PV_NOMINATIM_URL", "https://nominatim.openstreetmap.org")
@@ -34,11 +36,16 @@ async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> o
     chave = caminho + repr(sorted(params.items()))
     if chave in _cache:
         return _cache[chave]
+    guardado = cache.obter("nominatim|" + chave)  # 30 dias, entre usuários e reinícios
+    if guardado is not None:
+        _cache[chave] = guardado
+        return guardado
     async with _trava_nominatim:
         r = await client.get(f"{NOMINATIM}/{caminho}", params=params, headers=HEADERS, timeout=30)
         await asyncio.sleep(1.1)
     r.raise_for_status()
     _cache[chave] = r.json()
+    cache.guardar("nominatim|" + chave, _cache[chave])
     return _cache[chave]
 
 
@@ -80,6 +87,10 @@ async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo
     (la1, lo1), (la2, lo2) = origem, destino
     perfil = "bike" if veiculo == "bicicleta" else "driving"
     url = f"{servidor_rota(veiculo)}/route/v1/{perfil}/{lo1},{la1};{lo2},{la2}"
+    chave = f"osrm|{veiculo}|{lo1:.4f},{la1:.4f};{lo2:.4f},{la2:.4f}"
+    guardada = cache.obter(chave)
+    if guardada is not None:
+        return {**guardada, "pontos": [tuple(p) for p in guardada["pontos"]]}
     r = await client.get(url, params={"overview": "full", "geometries": "geojson"}, headers=HEADERS, timeout=60)
     r.raise_for_status()
     dados = r.json()
@@ -87,11 +98,13 @@ async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo
         raise ValueError(f"OSRM não achou rota: {dados.get('message', dados.get('code'))}")
     rota = dados["routes"][0]
     pontos = [(lat, lon) for lon, lat in rota["geometry"]["coordinates"]]
-    return {
+    resultado = {
         "distancia_km": rota["distance"] / 1000,
         "duracao_h": rota["duration"] / 3600,
         "pontos": pontos,
     }
+    cache.guardar(chave, resultado)
+    return resultado
 
 
 def distancia_km(a: Ponto, b: Ponto) -> float:

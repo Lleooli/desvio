@@ -235,6 +235,75 @@ def test_parcial_so_com_osm_chega_antes_do_google_e_final_nao_repete(mock_http, 
     assert not any(k.startswith("_") for p in final["paradas"] for c in p["cards"] for k in c)
 
 
+def _contar_chamadas(monkeypatch):
+    """Envolve o _handler do mock para contar as chamadas por serviço."""
+    cont = {"gosom": 0, "overpass": 0, "nominatim": 0, "osrm": 0}
+    original = httpx.MockTransport.handle_async_request
+
+    async def contando(self, request):
+        url = str(request.url)
+        if url.endswith("/api/v1/jobs") and request.method == "POST":
+            cont["gosom"] += 1
+        elif "overpass" in url:
+            cont["overpass"] += 1
+        elif "nominatim" in url:
+            cont["nominatim"] += 1
+        elif "route/v1" in url:
+            cont["osrm"] += 1
+        return await original(self, request)
+    monkeypatch.setattr(httpx.MockTransport, "handle_async_request", contando)
+    return cont
+
+
+def test_segunda_viagem_pela_mesma_rota_nao_chama_gosom_nem_osm(mock_http, monkeypatch):
+    import time
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
+    cont = _contar_chamadas(monkeypatch)
+    primeira = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    assert cont["gosom"] == 1 and cont["overpass"] > 0 and cont["osrm"] == 1
+
+    geo._cache.clear()  # outro processo do worker: só o cache em SQLite sobrevive
+    for k in cont:
+        cont[k] = 0
+    parciais = []
+    inicio = time.perf_counter()
+    segunda = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True,
+                                                  parcial=parciais.append))
+    gasto = time.perf_counter() - inicio
+    assert cont == {"gosom": 0, "overpass": 0, "nominatim": 0, "osrm": 0}
+    assert parciais == []  # tudo do cache: nem precisa de parcial
+    assert [c["id"] for p in segunda["paradas"] for c in p["cards"]] == \
+           [c["id"] for p in primeira["paradas"] for c in p["cards"]]
+    assert gasto < 5
+
+
+def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatch):
+    import sqlite3
+    from app import cache
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
+    cont = _contar_chamadas(monkeypatch)
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    con = sqlite3.connect(cache.DB)
+    con.execute("UPDATE cache SET guardado_em = strftime('%Y-%m-%dT%H:%M:%f', 'now', '-31 days') "
+                "WHERE chave LIKE 'gmaps|%' OR chave LIKE 'osm|%'")
+    con.commit()
+    con.close()
+    for k in cont:
+        cont[k] = 0
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    assert cont["gosom"] == 1 and cont["overpass"] > 0
+    assert cont["osrm"] == 0  # a rota não venceu
+
+
+def test_cache_quebrado_nao_derruba_a_coleta(mock_http, monkeypatch, tmp_path):
+    from app import cache
+    monkeypatch.setattr(cache, "DB", str(tmp_path))  # uma pasta: o SQLite não abre
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
+    assert r["paradas"][0]["cards"]
+
+
 def test_sem_google_nao_tem_parcial(mock_http):
     parciais = []
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, parcial=parciais.append))
