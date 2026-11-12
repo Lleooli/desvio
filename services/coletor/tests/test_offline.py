@@ -207,6 +207,58 @@ def test_moto_usa_a_rota_de_carro(mock_http):
     assert "router.project-osrm.org" in _handler.rotas[0]
 
 
+def test_parcial_so_com_osm_chega_antes_do_google_e_final_nao_repete(mock_http, monkeypatch):
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
+    _handler.keywords = None
+    parciais = []
+
+    def ao_ter(r):
+        parciais.append((r, _handler.keywords))  # keywords só existe depois do POST ao gosom
+    final = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True,
+                                                parcial=ao_ter))
+    assert len(parciais) == 1
+    parcial, gosom_ja_chamado = parciais[0]
+    assert gosom_ja_chamado is None
+    cards_p = [c for p in parcial["paradas"] for c in p["cards"]]
+    assert cards_p and all(c["fonte"] == "openstreetmap" for c in cards_p)
+    assert all("km_na_rota" in c for c in cards_p) and not any(k.startswith("_") for c in cards_p for k in c)
+
+    for pp, pf in zip(parcial["paradas"], final["paradas"]):
+        ids_final = [c["id"] for c in pf["cards"]]
+        assert len(ids_final) == len(set(ids_final))                      # nenhum card duas vezes
+        assert {c["id"] for c in pp["cards"]} <= set(ids_final)          # o que a pessoa já viu continua
+    assert any(c["fonte"] == "google_maps" for p in final["paradas"] for c in p["cards"])
+    for p in final["paradas"]:
+        nomes = [coletor._norm(c["nome"]) for c in p["cards"]]
+        assert len(nomes) == len(set(nomes))
+    assert not any(k.startswith("_") for p in final["paradas"] for c in p["cards"] for k in c)
+
+
+def test_sem_google_nao_tem_parcial(mock_http):
+    parciais = []
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, parcial=parciais.append))
+    assert parciais == []
+
+
+def test_google_com_o_mesmo_lugar_enriquece_o_card_que_ja_foi():
+    enviado = {"id": "osm:node/1", "nome": "Churrascaria Gaúcha", "fonte": "openstreetmap", "nota": None,
+               "foto": None, "categoria": "restaurante"}
+    do_google = {"id": "gmaps:P1", "nome": "Churrascaria Gaucha", "fonte": "google_maps", "nota": 4.7,
+                 "avaliacoes": 1500, "foto": "https://lh5/x.jpg", "categoria": "restaurante"}
+    novo = {"id": "gmaps:P2", "nome": "Café da Estrada", "fonte": "google_maps", "nota": 4.5}
+    r = coletor._manter_enviados([do_google, novo], [enviado])
+    assert [c["id"] for c in r] == ["osm:node/1", "gmaps:P2"]
+    assert r[0]["nota"] == 4.7 and r[0]["foto"] == "https://lh5/x.jpg"
+    assert r[0]["fonte"] == "openstreetmap+google_maps"
+
+
+def test_card_do_parcial_que_saiu_do_corte_continua_no_final():
+    enviado = {"id": "osm:node/9", "nome": "Posto Pequeno", "fonte": "openstreetmap"}
+    r = coletor._manter_enviados([{"id": "gmaps:P3", "nome": "Posto Grande", "fonte": "google_maps"}], [enviado])
+    assert [c["id"] for c in r] == ["gmaps:P3", "osm:node/9"]
+
+
 def test_coleta_avisa_as_4_etapas_em_ordem(mock_http):
     etapas = []
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200,

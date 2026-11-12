@@ -21,15 +21,24 @@ def _con() -> sqlite3.Connection:
         id TEXT PRIMARY KEY, tipo TEXT NOT NULL, entrada TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pendente', resultado TEXT, erro TEXT,
         criado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')), progresso TEXT)""")
-    if DB not in _migrados:  # bancos criados antes da coluna de progresso
-        if "progresso" not in {c[1] for c in con.execute("PRAGMA table_info(jobs)")}:
-            con.execute("ALTER TABLE jobs ADD COLUMN progresso TEXT")
+        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')), progresso TEXT, parcial TEXT)""")
+    if DB not in _migrados:  # bancos criados antes das colunas novas
+        existentes = {c[1] for c in con.execute("PRAGMA table_info(jobs)")}
+        for coluna in ("progresso", "parcial"):
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE jobs ADD COLUMN {coluna} TEXT")
         _migrados.add(DB)
     return con
 
 
 _migrados: set[str] = set()
+
+
+def parcial(job_id: str, resultado: dict) -> None:
+    """Resultado parcial (só OpenStreetMap) enquanto o Google Maps não chega."""
+    with closing(_con()) as con, con:
+        con.execute("UPDATE jobs SET parcial=?, atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
+                    "WHERE id=? AND status='rodando'", (json.dumps(resultado, ensure_ascii=False), job_id))
 
 
 def progresso(job_id: str, etapa: str, titulo: str, detalhe: str, percentual: int) -> None:
@@ -71,7 +80,7 @@ def recuperar_presos(minutos: float = 30) -> int:
 
 def _fechar(job_id: str, status: str, resultado: dict | None, erro: str | None) -> None:
     with closing(_con()) as con, con:
-        con.execute("UPDATE jobs SET status=?, resultado=?, erro=?, "
+        con.execute("UPDATE jobs SET status=?, resultado=?, erro=?, parcial=NULL, "
                     "atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id=?",
                     (status, json.dumps(resultado, ensure_ascii=False) if resultado is not None else None,
                      erro, job_id))
@@ -87,10 +96,12 @@ def falhar(job_id: str, erro: str) -> None:
 
 def obter(job_id: str) -> dict | None:
     with closing(_con()) as con:
-        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em, progresso "
+        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em, progresso, parcial "
                         "FROM jobs WHERE id=?", (job_id,)).fetchone()
     if not l:
         return None
     return {"id": l[0], "tipo": l[1], "status": l[2], "resultado": json.loads(l[3]) if l[3] else None,
             "erro": l[4], "criado_em": l[5], "atualizado_em": l[6],
-            "progresso": json.loads(l[7]) if l[7] else None}
+            "progresso": json.loads(l[7]) if l[7] else None,
+            # cards só do OpenStreetMap enquanto o Google não chega; some quando o job fecha
+            "parcial": json.loads(l[8]) if l[8] else None}

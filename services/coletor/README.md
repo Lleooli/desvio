@@ -53,7 +53,7 @@ docker compose up --build
 | Método | Rota | O que faz |
 |---|---|---|
 | POST | `/viagem` | origem, destino, veículo (`carro`, `moto` ou `bicicleta`) e intervalo entre paradas, escolhido pela pessoa → `202 {job_id}` |
-| GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards. Enquanto roda, `progresso` traz `{etapa, titulo, detalhe, percentual}`, com as etapas `rota`, `cidades`, `lugares` e `instagram`, nessa ordem, e os textos da tela Carregando |
+| GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards. Enquanto roda, `progresso` traz `{etapa, titulo, detalhe, percentual}`, com as etapas `rota`, `cidades`, `lugares` e `instagram`, nessa ordem, e os textos da tela Carregando. Com o Google ligado, `parcial` traz as paradas só com cards do OpenStreetMap antes do gosom; o `resultado` final contém todos esses cards, com os mesmos ids |
 | POST | `/swipe` | grava `{usuario, card, gostou}` |
 | GET | `/perfil/{usuario}` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |

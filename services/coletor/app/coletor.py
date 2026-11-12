@@ -117,10 +117,76 @@ def _consulta_cidade(cat: str, parada: dict) -> str:
     return f"{CONSULTA_GOOGLE[cat]} em {local}"
 
 
+def _escolher(i: int, p: dict, brutos: list[dict], google: dict[str, list[dict]], categorias: list[str],
+              por_categoria: int, nota_minima: float) -> list[dict]:
+    """Cards de uma parada: Google primeiro (pela nota), completados com OSM, sem nome repetido."""
+    centro = (p["lat"], p["lon"])
+    cards: list[dict] = []
+    for cat in categorias:
+        escolhidos: list[dict] = []
+        vistos: set[str] = set()
+        candidatos = [g for g in google.get(f"{i}|{cat}", [])
+                      if g["lat"] is not None
+                      and geo.distancia_km(centro, (g["lat"], g["lon"])) <= p["raio_km"] * 2
+                      and (g["nota"] is None or g["nota"] >= nota_minima)
+                      and (g.get("status") or "").lower() not in {"closed permanently", "fechado permanentemente"}]
+        # nota bayesiana: 4,8 com 5 avaliações não passa na frente de 4,6 com 2.000
+        candidatos.sort(key=lambda g: -((g["nota"] or 0) * (g["avaliacoes"] or 0) + 4.2 * 30) / ((g["avaliacoes"] or 0) + 30))
+        for g in candidatos[:por_categoria]:
+            escolhidos.append(_card_google(g, cat, p))
+            vistos.add(_norm(g["nome"]))
+        osm_cat = sorted((x for x in brutos if x["categoria"] == cat), key=lambda x: -osm.relevancia(x, centro))
+        for x in osm_cat:
+            if len(escolhidos) >= por_categoria:
+                break
+            if _norm(x["nome"]) not in vistos:
+                escolhidos.append(_card_osm(x, p))
+                vistos.add(_norm(x["nome"]))
+        cards.extend(escolhidos)
+    return cards
+
+
+def _manter_enviados(finais: list[dict], enviados: list[dict]) -> list[dict]:
+    """Junta o resultado final com o parcial sem repetir lugar.
+
+    O app já mostrou os cards do parcial: eles continuam, com o mesmo id. Se o Google
+    trouxe o mesmo lugar (mesmo nome), os dados do Google entram no card que já existia.
+    Assim o final contém todos os ids do parcial e nenhum lugar aparece duas vezes.
+    """
+    por_nome = {_norm(c["nome"]): c for c in enviados}
+    saida, usados = [], set()
+    for c in finais:
+        antigo = por_nome.get(_norm(c["nome"]))
+        if antigo is None:
+            saida.append(c)
+        elif id(antigo) not in usados:
+            if c["id"] != antigo["id"]:  # Google achou o mesmo lugar: enriquece, mantém o id
+                antigo.update({k: v for k, v in c.items() if k not in ("id", "fonte") and v not in (None, "", [])})
+                antigo["fonte"] = "openstreetmap+google_maps"
+            saida.append(antigo)
+            usados.add(id(antigo))
+    return saida + [c for c in enviados if id(c) not in usados]
+
+
+async def _completar_wikipedia(client: httpx.AsyncClient, cards: list[dict]) -> None:
+    """Foto e resumo da Wikipedia para atrações do OSM sem foto (uma tentativa por card)."""
+    sem_foto = [c for c in cards if not c.get("foto") and c.get("wikipedia") and not c.get("_wiki_tentada")]
+    for c, (foto, resumo) in zip(sem_foto, await asyncio.gather(
+            *(osm.resumo_wikipedia(client, c["wikipedia"]) for c in sem_foto))):
+        c["foto"] = c["foto"] or foto
+        c["descricao"] = c.get("descricao") or resumo
+    for c in sem_foto:
+        c["_wiki_tentada"] = True
+
+
 async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categorias: list[str],
                        por_categoria: int, usar_google_maps: bool, buscar_instagram: bool,
-                       nota_minima: float = 4.0, progresso: Progresso | None = None) -> list[dict]:
-    """Recebe paradas {nome, uf, lat, lon, raio_km} e devolve as mesmas com "cards"."""
+                       nota_minima: float = 4.0, progresso: Progresso | None = None,
+                       ao_ter_parcial: Callable[[list[dict]], None] | None = None) -> list[dict]:
+    """Recebe paradas {nome, uf, lat, lon, raio_km} e devolve as mesmas com "cards".
+
+    Com o Google ligado, `ao_ter_parcial` recebe antes as paradas só com cards do OSM.
+    """
     # 1) Base gratuita e estável: OpenStreetMap
     leva = "leva uns 3 minutos" if usar_google_maps else "leva menos de 1 minuto"
     brutos = []
@@ -129,10 +195,18 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 35 + 40 * i // len(paradas))
         brutos.append(await osm.pois(client, (p["lat"], p["lon"]), p["raio_km"], categorias))
 
-    # 2) Google Maps (via gosom): um job só para a viagem inteira
+    # 2) Google Maps (via gosom): um job só para a viagem inteira. Ele leva minutos, então
+    #    antes entrega um parcial só com OpenStreetMap, para a pessoa já ir deslizando.
     google: dict[str, list[dict]] = {}
     avisos: list[str] = []
+    enviados: list[list[dict]] = []  # cards do parcial, por parada
     if usar_google_maps:
+        if ao_ter_parcial:
+            enviados = [_escolher(i, p, brutos[i], {}, categorias, por_categoria, nota_minima)
+                        for i, p in enumerate(paradas)]
+            await _completar_wikipedia(client, [c for cs in enviados for c in cs])
+            ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
+                            for p, cs in zip(paradas, enviados)])
         _avisar(progresso, "lugares", "Buscando fotos e notas", "Google Maps · leva uns 3 minutos", 75)
         consultas = {f"{i}|{cat}": _consulta_cidade(cat, p)
                      for i, p in enumerate(paradas) for cat in categorias if cat in CONSULTA_GOOGLE}
@@ -141,47 +215,23 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
         except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
             avisos.append(f"Google Maps indisponível, usei só OpenStreetMap: {e}")
 
-    # 3) Junta, prioriza e corta por categoria
+    # 3) Junta, prioriza e corta por categoria; o que já foi no parcial continua, com o mesmo id
     for i, p in enumerate(paradas):
-        centro = (p["lat"], p["lon"])
-        cards: list[dict] = []
-        for cat in categorias:
-            escolhidos: list[dict] = []
-            vistos: set[str] = set()
-            candidatos = [g for g in google.get(f"{i}|{cat}", [])
-                          if g["lat"] is not None
-                          and geo.distancia_km(centro, (g["lat"], g["lon"])) <= p["raio_km"] * 2
-                          and (g["nota"] is None or g["nota"] >= nota_minima)
-                          and (g.get("status") or "").lower() not in {"closed permanently", "fechado permanentemente"}]
-            # nota bayesiana: 4,8 com 5 avaliações não passa na frente de 4,6 com 2.000
-            candidatos.sort(key=lambda g: -((g["nota"] or 0) * (g["avaliacoes"] or 0) + 4.2 * 30) / ((g["avaliacoes"] or 0) + 30))
-            for g in candidatos[:por_categoria]:
-                escolhidos.append(_card_google(g, cat, p))
-                vistos.add(_norm(g["nome"]))
-            osm_cat = sorted((x for x in brutos[i] if x["categoria"] == cat), key=lambda x: -osm.relevancia(x, centro))
-            for x in osm_cat:
-                if len(escolhidos) >= por_categoria:
-                    break
-                if _norm(x["nome"]) not in vistos:
-                    escolhidos.append(_card_osm(x, p))
-                    vistos.add(_norm(x["nome"]))
-            cards.extend(escolhidos)
-        p["cards"] = cards
+        cards = _escolher(i, p, brutos[i], google, categorias, por_categoria, nota_minima)
+        p["cards"] = _manter_enviados(cards, enviados[i]) if enviados else cards
 
     todos = [c for p in paradas for c in p["cards"]]
 
     # 4) Fotos e resumos da Wikipedia para atrações do OSM sem foto
-    sem_foto = [c for c in todos if not c.get("foto") and c.get("wikipedia")]
-    for c, (foto, resumo) in zip(sem_foto, await asyncio.gather(
-            *(osm.resumo_wikipedia(client, c["wikipedia"]) for c in sem_foto))):
-        c["foto"] = c["foto"] or foto
-        c["descricao"] = c.get("descricao") or resumo
+    await _completar_wikipedia(client, todos)
 
     # 5) Instagram dos restaurantes
     restaurantes = sum(1 for c in todos if c.get("categoria") == "restaurante")
     _avisar(progresso, "instagram", "Instagram dos restaurantes",
             f"{restaurantes} restaurante{'s' if restaurantes != 1 else ''}", 90)
     await instagram.completar(client, todos, usar_busca=buscar_instagram)
+    for c in todos:
+        c.pop("_wiki_tentada", None)
 
     if avisos:
         for p in paradas:
@@ -194,10 +244,13 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           usar_google_maps: bool = False, buscar_instagram: bool = True,
                           veiculo: str = "carro",
                           raio_parada_km: float = 8, raio_destino_km: float = 15,
-                          progresso: Progresso | None = None) -> dict:
+                          progresso: Progresso | None = None,
+                          parcial: Callable[[dict], None] | None = None) -> dict:
     """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
 
     `progresso` recebe as etapas na ordem: rota, cidades, lugares, instagram.
+    `parcial` recebe, com o Google ligado, o resultado só com OpenStreetMap antes do
+    gosom (minutos); o resultado final contém todos os cards do parcial, com os mesmos ids.
     """
     categorias = categorias or CATEGORIAS_PADRAO
     async with httpx.AsyncClient() as client:
@@ -226,21 +279,31 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                         "tipo": "destino", "raio_km": raio_destino_km})
         _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
 
+        def resultado(com_cards: list[dict]) -> dict:
+            for p in com_cards:
+                p["km_na_rota"] = round(geo.km_na_rota(pontos, acc, (p["lat"], p["lon"])))
+                p["horas_desde_saida"] = round(p["km_na_rota"] / total * rota["duracao_h"], 1) if total else 0
+                for c in p["cards"]:
+                    c["km_na_rota"] = round(geo.km_na_rota(pontos, acc, (c["lat"], c["lon"])), 1)
+                    c["horas_desde_saida"] = round(c["km_na_rota"] / total * rota["duracao_h"], 1) if total else 0
+            return {
+                "veiculo": veiculo,
+                "intervalo_km": round(intervalo_km, 1),
+                "origem": o, "destino": d,
+                "rota": {"distancia_km": round(rota["distancia_km"]), "duracao_h": round(rota["duracao_h"], 1),
+                         "polilinha": geo.simplificar(pontos)},
+                "paradas": com_cards,
+            }
+
+        def ao_ter_parcial(com_cards: list[dict]) -> None:
+            if not parcial:
+                return
+            try:
+                parcial(resultado(com_cards))
+            except Exception:  # gravar o parcial nunca derruba a coleta
+                log.warning("não consegui gravar o resultado parcial", exc_info=True)
+
         await montar_cards(client, paradas, categorias, por_categoria, usar_google_maps, buscar_instagram,
-                           progresso=progresso)
+                           progresso=progresso, ao_ter_parcial=ao_ter_parcial)
 
-    for p in paradas:
-        p["km_na_rota"] = round(geo.km_na_rota(pontos, acc, (p["lat"], p["lon"])))
-        p["horas_desde_saida"] = round(p["km_na_rota"] / total * rota["duracao_h"], 1) if total else 0
-        for c in p["cards"]:
-            c["km_na_rota"] = round(geo.km_na_rota(pontos, acc, (c["lat"], c["lon"])), 1)
-            c["horas_desde_saida"] = round(c["km_na_rota"] / total * rota["duracao_h"], 1) if total else 0
-
-    return {
-        "veiculo": veiculo,
-        "intervalo_km": round(intervalo_km, 1),
-        "origem": o, "destino": d,
-        "rota": {"distancia_km": round(rota["distancia_km"]), "duracao_h": round(rota["duracao_h"], 1),
-                 "polilinha": geo.simplificar(pontos)},
-        "paradas": paradas,
-    }
+    return resultado(paradas)
