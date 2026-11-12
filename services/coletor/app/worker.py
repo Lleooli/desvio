@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 
-from . import coletor, fila, preferencias
+from . import cache, coletor, fila, preferencias
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -58,6 +58,10 @@ async def _laco() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    try:
+        log.info("cache: %d itens vencidos apagados", cache.apagar_vencidos())
+    except Exception:  # limpeza é opcional; o worker sobe mesmo assim
+        log.warning("não consegui limpar o cache vencido", exc_info=True)
     asyncio.run(_laco())
 
 
