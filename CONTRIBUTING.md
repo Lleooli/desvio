@@ -16,6 +16,7 @@ No `.env`, preencha:
 
 - `PV_USER_AGENT` com o seu e-mail (o Nominatim exige)
 - `GROQ_API_KEY` com uma chave gratuita de https://console.groq.com/keys. Sem ela, tudo funciona, mas a IA usa o plano B.
+- `PV_DATABASE_URL`, `SUPABASE_URL` e `SUPABASE_ANON_KEY` do projeto no Supabase (peça a quem cuida do projeto). A fila, as decisões e o cache ficam lá.
 
 A API, o worker e o `cli.py` leem esse arquivo sozinhos, e o docker compose também. Não precisa exportar nada.
 
@@ -26,8 +27,22 @@ cd services/coletor
 python -m venv .venv
 source .venv/bin/activate        # no Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt
+docker compose --profile teste up -d banco-teste     # Postgres vazio para os testes
+export PV_TEST_DATABASE_URL=postgresql://postgres:teste@localhost:54329/desvio_teste
 python -m pytest -q              # tudo verde antes de começar
 ```
+
+Sem `PV_TEST_DATABASE_URL`, os testes que precisam de banco são pulados (no CI eles sempre rodam). Os testes apagam e recriam o schema desse banco, então nunca aponte para o Supabase.
+
+**Banco (Supabase):**
+
+As migrações ficam em `infra/supabase/migrations/`, uma por arquivo, em ordem pelo nome. Para aplicar no projeto do Supabase, com a [Supabase CLI](https://supabase.com/docs/guides/cli):
+
+```bash
+supabase db push --workdir infra --db-url "$PV_DATABASE_URL"
+```
+
+Ou, sem a CLI, rode cada arquivo novo em ordem com `psql "$PV_DATABASE_URL" -f <arquivo>`. Mudou o schema? Crie um arquivo novo (`AAAAMMDDhhmmss_o_que_mudou.sql`); nunca edite uma migração que já foi aplicada. `infra/supabase/local/00_auth.sql` imita o `auth` do Supabase para o Postgres de teste e não vai para o Supabase.
 
 Para rodar a API e o worker juntos com o Google Maps, use `docker compose up --build` na raiz. Sem Docker, rode `uvicorn app.main:app --reload` e `python -m app.worker` em dois terminais.
 

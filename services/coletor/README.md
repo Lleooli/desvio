@@ -50,17 +50,21 @@ docker compose up --build
 
 ## Endpoints
 
+Todas as rotas, menos `/docs`, exigem o token do Supabase Auth no cabeçalho
+`Authorization: Bearer <access_token>` (sem token ou com token vencido: 401).
+O usuário sai do token, nunca do corpo; o job de outra pessoa responde 404.
+
 | Método | Rota | O que faz |
 |---|---|---|
 | POST | `/viagem` | origem, destino, veículo (`carro`, `moto` ou `bicicleta`) e intervalo entre paradas, escolhido pela pessoa → `202 {job_id}` |
 | GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards. Enquanto roda, `progresso` traz `{etapa, titulo, detalhe, percentual}`, com as etapas `rota`, `cidades`, `lugares` e `instagram`, nessa ordem, e os textos da tela Carregando. Com o Google ligado, `parcial` traz as paradas só com cards do OpenStreetMap antes do gosom; o `resultado` final contém todos esses cards, com os mesmos ids |
-| POST | `/swipe` | grava `{usuario, card, gostou}` |
-| GET | `/perfil/{usuario}` | taxa de aceite por categoria, tipo e faixa de preço |
+| POST | `/swipe` | grava `{card, gostou}` em `lugar` e `decisao` |
+| GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
 | POST | `/roteiro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
 
-Mandando `usuario` em `/viagem/*`, os cards já avaliados somem e os novos vêm
+Em `/viagem`, os cards que a pessoa do token já avaliou somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
 
 A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
@@ -112,8 +116,4 @@ Exemplo de card:
 
 ## Próximos passos sugeridos
 
-- **Fila e banco no Supabase:** trocar o SQLite de `fila.py` e `preferencias.py`
-  pelo Postgres (`SELECT … FOR UPDATE SKIP LOCKED`), com a mesma interface.
-- **Cache por cidade** (30 dias) das respostas do OSM e do gosom, para não
-  raspar de novo a mesma cidade.
 - **Push:** o worker avisa o app pelo Expo Push quando o job termina.
