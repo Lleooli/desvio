@@ -33,7 +33,7 @@ def test_obter_inexistente():
 
 
 def test_worker_processa(monkeypatch):
-    async def falso(**kw):
+    async def falso(progresso=None, **kw):
         return {"modo": "carro", "paradas": [], "recebido": kw}
     monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
     jid = fila.criar("carro", {"origem": "A", "destino": "B"})

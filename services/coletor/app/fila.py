@@ -21,8 +21,26 @@ def _con() -> sqlite3.Connection:
         id TEXT PRIMARY KEY, tipo TEXT NOT NULL, entrada TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'pendente', resultado TEXT, erro TEXT,
         criado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')))""")
+        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')), progresso TEXT)""")
+    if DB not in _migrados:  # bancos criados antes da coluna de progresso
+        if "progresso" not in {c[1] for c in con.execute("PRAGMA table_info(jobs)")}:
+            con.execute("ALTER TABLE jobs ADD COLUMN progresso TEXT")
+        _migrados.add(DB)
     return con
+
+
+_migrados: set[str] = set()
+
+
+def progresso(job_id: str, etapa: str, titulo: str, detalhe: str, percentual: int) -> None:
+    """Grava a etapa atual da coleta (rota, cidades, lugares, instagram) para a tela Carregando.
+
+    Também renova `atualizado_em`: job que avança não é confundido com job preso.
+    """
+    p = {"etapa": etapa, "titulo": titulo, "detalhe": detalhe, "percentual": percentual}
+    with closing(_con()) as con, con:
+        con.execute("UPDATE jobs SET progresso=?, atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
+                    "WHERE id=? AND status='rodando'", (json.dumps(p, ensure_ascii=False), job_id))
 
 
 def criar(tipo: str, entrada: dict) -> str:
@@ -69,9 +87,10 @@ def falhar(job_id: str, erro: str) -> None:
 
 def obter(job_id: str) -> dict | None:
     with closing(_con()) as con:
-        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em "
+        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em, progresso "
                         "FROM jobs WHERE id=?", (job_id,)).fetchone()
     if not l:
         return None
     return {"id": l[0], "tipo": l[1], "status": l[2], "resultado": json.loads(l[3]) if l[3] else None,
-            "erro": l[4], "criado_em": l[5], "atualizado_em": l[6]}
+            "erro": l[4], "criado_em": l[5], "atualizado_em": l[6],
+            "progresso": json.loads(l[7]) if l[7] else None}
