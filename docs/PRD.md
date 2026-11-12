@@ -238,7 +238,7 @@ A Fase 0 está pronta; a próxima entrega é a viagem de carro funcionando de po
 
 ## Entregas da disciplina
 
-O projeto é da disciplina Laboratório de Inteligência Artificial Aplicada e tem 8 entregas (Atividades 5 a 12). As datas do calendário marcam a divisão do progresso; o prazo que vale é o da entrega final. Cada entrega fecha com a tag `atividade-NN` na `main` e um release que diz o que mudou desde a anterior, a base da apresentação de 5 minutos. As issues de cada entrega têm o label `ANN`.
+O projeto é da disciplina Laboratório de Inteligência Artificial Aplicada e tem 8 entregas em grupo (Atividades 5 a 12) e uma individual (Atividade 13). As datas do calendário marcam a divisão do progresso; o prazo que vale é o da entrega final. Cada entrega fecha com a tag `atividade-NN` na `main` e um release que diz o que mudou desde a anterior, a base da apresentação de 5 minutos. As issues de cada entrega têm o label `ANN`.
 
 A divisão é por área: Emilly (`lilydias24`) fica com todas as telas, o design system e o cliente da API no app; Leonardo (`Lleooli`) com o coletor e a IA; Guilherme (`GuiiVicent`) com infra, dados e qualidade. Issues que misturam tela e backend ficam com quem faz a maior parte delas.
 
@@ -248,10 +248,10 @@ A divisão é por área: Emilly (`lilydias24`) fica com todas as telas, o design
 | 6 (tag pronta) | IA no Groq com plano B, fila e worker assíncronos | — | — | — |
 | 7 | Base: Supabase, autenticação e design system | #11, #12, #20 | #7, #34, #35 | #1, #2, #3 |
 | 8 | API completa e app conectado | #14, #13 | #4, #5, #6 | #8, #9, #10 |
-| 9 | Telas do fluxo de carro | #15, #16, #17, #19 | #36, #41 | #38, #42 |
+| 9 | Telas do fluxo da viagem | #15, #16, #17, #19 | #36, #41 | #38, #42 |
 | 10 | Fechamento da Fase 1 | #18, #21, #22, #23 | #37 | #43, #24 |
-| 11 | Fase 2: avião, detalhe e perfil | #25, #27, #31, #28 | #33 | #39 |
-| 12 | Fim da Fase 2 e beta fechado | #26, #29, #30, #32 | #40 | #44 |
+| 11 | Fase 2: IA no roteiro, detalhe e perfil | #27, #31, #28 | #33 | #39 |
+| 12 | Fim da Fase 2 e beta fechado | #29, #30, #32 | #40 | #44 |
 | 13 | Site individual `liaa-<nome>.github.io` | #45 | #46 | #47 |
 
-Dentro de cada entrega, nenhuma issue depende de outra pessoa na mesma entrega, salvo as de fechamento (#24 e #44), que ficam por último.
+Dentro de cada entrega, nenhuma issue depende de outra pessoa na mesma entrega, salvo as de fechamento (#24 e #44), que ficam por último. As telas de avião (#25 e #26) saíram com a mudança de escopo para viagens só por terra (PR #52).
