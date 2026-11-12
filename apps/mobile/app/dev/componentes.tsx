@@ -14,7 +14,7 @@ import { espaco, estiloTexto, TemaProvider, useCores, type Tema } from "@/tema";
 
 const icones: IconName[] = [
   "x", "check", "star", "pin", "camera", "food", "fuel", "leaf", "bed",
-  "route", "compass", "user", "suitcase", "clock", "at", "plane", "car",
+  "route", "compass", "user", "suitcase", "clock", "at", "car", "moto", "bike",
 ];
 
 /** Catálogo dos componentes base nos dois temas. Só existe em desenvolvimento. */
@@ -63,7 +63,7 @@ function Catalogo({ tema }: { tema: Tema }) {
         </View>
         <View style={s.linha}>
           <Button onPress={nada} variant="favorito" icon="star">Ver favoritos</Button>
-          <Button onPress={nada} size="sm">Adicionar escala</Button>
+          <Button onPress={nada} size="sm">Adicionar parada</Button>
           <Button onPress={nada} disabled>Desabilitado</Button>
         </View>
       </Bloco>
@@ -91,8 +91,24 @@ function Catalogo({ tema }: { tema: Tema }) {
       </Bloco>
 
       <Bloco titulo="Segmented">
-        <Segmented rotulo="Como você vai" block opcoes={[{ valor: "carro", label: "Carro", icon: "car" }, { valor: "aviao", label: "Avião", icon: "plane" }]} />
-        <Segmented rotulo="Dias na cidade" padrao={2} opcoes={[1, 2, 3, 4].map((n) => ({ valor: n, label: String(n) }))} />
+        <Segmented
+          rotulo="Como você vai"
+          block
+          opcoes={[
+            { valor: "carro", label: "Carro", icon: "car" },
+            { valor: "moto", label: "Moto", icon: "moto" },
+            { valor: "bicicleta", label: "Bicicleta", icon: "bike" },
+          ]}
+        />
+        <Segmented
+          rotulo="Tema"
+          padrao="sistema"
+          opcoes={[
+            { valor: "claro", label: "Claro" },
+            { valor: "escuro", label: "Escuro" },
+            { valor: "sistema", label: "Sistema" },
+          ]}
+        />
       </Bloco>
 
       <Bloco titulo="Rating">

@@ -10,9 +10,15 @@ export default function AbasLayout() {
       screenOptions={{ headerShown: false }}
       tabBar={({ state, navigation }) => {
         const nome = state.routes[state.index].name;
-        return (
-          <BottomNav ativo={ehArea(nome) ? nome : "viagens"} onChange={(area) => navigation.navigate(area)} />
-        );
+        // Igual à barra padrão do React Navigation: avisa o tabPress (rolar para o topo,
+        // recarregar) e só navega se ninguém cancelou e a aba ainda não está aberta.
+        const tocar = (area: Area) => {
+          const rota = state.routes.find((r) => r.name === area);
+          if (!rota) return;
+          const evento = navigation.emit({ type: "tabPress", target: rota.key, canPreventDefault: true });
+          if (area !== nome && !evento.defaultPrevented) navigation.navigate(area);
+        };
+        return <BottomNav ativo={ehArea(nome) ? nome : "viagens"} onChange={tocar} />;
       }}
     >
       <Tabs.Screen name="viagens" options={{ title: "Viagens" }} />

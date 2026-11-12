@@ -18,8 +18,10 @@ const caminhos = {
   suitcase: "M4 8h16v11H4zM9 8V5.5A1.5 1.5 0 0110.5 4h3A1.5 1.5 0 0115 5.5V8M4 13h16",
   clock: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
   at: "M16 12a4 4 0 10-1.2 2.85M16 8v5a2.5 2.5 0 005 0v-1a9 9 0 10-3.5 7.1",
-  plane: "M10.5 13.5L3 11l1.5-1.5 8 1L16.5 6a1.8 1.8 0 012.5 2.5L14.5 12.5l1 8L14 22l-2.5-7.5L8 17.5V20l-1.5 1.5-1-3-3-1L4 16h2.5z",
   car: "M5 16v3M19 16v3M3 16h18v-4l-2-5H5l-2 5zM3 12h18M7 14h1M16 14h1",
+  // moto e bike: traço provisório na mesma grade, até entrarem no bundle do design system
+  moto: "M5 19a3 3 0 100-6 3 3 0 000 6zM19 19a3 3 0 100-6 3 3 0 000 6zM5 16h5.5l3-5H17l2 5M9 11h4.5M15 7h2.5l1.5 4",
+  bike: "M5.5 19.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM18.5 19.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5.5 16L9 9h6.5l3 7M9 9l3.5 7h-7M7.5 6.5h3M15.5 9l-1-3H17",
 } as const;
 
 export type IconName = keyof typeof caminhos;

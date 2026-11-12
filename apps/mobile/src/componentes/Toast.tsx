@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, useCores } from "@/tema";
 import { useFoco } from "./foco";
@@ -22,9 +22,10 @@ export function Toast({ children, icon = "check", acao, onAcao }: Props) {
   const { c, sombra } = useCores();
   const foco = useFoco();
 
-  // O Android lê pela liveRegion; o iOS precisa do anúncio explícito.
+  // O Android lê pela liveRegion; o iOS precisa do anúncio explícito. Anunciar nos dois
+  // faria o TalkBack falar a frase duas vezes.
   useEffect(() => {
-    AccessibilityInfo.announceForAccessibility(children);
+    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(children);
   }, [children]);
 
   return (
