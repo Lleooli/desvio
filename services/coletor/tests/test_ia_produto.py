@@ -95,8 +95,9 @@ def test_roteiro_ia_e_fallback():
 def test_endpoints_sem_chave_funcionam(monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import app
+    from conftest import token
     monkeypatch.delenv("GROQ_API_KEY")
-    cli = TestClient(app)
+    cli = TestClient(app, headers={"Authorization": f"Bearer {token('00000000-0000-4000-8000-000000000001')}"})
     assert cli.post("/triagem", json={"respostas": []}).json()["fonte"] == "fixa"
     assert [c["id"] for c in cli.post("/cards/ranquear", json={"cards": CARDS[:3], "resumo": "x"}).json()] == ["c0", "c1", "c2"]
     r = cli.post("/roteiro", json={"cards": CARDS[:3], "usar_ia": True}).json()

@@ -1,17 +1,18 @@
 """Achados da revisão final da branch organizacao-inicial."""
 import asyncio
 import json
-import sqlite3
 
 import httpx
 import pytest
 
+import psycopg
+
 from app import ambiente, fila, ia, worker
+from conftest import token
 
 
 @pytest.fixture(autouse=True)
-def banco(tmp_path, monkeypatch):
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "f.db"))
+def preparar(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "teste")
     ia._limitadores.clear()
 
@@ -32,12 +33,13 @@ def test_roteiro_grande_cai_no_plano_b_sem_500():
     from app.main import app
     cards = [{"id": f"c{i}", "nome": "Lugar com nome comprido " * 3, "descricao": "x" * 300,
               "horarios": {"segunda": ["11:30-14:00"] * 3}, "km_na_rota": float(i)} for i in range(80)]
-    r = TestClient(app).post("/roteiro", json={"cards": cards, "usar_ia": True})
+    cab = {"Authorization": f"Bearer {token('00000000-0000-4000-8000-000000000001')}"}
+    r = TestClient(app).post("/roteiro", json={"cards": cards, "usar_ia": True}, headers=cab)
     assert r.status_code == 200 and r.json()["fonte"] == "geometria"
 
 
 # 2. Job preso em "rodando" volta para a fila
-def test_jobs_presos_voltam_para_pendente():
+def test_jobs_presos_voltam_para_pendente(pg):
     jid = fila.criar("carro", {})
     assert fila.pegar_proximo()["id"] == jid
     assert fila.recuperar_presos(minutos=0) == 1
@@ -45,7 +47,7 @@ def test_jobs_presos_voltam_para_pendente():
     assert fila.pegar_proximo()["id"] == jid
 
 
-def test_job_recente_nao_e_recuperado():
+def test_job_recente_nao_e_recuperado(pg):
     fila.criar("carro", {})
     fila.pegar_proximo()
     assert fila.recuperar_presos(minutos=30) == 0
@@ -57,9 +59,10 @@ def test_laco_sobrevive_a_erro_do_banco(monkeypatch):
     def quebra():
         chamadas.append(1)
         if len(chamadas) == 1:
-            raise sqlite3.OperationalError("database is locked")
+            raise psycopg.OperationalError("connection refused")
         raise KeyboardInterrupt  # encerra o laço no teste
     monkeypatch.setattr(worker.fila, "pegar_proximo", quebra)
+    monkeypatch.setattr(worker.fila, "recuperar_presos", lambda minutos: 0)
     monkeypatch.setattr(worker, "INTERVALO_S", 0)
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(worker._laco())
@@ -97,7 +100,9 @@ def test_ambiente_procura_subindo_pastas(tmp_path):
 def test_roteiro_carro_mesmo_formato_sem_ia():
     from fastapi.testclient import TestClient
     from app.main import app
-    r = TestClient(app).post("/roteiro", json={"cards": [{"id": "b", "km_na_rota": 5}, {"id": "a", "km_na_rota": 1}]}).json()
+    cab = {"Authorization": f"Bearer {token('00000000-0000-4000-8000-000000000001')}"}
+    r = TestClient(app).post("/roteiro", json={"cards": [{"id": "b", "km_na_rota": 5}, {"id": "a", "km_na_rota": 1}]},
+                             headers=cab).json()
     assert [c["id"] for c in r["itens"]] == ["a", "b"] and r["fonte"] == "geometria" and r["explicacoes"] == {}
 
 

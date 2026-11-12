@@ -27,7 +27,9 @@ apps/mobile/                Expo (React Native) + expo-router
 services/coletor/           Python + FastAPI
   app/__init__.py           carrega o .env (app/ambiente.py) antes dos outros módulos
   app/main.py               API HTTP
-  app/fila.py               fila de jobs (SQLite hoje, Postgres do Supabase depois)
+  app/fila.py               fila de jobs no Postgres do Supabase (FOR UPDATE SKIP LOCKED)
+  app/banco.py              conexão com o Postgres (PV_DATABASE_URL)
+  app/auth.py               valida o token do Supabase; o usuário sai do token
   app/worker.py             consome a fila e roda a coleta
   app/coletor.py            orquestra rota, paradas e cards
   app/geo.py                Nominatim (geocodificação) e OSRM (rota)
