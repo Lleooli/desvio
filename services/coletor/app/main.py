@@ -33,7 +33,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import banco, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
+from . import banco, cidades, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -111,6 +111,13 @@ def viagem(req: Viagem, eu: Usuario = Depends(usuario_atual)):
 @app.get("/viagens")
 def lista_de_viagens(eu: Usuario = Depends(usuario_atual)):
     return {"viagens": viagens.listar(eu.id)}
+
+
+@app.get("/cidades")
+def buscar_cidades(q: str = Query(min_length=cidades.MINIMO_LETRAS, max_length=80, examples=["vitoria da"]),
+                   eu: Usuario = Depends(usuario_atual)):
+    """Até 8 municípios no formato "Cidade, UF", para os campos de origem e destino."""
+    return cidades.buscar(q)
 
 
 @app.get("/viagens/{viagem_id}")

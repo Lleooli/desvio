@@ -17,7 +17,7 @@ import os
 
 import httpx
 
-from . import cache
+from . import cache, cidades
 
 USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-email@exemplo.com)")
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
@@ -88,6 +88,11 @@ async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> o
 
 
 async def geocodificar(client: httpx.AsyncClient, lugar: str) -> dict:
+    # "Cidade, UF" que veio do autocompletar já está na lista do IBGE: nem chama o Nominatim
+    local = cidades.exata(lugar)
+    if local:
+        return {"nome": local["nome"], "uf": local["uf"], "lat": local["lat"], "lon": local["lon"],
+                "exibicao": local["rotulo"]}
     dados = await _nominatim(client, "search", {"q": lugar, "format": "jsonv2", "limit": 1, "addressdetails": 1})
     if not dados:
         raise LugarNaoEncontrado(lugar)
