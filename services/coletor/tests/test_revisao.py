@@ -32,7 +32,7 @@ def test_roteiro_grande_cai_no_plano_b_sem_500():
     from app.main import app
     cards = [{"id": f"c{i}", "nome": "Lugar com nome comprido " * 3, "descricao": "x" * 300,
               "horarios": {"segunda": ["11:30-14:00"] * 3}, "km_na_rota": float(i)} for i in range(80)]
-    r = TestClient(app).post("/roteiro/carro", json={"cards": cards, "usar_ia": True})
+    r = TestClient(app).post("/roteiro", json={"cards": cards, "usar_ia": True})
     assert r.status_code == 200 and r.json()["fonte"] == "geometria"
 
 
@@ -97,7 +97,7 @@ def test_ambiente_procura_subindo_pastas(tmp_path):
 def test_roteiro_carro_mesmo_formato_sem_ia():
     from fastapi.testclient import TestClient
     from app.main import app
-    r = TestClient(app).post("/roteiro/carro", json={"cards": [{"id": "b", "km_na_rota": 5}, {"id": "a", "km_na_rota": 1}]}).json()
+    r = TestClient(app).post("/roteiro", json={"cards": [{"id": "b", "km_na_rota": 5}, {"id": "a", "km_na_rota": 1}]}).json()
     assert [c["id"] for c in r["itens"]] == ["a", "b"] and r["fonte"] == "geometria" and r["explicacoes"] == {}
 
 

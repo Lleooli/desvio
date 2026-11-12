@@ -9,7 +9,6 @@ O mapa desenhado e as telas clicáveis (temas claro e escuro) estão no [canvas 
 | /triagem | Triagem com IA | `app/triagem.tsx` | HU02, HU03 |
 | /viagens | Minhas viagens (aba) | `app/(abas)/viagens.tsx` | HU04, HU06 |
 | /viagens/nova | Nova viagem | `app/viagens/nova/index.tsx` | HU04, HU05 |
-| /viagens/nova/escalas | Escalas e dias | `app/viagens/nova/escalas.tsx` | HU06 |
 | /viagens/:id/carregando | Carregando rota | `app/viagens/[id]/carregando.tsx` | HU07 |
 | /viagens/:id/paradas | Paradas | `app/viagens/[id]/paradas/index.tsx` | HU08 |
 | /viagens/:id/paradas/:paradaId | Swipe | `app/viagens/[id]/paradas/[paradaId].tsx` | HU09, HU10, HU12, HU18 |
@@ -21,7 +20,7 @@ As abas **Descobrir** e **Roteiro** (`app/(abas)/descobrir.tsx` e `roteiro.tsx`)
 
 ## Parâmetros
 
-- `:id` — a viagem (criada por `POST /viagem/carro` ou `POST /viagem/aviao` no coletor)
+- `:id` — a viagem (criada por `POST /viagem` no coletor)
 - `:paradaId` — índice da parada na viagem (0 = primeira cidade; a última é o destino)
 - `:lugarId` — id do card (`gmaps:…` ou `osm:…`)
 
@@ -30,8 +29,7 @@ As abas **Descobrir** e **Roteiro** (`app/(abas)/descobrir.tsx` e `roteiro.tsx`)
 ```mermaid
 flowchart LR
   bv[/boas-vindas/] --> en[/entrar/] --> tr[/triagem/] --> vi[/viagens/] --> nv[/viagens/nova/]
-  nv -- carro --> ca[/viagens/:id/carregando/]
-  nv -- avião --> es[/viagens/nova/escalas/] --> ca
+  nv -- buscar --> ca[/viagens/:id/carregando/]
   ca --> pa[/viagens/:id/paradas/] --> sw[/viagens/:id/paradas/:paradaId/]
   sw --> lu[/lugares/:lugarId/]
   pa --> ro[/viagens/:id/roteiro/]

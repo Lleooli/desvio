@@ -36,12 +36,9 @@ def test_osm_categoria_e_tags():
     assert "Special:FilePath" in osm.foto_das_tags({"wikimedia_commons": "File:Foto 1.jpg"})
 
 
-def test_roteiro_cidade_divide_em_dias():
-    cards = [{"id": str(i), "lat": -12.97 + (i % 3) * 0.05, "lon": -38.5 + (i // 3) * 0.05} for i in range(9)]
-    dias = roteiro.roteiro_cidade(cards, 3)
-    assert [len(d["paradas"]) for d in dias] == [3, 3, 3]
-    assert sorted(c["id"] for d in dias for c in d["paradas"]) == sorted(c["id"] for c in cards)
-    assert roteiro.ordenar_carro([{"km_na_rota": 5}, {"km_na_rota": 1}])[0]["km_na_rota"] == 1
+def test_roteiro_ordena_pelo_km_na_rota():
+    assert roteiro.ordenar_na_rota([{"km_na_rota": 5}, {"km_na_rota": 1}])[0]["km_na_rota"] == 1
+    assert roteiro.ordenar_na_rota([{"km_na_rota": None}, {}])  # sem km não quebra
 
 
 def test_preferencias(tmp_path, monkeypatch):
@@ -79,8 +76,10 @@ def _handler(request: httpx.Request) -> httpx.Response:
                                           "address": {"city": nome, "ISO3166-2-lvl4": "BR-RS"}}])
     if "nominatim" in url and "/reverse" in url:
         return httpx.Response(200, json={"address": {"city": "X", "ISO3166-2-lvl4": "BR-SC"}})
-    if "router.project-osrm.org" in url:
-        return httpx.Response(200, json={"code": "Ok", "routes": [{"distance": 1_000_000, "duration": 50_000,
+    if "router.project-osrm.org" in url or "routed-bike" in url:
+        _handler.rotas = getattr(_handler, "rotas", []) + [url]
+        duracao = 240_000 if "routed-bike" in url else 50_000  # bike: ~15 km/h
+        return httpx.Response(200, json={"code": "Ok", "routes": [{"distance": 1_000_000, "duration": duracao,
                               "geometry": {"coordinates": [[lo, la] for la, lo in ROTA]}}]})
     if "overpass" in url:
         corpo = parse_qs(request.content.decode())["data"][0]
@@ -145,8 +144,8 @@ def mock_http(monkeypatch):
 
 
 def test_fluxo_carro_sem_google(mock_http):
-    r = asyncio.run(coletor.planejar_carro("Alegrete, RS", "Destino, BA", 200))
-    assert r["rota"]["distancia_km"] == 1000
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
+    assert r["rota"]["distancia_km"] == 1000 and r["veiculo"] == "carro"
     nomes = [p["nome"] for p in r["paradas"]]
     assert nomes[-1] == "Destino" and len(nomes) >= 4
     cards = r["paradas"][0]["cards"]
@@ -162,7 +161,7 @@ def test_fluxo_carro_sem_google(mock_http):
 def test_fluxo_carro_com_google(mock_http, monkeypatch):
     real_sleep = asyncio.sleep
     monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
-    r = asyncio.run(coletor.planejar_carro("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
     assert any("#!#" in k and ", SC #!#" in k for k in _handler.keywords)
     parada = r["paradas"][1]
     rest = [c for c in parada["cards"] if c["categoria"] == "restaurante"]
@@ -179,18 +178,47 @@ def test_api(mock_http, tmp_path, monkeypatch):
     monkeypatch.setattr(preferencias, "DB", str(tmp_path / "api.db"))
     monkeypatch.setattr(fila, "DB", str(tmp_path / "api.db"))
     cli = TestClient(app)
-    r = cli.post("/viagem/aviao", json={"cidades": [{"cidade": "Destino, BA", "dias": 2}], "usuario": "leo"})
+    r = cli.post("/viagem", json={"origem": "Alegrete, RS", "destino": "Destino, BA", "veiculo": "moto",
+                                  "intervalo_km": 300, "usuario": "leo"})
     assert r.status_code == 202, r.text
     jid = r.json()["job_id"]
     assert cli.get(f"/jobs/{jid}").json()["status"] == "pendente"
     assert asyncio.run(worker.rodar_uma_vez())
     j = cli.get(f"/jobs/{jid}").json()
     assert j["status"] == "pronto", j
+    assert j["resultado"]["veiculo"] == "moto" and j["resultado"]["intervalo_km"] == 300
     cards = j["resultado"]["paradas"][0]["cards"]
     assert cli.post("/swipe", json={"usuario": "leo", "card": cards[0], "gostou": True}).json()["ok"]
     assert cli.get("/perfil/leo").json()["aceitos"] == 1
-    dias = cli.post("/roteiro/cidade", json={"cards": cards, "dias": 2}).json()
-    assert len(dias) == 2
+    r = cli.post("/roteiro", json={"cards": cards[::-1]}).json()
+    assert [c["km_na_rota"] for c in r["itens"]] == sorted(c["km_na_rota"] for c in cards)
+
+
+def test_bicicleta_usa_o_servidor_de_bike(mock_http):
+    _handler.rotas = []
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 60, veiculo="bicicleta"))
+    assert len(_handler.rotas) == 1 and "routed-bike" in _handler.rotas[0]
+    assert r["veiculo"] == "bicicleta" and r["rota"]["duracao_h"] == pytest.approx(66.7, abs=0.1)
+
+
+def test_moto_usa_a_rota_de_carro(mock_http):
+    _handler.rotas = []
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, veiculo="moto"))
+    assert "router.project-osrm.org" in _handler.rotas[0]
+
+
+def test_veiculo_desconhecido_ou_aviao_da_422(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import fila
+    from app.main import app
+    monkeypatch.setattr(fila, "DB", str(tmp_path / "v.db"))
+    cli = TestClient(app)
+    base = {"origem": "A, RS", "destino": "B, BA", "intervalo_km": 100}
+    assert cli.post("/viagem", json={**base, "veiculo": "aviao"}).status_code == 422
+    assert cli.post("/viagem", json={"origem": "A, RS", "destino": "B, BA"}).status_code == 422  # a pessoa escolhe o intervalo
+    assert cli.post("/viagem", json={**base, "intervalo_km": 5}).status_code == 422
+    assert cli.post("/viagem/aviao", json={"cidades": []}).status_code in (404, 405)
+    assert cli.post("/roteiro/cidade", json={"cards": []}).status_code in (404, 405)
 
 
 def test_api_job_inexistente(tmp_path, monkeypatch):

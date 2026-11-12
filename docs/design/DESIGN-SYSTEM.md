@@ -11,7 +11,7 @@
 
 ## Brand book
 
-Desvio planeja viagens de carro e de avião: o app sugere lugares no caminho e a pessoa escolhe com o dedo, como num app de encontros. A identidade vem da estrada brasileira: o verde das placas de rodovia, o amarelo da faixa central, o asfalto e o céu de fim de tarde, do azul ao laranja do pôr do sol. É um app para celular primeiro.
+Desvio planeja viagens por terra, de carro, moto ou bicicleta: o app sugere lugares no caminho e a pessoa escolhe com o dedo, como num app de encontros. A identidade vem da estrada brasileira: o verde das placas de rodovia, o amarelo da faixa central, o asfalto e o céu de fim de tarde, do azul ao laranja do pôr do sol. É um app para celular primeiro.
 
 ### Princípios
 

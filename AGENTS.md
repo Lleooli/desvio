@@ -4,7 +4,7 @@ Guia do repositório para quem programa aqui, pessoa ou agente de IA. Leia antes
 
 ## O projeto
 
-Desvio é um app de celular que monta viagens de carro ou de avião. A pessoa informa a viagem, o app sugere lugares no caminho, ela desliza **Bora** ou **Passo**, e a IA ordena o roteiro final.
+Desvio é um app de celular que monta viagens por terra: de carro, moto ou bicicleta (não tem modo avião). A pessoa informa a viagem, o app sugere lugares no caminho, ela desliza **Bora** ou **Passo**, e a IA ordena o roteiro final.
 
 | O que | Onde |
 | --- | --- |
@@ -33,7 +33,7 @@ services/coletor/           Python + FastAPI
   app/gmaps.py              gosom (Google Maps), única porta para o Google
   app/instagram.py          Instagram pelo site do lugar ou por busca (ddgs)
   app/preferencias.py       swipes, perfil de gosto e ordem estatística
-  app/roteiro.py            ordem geométrica (km na rota; vizinho mais próximo + 2-opt)
+  app/roteiro.py            ordem geométrica (km na rota)
   app/ia.py                 Groq: triagem, ranqueamento e roteiro, sempre com plano B
   tests/                    pytest, sem internet
 packages/design-tokens/     tokens.json, a fonte única de cores, tipos, espaços e raios
@@ -51,7 +51,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q                       # testes, sem internet
 uvicorn app.main:app --reload             # API em http://localhost:8000/docs
 python -m app.worker                      # worker; precisa rodar junto com a API
-python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"   # coleta direto, sem API
+python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo moto   # coleta direto, sem API
 ```
 
 **Tudo junto com o Google Maps** (na raiz): `docker compose up --build` sobe a API, o worker e o gosom.

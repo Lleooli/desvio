@@ -1,14 +1,16 @@
 """API do planejador. Rode com:  uvicorn app.main:app --reload
 
 Fluxo pensado para o front (estilo Tinder):
-1. POST /viagem/carro ou /viagem/aviao      → job_id (202); a coleta roda no worker
+1. POST /viagem (carro, moto ou bicicleta)  → job_id (202); a coleta roda no worker
    GET  /jobs/{id}                          → status; quando "pronto", paradas com cards
 2. POST /swipe (um por card deslizado)      → guarda a decisão
-3. POST /roteiro/carro ou /roteiro/cidade   → ordem de visita dos aceitos
+3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
 4. GET  /perfil/{usuario}                   → resumo do gosto, para a IA
 
 IA (Groq, com plano B sem IA): POST /triagem, POST /cards/ranquear e
-POST /roteiro/carro com "usar_ia": true.
+POST /roteiro com "usar_ia": true.
+
+O Desvio só monta viagens por terra; o modo avião saiu do escopo.
 """
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ import os
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from . import fila, ia, preferencias, roteiro
@@ -28,26 +32,14 @@ app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["*"], a
 Categoria = str  # turismo | restaurante | posto | natureza | hospedagem
 
 
-class ViagemCarro(BaseModel):
+class Viagem(BaseModel):
     origem: str = Field(examples=["Alegrete, RS"])
     destino: str = Field(examples=["Vitória da Conquista, BA"])
-    intervalo_km: float = Field(200, ge=50, le=600, description="Distância entre paradas sugeridas")
+    veiculo: Literal["carro", "moto", "bicicleta"] = "carro"
+    intervalo_km: float = Field(ge=10, le=600, examples=[200],
+                                description="Distância entre paradas; a pessoa escolhe no app")
     categorias: list[Categoria] = ["turismo", "restaurante", "posto"]
     por_categoria: int = Field(5, ge=1, le=20)
-    usar_google_maps: bool = False
-    buscar_instagram: bool = True
-    usuario: str | None = None
-
-
-class Cidade(BaseModel):
-    cidade: str = Field(examples=["Salvador, BA"])
-    dias: int = Field(1, ge=1, le=30)
-
-
-class ViagemAviao(BaseModel):
-    cidades: list[Cidade]
-    categorias: list[Categoria] = ["turismo", "natureza", "restaurante"]
-    por_categoria: int = Field(8, ge=1, le=30)
     usar_google_maps: bool = False
     buscar_instagram: bool = True
     usuario: str | None = None
@@ -59,7 +51,7 @@ class Swipe(BaseModel):
     gostou: bool
 
 
-class RoteiroCarro(BaseModel):
+class Roteiro(BaseModel):
     cards: list[dict]
     usar_ia: bool = False
     contexto: dict = {}
@@ -74,21 +66,9 @@ class Ranquear(BaseModel):
     resumo: str = ""
 
 
-class RoteiroCidade(BaseModel):
-    cards: list[dict]
-    dias: int = 1
-    inicio_lat: float | None = None
-    inicio_lon: float | None = None
-
-
-@app.post("/viagem/carro", status_code=202)
-def viagem_carro(req: ViagemCarro):
-    return {"job_id": fila.criar("carro", req.model_dump()), "status": "pendente"}
-
-
-@app.post("/viagem/aviao", status_code=202)
-def viagem_aviao(req: ViagemAviao):
-    return {"job_id": fila.criar("aviao", req.model_dump()), "status": "pendente"}
+@app.post("/viagem", status_code=202)
+def viagem(req: Viagem):
+    return {"job_id": fila.criar("viagem", req.model_dump()), "status": "pendente"}
 
 
 @app.get("/jobs/{job_id}")
@@ -110,10 +90,10 @@ def perfil(usuario: str):
     return preferencias.perfil(usuario)
 
 
-@app.post("/roteiro/carro")
-async def roteiro_carro(req: RoteiroCarro):
+@app.post("/roteiro")
+async def roteiro_da_viagem(req: Roteiro):
     if not req.usar_ia:
-        return {"itens": roteiro.ordenar_carro(req.cards), "explicacoes": {}, "fonte": "geometria"}
+        return {"itens": roteiro.ordenar_na_rota(req.cards), "explicacoes": {}, "fonte": "geometria"}
     async with httpx.AsyncClient() as client:
         return await ia.ajustar_roteiro(client, req.cards, req.contexto)
 
@@ -128,9 +108,3 @@ async def triagem(req: Triagem):
 async def ranquear(req: Ranquear):
     async with httpx.AsyncClient() as client:
         return await ia.ranquear(client, req.cards, req.resumo)
-
-
-@app.post("/roteiro/cidade")
-def roteiro_cidade(req: RoteiroCidade):
-    inicio = (req.inicio_lat, req.inicio_lon) if req.inicio_lat is not None and req.inicio_lon is not None else None
-    return roteiro.roteiro_cidade(req.cards, req.dias, inicio)

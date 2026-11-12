@@ -1,8 +1,9 @@
-"""Geocodificação, rota de carro e utilidades geográficas.
+"""Geocodificação, rota por terra e utilidades geográficas.
 
 Tudo gratuito e sem chave de API:
 - Nominatim (OpenStreetMap) para transformar "Alegrete, RS" em coordenadas
-- OSRM para calcular a rota de carro
+- OSRM para calcular a rota: perfil de carro para carro e moto, perfil de
+  bicicleta (servidor da FOSSGIS) para bicicleta
 Os servidores públicos têm política de uso justo (Nominatim: 1 req/s, sem uso
 pesado). Para produção, suba os seus via Docker (ver README).
 """
@@ -18,6 +19,9 @@ USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
 NOMINATIM = os.getenv("PV_NOMINATIM_URL", "https://nominatim.openstreetmap.org")
 OSRM = os.getenv("PV_OSRM_URL", "https://router.project-osrm.org")
+OSRM_BIKE = os.getenv("PV_OSRM_BIKE_URL", "https://routing.openstreetmap.de/routed-bike")
+
+VEICULOS = ("carro", "moto", "bicicleta")  # moto usa a rota de carro
 
 Ponto = tuple[float, float]  # (lat, lon)
 
@@ -66,9 +70,16 @@ def _uf(endereco: dict) -> str | None:
     return iso.split("-")[-1] if iso.startswith("BR-") else endereco.get("state")
 
 
-async def rota_carro(client: httpx.AsyncClient, origem: Ponto, destino: Ponto) -> dict:
+def servidor_rota(veiculo: str) -> str:
+    if veiculo not in VEICULOS:
+        raise ValueError(f"Veículo desconhecido: {veiculo}")
+    return OSRM_BIKE if veiculo == "bicicleta" else OSRM
+
+
+async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo: str = "carro") -> dict:
     (la1, lo1), (la2, lo2) = origem, destino
-    url = f"{OSRM}/route/v1/driving/{lo1},{la1};{lo2},{la2}"
+    perfil = "bike" if veiculo == "bicicleta" else "driving"
+    url = f"{servidor_rota(veiculo)}/route/v1/{perfil}/{lo1},{la1};{lo2},{la2}"
     r = await client.get(url, params={"overview": "full", "geometries": "geojson"}, headers=HEADERS, timeout=60)
     r.raise_for_status()
     dados = r.json()

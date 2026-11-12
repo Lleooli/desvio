@@ -1,6 +1,6 @@
 import { TelaProvisoria } from "@/componentes/TelaProvisoria";
 
-// Carro: origem, destino, intervalo e categorias. Avião: segue para /viagens/nova/escalas.
+// Veículo (carro, moto ou bicicleta), origem, destino, intervalo escolhido pela pessoa e categorias.
 export default function NovaViagem() {
   return (
     <TelaProvisoria
@@ -8,8 +8,7 @@ export default function NovaViagem() {
       rota="/viagens/nova"
       historias={["HU04", "HU05"]}
       proximas={[
-        { rotulo: "Buscar paradas (carro)", href: "/viagens/demo/carregando" },
-        { rotulo: "Continuar para as escalas (avião)", href: "/viagens/nova/escalas" },
+        { rotulo: "Buscar paradas", href: "/viagens/demo/carregando" },
       ]}
     />
   );
