@@ -41,15 +41,17 @@ def test_roteiro_ordena_pelo_km_na_rota():
     assert roteiro.ordenar_na_rota([{"km_na_rota": None}, {}])  # sem km não quebra
 
 
-def test_preferencias(tmp_path, monkeypatch):
-    monkeypatch.setattr(preferencias, "DB", str(tmp_path / "t.db"))
+def test_preferencias(pessoa):
+    leo, _ = pessoa
     for i, (cat, ok) in enumerate([("restaurante", 1), ("restaurante", 1), ("posto", 0), ("posto", 0)]):
-        preferencias.registrar("leo", {"id": f"c{i}", "categoria": cat, "nota": 4.5}, bool(ok))
-    p = preferencias.perfil("leo")
+        preferencias.registrar(leo, {"id": f"c{i}", "categoria": cat, "nota": 4.5}, bool(ok))
+    p = preferencias.perfil(leo)
     assert p["categoria"]["restaurante"]["taxa"] == 1.0 and p["categoria"]["posto"]["taxa"] == 0.0
     ordem = preferencias.pontuar([{"id": "a", "categoria": "posto"}, {"id": "b", "categoria": "restaurante"}], p)
     assert ordem[0]["id"] == "b"
-    assert preferencias.ja_vistos("leo") == {"c0", "c1", "c2", "c3"}
+    assert preferencias.ja_vistos(leo) == {"c0", "c1", "c2", "c3"}
+    preferencias.registrar(leo, {"id": "c2", "categoria": "posto"}, True)  # mudou de ideia: troca, não duplica
+    assert preferencias.perfil(leo)["total_swipes"] == 4
 
 
 # ---------- fluxo completo com serviços simulados ----------
@@ -171,15 +173,14 @@ def test_fluxo_carro_com_google(mock_http, monkeypatch):
     assert any(c["fonte"] == "openstreetmap" for c in rest)  # completado com OSM
 
 
-def test_api(mock_http, tmp_path, monkeypatch):
+def test_api(mock_http, pessoa):
     from fastapi.testclient import TestClient
-    from app import fila, worker
+    from app import worker
     from app.main import app
-    monkeypatch.setattr(preferencias, "DB", str(tmp_path / "api.db"))
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "api.db"))
-    cli = TestClient(app)
+    _, cab = pessoa
+    cli = TestClient(app, headers=cab)
     r = cli.post("/viagem", json={"origem": "Alegrete, RS", "destino": "Destino, BA", "veiculo": "moto",
-                                  "intervalo_km": 300, "usuario": "leo"})
+                                  "intervalo_km": 300})
     assert r.status_code == 202, r.text
     jid = r.json()["job_id"]
     assert cli.get(f"/jobs/{jid}").json()["status"] == "pendente"
@@ -188,8 +189,8 @@ def test_api(mock_http, tmp_path, monkeypatch):
     assert j["status"] == "pronto", j
     assert j["resultado"]["veiculo"] == "moto" and j["resultado"]["intervalo_km"] == 300
     cards = j["resultado"]["paradas"][0]["cards"]
-    assert cli.post("/swipe", json={"usuario": "leo", "card": cards[0], "gostou": True}).json()["ok"]
-    assert cli.get("/perfil/leo").json()["aceitos"] == 1
+    assert cli.post("/swipe", json={"card": cards[0], "gostou": True}).json()["ok"]
+    assert cli.get("/perfil").json()["aceitos"] == 1
     r = cli.post("/roteiro", json={"cards": cards[::-1]}).json()
     assert [c["km_na_rota"] for c in r["itens"]] == sorted(c["km_na_rota"] for c in cards)
 
@@ -255,7 +256,7 @@ def _contar_chamadas(monkeypatch):
     return cont
 
 
-def test_segunda_viagem_pela_mesma_rota_nao_chama_gosom_nem_osm(mock_http, monkeypatch):
+def test_segunda_viagem_pela_mesma_rota_nao_chama_gosom_nem_osm(mock_http, monkeypatch, pg):
     import time
     real_sleep = asyncio.sleep
     monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
@@ -263,7 +264,7 @@ def test_segunda_viagem_pela_mesma_rota_nao_chama_gosom_nem_osm(mock_http, monke
     primeira = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
     assert cont["gosom"] == 1 and cont["overpass"] > 0 and cont["osrm"] == 1
 
-    geo._cache.clear()  # outro processo do worker: só o cache em SQLite sobrevive
+    geo._cache.clear()  # outro processo do worker: só o cache no Postgres sobrevive
     for k in cont:
         cont[k] = 0
     parciais = []
@@ -278,18 +279,15 @@ def test_segunda_viagem_pela_mesma_rota_nao_chama_gosom_nem_osm(mock_http, monke
     assert gasto < 5
 
 
-def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatch):
-    import sqlite3
-    from app import cache
+def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatch, pg):
+    import psycopg
     real_sleep = asyncio.sleep
     monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
     cont = _contar_chamadas(monkeypatch)
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
-    con = sqlite3.connect(cache.DB)
-    con.execute("UPDATE cache SET guardado_em = strftime('%Y-%m-%dT%H:%M:%f', 'now', '-31 days') "
-                "WHERE chave LIKE 'gmaps|%' OR chave LIKE 'osm|%'")
-    con.commit()
-    con.close()
+    with psycopg.connect(pg) as con:
+        con.execute("update cache set guardado_em = now() - interval '31 days' "
+                    "where chave like 'gmaps|%%' or chave like 'osm|%%'")
     for k in cont:
         cont[k] = 0
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
@@ -297,9 +295,14 @@ def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatc
     assert cont["osrm"] == 0  # a rota não venceu
 
 
-def test_cache_quebrado_nao_derruba_a_coleta(mock_http, monkeypatch, tmp_path):
-    from app import cache
-    monkeypatch.setattr(cache, "DB", str(tmp_path))  # uma pasta: o SQLite não abre
+def test_cache_quebrado_nao_derruba_a_coleta(mock_http, monkeypatch):
+    import psycopg
+    from app import banco
+
+    def fora_do_ar():
+        raise psycopg.OperationalError("connection refused")
+    monkeypatch.setattr(banco, "URL", "postgresql://banco-fora-do-ar")
+    monkeypatch.setattr(banco, "conectar", fora_do_ar)
     r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
     assert r["paradas"][0]["cards"]
 
@@ -342,12 +345,11 @@ def test_coleta_avisa_as_4_etapas_em_ordem(mock_http):
     assert pct == sorted(pct) and pct[-1] == 90
 
 
-def test_veiculo_desconhecido_ou_aviao_da_422(tmp_path, monkeypatch):
+def test_veiculo_desconhecido_ou_aviao_da_422():
     from fastapi.testclient import TestClient
-    from app import fila
     from app.main import app
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "v.db"))
-    cli = TestClient(app)
+    from conftest import token
+    cli = TestClient(app, headers={"Authorization": f"Bearer {token('00000000-0000-4000-8000-000000000001')}"})
     base = {"origem": "A, RS", "destino": "B, BA", "intervalo_km": 100}
     assert cli.post("/viagem", json={**base, "veiculo": "aviao"}).status_code == 422
     assert cli.post("/viagem", json={"origem": "A, RS", "destino": "B, BA"}).status_code == 422  # a pessoa escolhe o intervalo
@@ -356,9 +358,8 @@ def test_veiculo_desconhecido_ou_aviao_da_422(tmp_path, monkeypatch):
     assert cli.post("/roteiro/cidade", json={"cards": []}).status_code in (404, 405)
 
 
-def test_api_job_inexistente(tmp_path, monkeypatch):
+def test_api_job_inexistente(pessoa):
     from fastapi.testclient import TestClient
-    from app import fila
     from app.main import app
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "x.db"))
-    assert TestClient(app).get("/jobs/nao-existe").status_code == 404
+    _, cab = pessoa
+    assert TestClient(app).get("/jobs/nao-existe", headers=cab).status_code == 404

@@ -1,6 +1,7 @@
 """Issue #5: progresso da busca por etapa em /jobs/{id}."""
 import asyncio
-import sqlite3
+
+import psycopg
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,9 +10,9 @@ from app import coletor, fila, worker
 from app.main import app
 
 
-@pytest.fixture(autouse=True)
-def banco(tmp_path, monkeypatch):
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "p.db"))
+@pytest.fixture
+def banco(pg):
+    return pg
 
 
 def test_textos_na_voz_do_design_system():
@@ -24,7 +25,8 @@ def test_textos_na_voz_do_design_system():
     assert coletor.texto_cidades(0, 200) == ("Nenhuma cidade no caminho", "Só o destino")
 
 
-def test_worker_grava_as_etapas_e_api_devolve(monkeypatch):
+def test_worker_grava_as_etapas_e_api_devolve(monkeypatch, pessoa):
+    uid, cab = pessoa
     vistos = []
 
     async def falso(progresso=None, parcial=None, **kw):
@@ -33,37 +35,38 @@ def test_worker_grava_as_etapas_e_api_devolve(monkeypatch):
             vistos.append(fila.obter(jid)["progresso"])
         return {"veiculo": "carro", "paradas": []}
     monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
-    jid = fila.criar("viagem", {"origem": "A", "destino": "B"})
-    assert TestClient(app).get(f"/jobs/{jid}").json()["progresso"] is None
+    jid = fila.criar("viagem", {"origem": "A", "destino": "B"}, usuario=uid)
+    assert TestClient(app).get(f"/jobs/{jid}", headers=cab).json()["progresso"] is None
     asyncio.run(worker.rodar_uma_vez())
 
     assert [v["etapa"] for v in vistos] == ["rota", "cidades", "lugares", "instagram"]
     assert vistos[0] == {"etapa": "rota", "titulo": "Rota", "detalhe": "detalhe de rota", "percentual": 20}
-    j = TestClient(app).get(f"/jobs/{jid}").json()
+    j = TestClient(app).get(f"/jobs/{jid}", headers=cab).json()
     assert j["status"] == "pronto" and j["progresso"]["etapa"] == "instagram"
 
 
-def test_worker_grava_parcial_e_limpa_ao_concluir(monkeypatch):
+def test_worker_grava_parcial_e_limpa_ao_concluir(monkeypatch, pessoa):
+    uid, cab = pessoa
     vistos = []
 
     async def falso(progresso=None, parcial=None, **kw):
         parcial({"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Mirante"}]}]})
-        vistos.append(TestClient(app).get(f"/jobs/{jid}").json())
+        vistos.append(TestClient(app).get(f"/jobs/{jid}", headers=cab).json())
         return {"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Mirante"},
                                                      {"id": "gmaps:P1", "nome": "Café"}]}]}
     monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
-    jid = fila.criar("viagem", {"origem": "A", "destino": "B"})
+    jid = fila.criar("viagem", {"origem": "A", "destino": "B"}, usuario=uid)
     asyncio.run(worker.rodar_uma_vez())
     assert vistos[0]["status"] == "rodando"
     assert vistos[0]["parcial"]["paradas"][0]["cards"][0]["id"] == "osm:node/1"
-    j = TestClient(app).get(f"/jobs/{jid}").json()
+    j = TestClient(app).get(f"/jobs/{jid}", headers=cab).json()
     assert j["status"] == "pronto" and j["parcial"] is None and len(j["resultado"]["paradas"][0]["cards"]) == 2
 
 
-def test_parcial_tira_cards_ja_avaliados(monkeypatch, tmp_path):
+def test_parcial_tira_cards_ja_avaliados(monkeypatch, pessoa):
     from app import preferencias
-    monkeypatch.setattr(preferencias, "DB", str(tmp_path / "p.db"))
-    preferencias.registrar("leo", {"id": "osm:node/1", "categoria": "turismo"}, False)
+    uid, _ = pessoa
+    preferencias.registrar(uid, {"id": "osm:node/1", "categoria": "turismo"}, False)
 
     async def falso(progresso=None, parcial=None, **kw):
         parcial({"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Visto"},
@@ -72,12 +75,12 @@ def test_parcial_tira_cards_ja_avaliados(monkeypatch, tmp_path):
     monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
     gravados = []
     monkeypatch.setattr(worker.fila, "parcial", lambda jid, r: gravados.append(r))
-    fila.criar("viagem", {"origem": "A", "destino": "B", "usuario": "leo"})
+    fila.criar("viagem", {"origem": "A", "destino": "B", "usuario": uid}, usuario=uid)
     asyncio.run(worker.rodar_uma_vez())
     assert [c["id"] for c in gravados[0]["paradas"][0]["cards"]] == ["osm:node/2"]
 
 
-def test_progresso_renova_atualizado_em_e_nao_mexe_em_job_fechado():
+def test_progresso_renova_atualizado_em_e_nao_mexe_em_job_fechado(banco):
     jid = fila.criar("viagem", {})
     fila.pegar_proximo()
     antes = fila.obter(jid)["atualizado_em"]
@@ -90,22 +93,6 @@ def test_progresso_renova_atualizado_em_e_nao_mexe_em_job_fechado():
 
 def test_erro_ao_gravar_progresso_nao_derruba_a_coleta():
     def quebra(*a):
-        raise sqlite3.OperationalError("database is locked")
+        raise psycopg.OperationalError("connection refused")
     coletor._avisar(quebra, "rota", "t", "d", 20)  # não levanta
 
-
-def test_banco_antigo_sem_coluna_de_progresso(tmp_path, monkeypatch):
-    velho = tmp_path / "velho.db"
-    con = sqlite3.connect(velho)
-    con.execute("""CREATE TABLE jobs (id TEXT PRIMARY KEY, tipo TEXT NOT NULL, entrada TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente', resultado TEXT, erro TEXT,
-        criado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')))""")
-    con.execute("INSERT INTO jobs (id, tipo, entrada) VALUES ('j1', 'carro', '{}')")
-    con.commit()
-    con.close()
-    monkeypatch.setattr(fila, "DB", str(velho))
-    assert fila.obter("j1")["progresso"] is None
-    fila.pegar_proximo()
-    fila.progresso("j1", "rota", "Rota calculada", "1 km", 20)
-    assert fila.obter("j1")["progresso"]["percentual"] == 20

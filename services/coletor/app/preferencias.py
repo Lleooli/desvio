@@ -1,41 +1,41 @@
-"""Guarda cada swipe e resume o gosto do usuário.
+"""Guarda cada swipe (tabelas `lugar` e `decisao` do Postgres) e resume o gosto do usuário.
 
 O resumo (perfil) é o que vai no prompt da IA para ela recomendar com base nas
 decisões anteriores, e também serve para pré-ordenar os próximos cards.
 """
 from __future__ import annotations
 
-import json
-import os
-import sqlite3
 from collections import defaultdict
-from contextlib import closing
 
-DB = os.getenv("PV_DB", "planejador.db")
+from psycopg.types.json import Jsonb
 
-
-def _con() -> sqlite3.Connection:
-    con = sqlite3.connect(DB, timeout=30)
-    con.execute("""CREATE TABLE IF NOT EXISTS swipes (
-        usuario TEXT, card_id TEXT, gostou INTEGER, categoria TEXT, tipo TEXT,
-        faixa_preco TEXT, nota REAL, cidade TEXT, card TEXT,
-        criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (usuario, card_id))""")
-    return con
+from . import banco
 
 
 def registrar(usuario: str, card: dict, gostou: bool) -> None:
-    with closing(_con()) as con, con:
-        con.execute("INSERT OR REPLACE INTO swipes (usuario, card_id, gostou, categoria, tipo, faixa_preco, nota, cidade, card)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
-                    (usuario, card["id"], int(gostou), card.get("categoria"), card.get("tipo"),
-                     card.get("faixa_preco"), card.get("nota"), card.get("cidade"), json.dumps(card, ensure_ascii=False)))
+    """Guarda o card em `lugar` (compartilhado entre pessoas) e a decisão em `decisao`
+    (uma por pessoa e lugar; deslizar de novo troca a decisão)."""
+    with banco.conectar() as con:
+        con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) "
+                    "on conflict (id) do update set dados = excluded.dados, fonte = excluded.fonte, "
+                    "coletado_em = now()",
+                    (card["id"], Jsonb(card), card.get("fonte")))
+        con.execute("insert into decisao (usuario, lugar, tipo) values (%s, %s, %s) "
+                    "on conflict (usuario, lugar) do update set tipo = excluded.tipo, quando = now()",
+                    (usuario, card["id"], "bora" if gostou else "passo"))
+
+
+def _nota(valor) -> float | None:
+    return float(valor) if isinstance(valor, (int, float)) and not isinstance(valor, bool) else None
 
 
 def perfil(usuario: str) -> dict:
-    with closing(_con()) as con:
-        linhas = con.execute("SELECT gostou, categoria, tipo, faixa_preco, nota FROM swipes WHERE usuario=?",
-                             (usuario,)).fetchall()
+    with banco.conectar() as con:
+        rs = con.execute("select d.tipo, l.dados from decisao d join lugar l on l.id = d.lugar "
+                         "where d.usuario = %s", (usuario,)).fetchall()
+    # (gostou, categoria, tipo, faixa_preco, nota); favorito também conta como gostou
+    linhas = [(int(r["tipo"] != "passo"), r["dados"].get("categoria"), r["dados"].get("tipo"),
+               r["dados"].get("faixa_preco"), _nota(r["dados"].get("nota"))) for r in rs]
     taxa: dict[str, dict] = {}
     for campo, idx in (("categoria", 1), ("tipo", 2), ("faixa_preco", 3)):
         cont = defaultdict(lambda: [0, 0])
@@ -51,8 +51,8 @@ def perfil(usuario: str) -> dict:
 
 
 def ja_vistos(usuario: str) -> set[str]:
-    with closing(_con()) as con:
-        return {r[0] for r in con.execute("SELECT card_id FROM swipes WHERE usuario=?", (usuario,))}
+    with banco.conectar() as con:
+        return {r["lugar"] for r in con.execute("select lugar from decisao where usuario = %s", (usuario,))}
 
 
 def pontuar(cards: list[dict], p: dict) -> list[dict]:

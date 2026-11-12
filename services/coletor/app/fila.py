@@ -1,44 +1,52 @@
-"""Fila de jobs de coleta em SQLite.
+"""Fila de jobs de coleta no Postgres (tabela `jobs`).
 
 A API cria o job e responde na hora; o worker (app/worker.py) pega o mais
-antigo, roda a coleta e grava o resultado. A interface (criar, pegar_proximo,
-concluir, falhar, obter) é a mesma que a versão em Postgres vai ter.
+antigo com FOR UPDATE SKIP LOCKED, roda a coleta e grava o resultado. Dois
+workers em paralelo nunca pegam o mesmo job.
 """
 from __future__ import annotations
 
-import json
-import os
-import sqlite3
 import uuid
-from contextlib import closing
 
-DB = os.getenv("PV_DB", "planejador.db")
+from psycopg.types.json import Jsonb
 
+from . import banco
 
-def _con() -> sqlite3.Connection:
-    con = sqlite3.connect(DB, timeout=30)
-    con.execute("""CREATE TABLE IF NOT EXISTS jobs (
-        id TEXT PRIMARY KEY, tipo TEXT NOT NULL, entrada TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente', resultado TEXT, erro TEXT,
-        criado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
-        atualizado_em TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')), progresso TEXT, parcial TEXT)""")
-    if DB not in _migrados:  # bancos criados antes das colunas novas
-        existentes = {c[1] for c in con.execute("PRAGMA table_info(jobs)")}
-        for coluna in ("progresso", "parcial"):
-            if coluna not in existentes:
-                con.execute(f"ALTER TABLE jobs ADD COLUMN {coluna} TEXT")
-        _migrados.add(DB)
-    return con
+_AGORA = "clock_timestamp()"  # now() é o início da transação; aqui queremos o instante real
 
 
-_migrados: set[str] = set()
+def criar(tipo: str, entrada: dict, usuario: str | None = None) -> str:
+    jid = uuid.uuid4().hex
+    with banco.conectar() as con:
+        con.execute("insert into jobs (id, usuario, tipo, entrada) values (%s, %s, %s, %s)",
+                    (jid, usuario, tipo, Jsonb(entrada)))
+    return jid
+
+
+def pegar_proximo() -> dict | None:
+    with banco.conectar() as con:
+        l = con.execute(
+            f"update jobs set status='rodando', atualizado_em={_AGORA} "
+            "where id = (select id from jobs where status='pendente' order by criado_em, id "
+            "            limit 1 for update skip locked) "
+            "returning id, tipo, entrada").fetchone()
+    return {"id": l["id"], "tipo": l["tipo"], "entrada": l["entrada"]} if l else None
+
+
+def recuperar_presos(minutos: float = 30) -> int:
+    """Devolve à fila os jobs "rodando" sem atualização há `minutos` (worker morreu no meio)."""
+    with banco.conectar() as con:
+        cur = con.execute(f"update jobs set status='pendente', atualizado_em={_AGORA} "
+                          f"where status='rodando' and atualizado_em <= {_AGORA} - make_interval(secs => %s)",
+                          (minutos * 60,))
+    return cur.rowcount
 
 
 def parcial(job_id: str, resultado: dict) -> None:
     """Resultado parcial (só OpenStreetMap) enquanto o Google Maps não chega."""
-    with closing(_con()) as con, con:
-        con.execute("UPDATE jobs SET parcial=?, atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
-                    "WHERE id=? AND status='rodando'", (json.dumps(resultado, ensure_ascii=False), job_id))
+    with banco.conectar() as con:
+        con.execute(f"update jobs set parcial=%s, atualizado_em={_AGORA} where id=%s and status='rodando'",
+                    (Jsonb(resultado), job_id))
 
 
 def progresso(job_id: str, etapa: str, titulo: str, detalhe: str, percentual: int) -> None:
@@ -47,43 +55,16 @@ def progresso(job_id: str, etapa: str, titulo: str, detalhe: str, percentual: in
     Também renova `atualizado_em`: job que avança não é confundido com job preso.
     """
     p = {"etapa": etapa, "titulo": titulo, "detalhe": detalhe, "percentual": percentual}
-    with closing(_con()) as con, con:
-        con.execute("UPDATE jobs SET progresso=?, atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
-                    "WHERE id=? AND status='rodando'", (json.dumps(p, ensure_ascii=False), job_id))
-
-
-def criar(tipo: str, entrada: dict) -> str:
-    jid = uuid.uuid4().hex
-    with closing(_con()) as con, con:
-        con.execute("INSERT INTO jobs (id, tipo, entrada) VALUES (?,?,?)",
-                    (jid, tipo, json.dumps(entrada, ensure_ascii=False)))
-    return jid
-
-
-def pegar_proximo() -> dict | None:
-    with closing(_con()) as con, con:
-        linha = con.execute(
-            "UPDATE jobs SET status='rodando', atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
-            "WHERE id = (SELECT id FROM jobs WHERE status='pendente' ORDER BY criado_em, rowid LIMIT 1) "
-            "RETURNING id, tipo, entrada").fetchone()
-    return {"id": linha[0], "tipo": linha[1], "entrada": json.loads(linha[2])} if linha else None
-
-
-def recuperar_presos(minutos: float = 30) -> int:
-    """Devolve à fila os jobs "rodando" sem atualização há `minutos` (worker morreu no meio)."""
-    with closing(_con()) as con, con:
-        cur = con.execute("UPDATE jobs SET status='pendente', atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') "
-                          "WHERE status='rodando' AND julianday('now') - julianday(atualizado_em) >= ?",
-                          (minutos / 1440,))
-    return cur.rowcount
+    with banco.conectar() as con:
+        con.execute(f"update jobs set progresso=%s, atualizado_em={_AGORA} where id=%s and status='rodando'",
+                    (Jsonb(p), job_id))
 
 
 def _fechar(job_id: str, status: str, resultado: dict | None, erro: str | None) -> None:
-    with closing(_con()) as con, con:
-        con.execute("UPDATE jobs SET status=?, resultado=?, erro=?, parcial=NULL, "
-                    "atualizado_em=strftime('%Y-%m-%dT%H:%M:%f', 'now') WHERE id=?",
-                    (status, json.dumps(resultado, ensure_ascii=False) if resultado is not None else None,
-                     erro, job_id))
+    with banco.conectar() as con:
+        con.execute(f"update jobs set status=%s, resultado=%s, erro=%s, parcial=null, atualizado_em={_AGORA} "
+                    "where id=%s",
+                    (status, Jsonb(resultado) if resultado is not None else None, erro, job_id))
 
 
 def concluir(job_id: str, resultado: dict) -> None:
@@ -94,14 +75,16 @@ def falhar(job_id: str, erro: str) -> None:
     _fechar(job_id, "falhou", None, erro)
 
 
-def obter(job_id: str) -> dict | None:
-    with closing(_con()) as con:
-        l = con.execute("SELECT id, tipo, status, resultado, erro, criado_em, atualizado_em, progresso, parcial "
-                        "FROM jobs WHERE id=?", (job_id,)).fetchone()
+def obter(job_id: str, usuario: str | None = None) -> dict | None:
+    """O job; com `usuario`, só se for dele (o de outra pessoa volta None, como se não existisse)."""
+    sql = ("select id, tipo, status, resultado, erro, criado_em, atualizado_em, progresso, parcial "
+           "from jobs where id=%s")
+    args: tuple = (job_id,)
+    if usuario is not None:
+        sql += " and usuario=%s"
+        args += (usuario,)
+    with banco.conectar() as con:
+        l = con.execute(sql, args).fetchone()
     if not l:
         return None
-    return {"id": l[0], "tipo": l[1], "status": l[2], "resultado": json.loads(l[3]) if l[3] else None,
-            "erro": l[4], "criado_em": l[5], "atualizado_em": l[6],
-            "progresso": json.loads(l[7]) if l[7] else None,
-            # cards só do OpenStreetMap enquanto o Google não chega; some quando o job fecha
-            "parcial": json.loads(l[8]) if l[8] else None}
+    return {**l, "criado_em": l["criado_em"].isoformat(), "atualizado_em": l["atualizado_em"].isoformat()}
