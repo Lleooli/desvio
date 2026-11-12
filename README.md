@@ -1,6 +1,6 @@
 # Desvio
 
-App de celular que monta viagens com paradas escolhidas por swipe. Você informa a viagem (carro ou avião), o app sugere lugares no caminho, você desliza **Bora** ou **Passo**, e a IA ordena o roteiro final.
+App de celular que monta viagens com paradas escolhidas por swipe. Você informa a viagem (de carro, moto ou bicicleta), o app sugere lugares no caminho, você desliza **Bora** ou **Passo**, e a IA ordena o roteiro final.
 
 > Nome provisório. Detalhes no [PRD](docs/PRD.md).
 
@@ -23,7 +23,7 @@ Antes de tudo, `cp .env.example .env` e preencha. O passo a passo completo está
 cd services/coletor
 pip install -r requirements-dev.txt
 python -m pytest -q                                             # testes
-python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"   # teste rápido, sem API
+python cli.py "Alegrete, RS" "Vitória da Conquista, BA"   # teste rápido, sem API
 uvicorn app.main:app --reload                                   # API em http://localhost:8000/docs
 python -m app.worker                                            # worker de coleta (outro terminal)
 ```

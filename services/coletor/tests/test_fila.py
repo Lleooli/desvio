@@ -35,7 +35,7 @@ def test_obter_inexistente():
 def test_worker_processa(monkeypatch):
     async def falso(**kw):
         return {"modo": "carro", "paradas": [], "recebido": kw}
-    monkeypatch.setattr(worker.coletor, "planejar_carro", falso)
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
     jid = fila.criar("carro", {"origem": "A", "destino": "B"})
     assert asyncio.run(worker.rodar_uma_vez()) is True
     j = fila.obter(jid)
@@ -46,7 +46,7 @@ def test_worker_processa(monkeypatch):
 def test_worker_marca_falha(monkeypatch):
     async def quebra(**kw):
         raise ValueError("Não achamos essa cidade")
-    monkeypatch.setattr(worker.coletor, "planejar_carro", quebra)
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", quebra)
     ruim = fila.criar("carro", {"origem": "?", "destino": "?"})
     bom = fila.criar("tipo-desconhecido", {})
     assert asyncio.run(worker.rodar_uma_vez()) is True

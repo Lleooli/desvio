@@ -138,15 +138,17 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     return paradas
 
 
-async def planejar_carro(origem: str, destino: str, intervalo_km: float = 200,
-                         categorias: list[str] | None = None, por_categoria: int = 5,
-                         usar_google_maps: bool = False, buscar_instagram: bool = True,
-                         raio_parada_km: float = 8, raio_destino_km: float = 15) -> dict:
+async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
+                          categorias: list[str] | None = None, por_categoria: int = 5,
+                          usar_google_maps: bool = False, buscar_instagram: bool = True,
+                          veiculo: str = "carro",
+                          raio_parada_km: float = 8, raio_destino_km: float = 15) -> dict:
+    """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`."""
     categorias = categorias or CATEGORIAS_PADRAO
     async with httpx.AsyncClient() as client:
         o = await geo.geocodificar(client, origem)
         d = await geo.geocodificar(client, destino)
-        rota = await geo.rota_carro(client, (o["lat"], o["lon"]), (d["lat"], d["lon"]))
+        rota = await geo.rota(client, (o["lat"], o["lon"]), (d["lat"], d["lon"]), veiculo)
         pontos = rota["pontos"]
         acc = geo.acumuladas(pontos)
         total = acc[-1]
@@ -175,27 +177,10 @@ async def planejar_carro(origem: str, destino: str, intervalo_km: float = 200,
             c["horas_desde_saida"] = round(c["km_na_rota"] / total * rota["duracao_h"], 1) if total else 0
 
     return {
-        "modo": "carro",
+        "veiculo": veiculo,
+        "intervalo_km": intervalo_km,
         "origem": o, "destino": d,
         "rota": {"distancia_km": round(rota["distancia_km"]), "duracao_h": round(rota["duracao_h"], 1),
                  "polilinha": geo.simplificar(pontos)},
         "paradas": paradas,
     }
-
-
-async def planejar_cidades(cidades: list[dict], categorias: list[str] | None = None, por_categoria: int = 8,
-                           usar_google_maps: bool = False, buscar_instagram: bool = True,
-                           raio_km: float = 12) -> dict:
-    """Modo avião: cidades de escala/estadia [{"cidade": "Salvador, BA", "dias": 2}, ...]."""
-    categorias = categorias or ["turismo", "natureza", "restaurante"]
-    async with httpx.AsyncClient() as client:
-        paradas = []
-        for c in cidades:
-            g = await geo.geocodificar(client, c["cidade"])
-            paradas.append({"nome": g["nome"], "uf": g["uf"], "lat": g["lat"], "lon": g["lon"],
-                            "dias": c.get("dias", 1), "tipo": "estadia", "raio_km": raio_km})
-        # mais dias na cidade → mais opções para deslizar
-        await montar_cards(client, paradas, categorias,
-                           max(por_categoria, por_categoria * max(p["dias"] for p in paradas) // 2),
-                           usar_google_maps, buscar_instagram)
-    return {"modo": "aviao", "paradas": paradas}

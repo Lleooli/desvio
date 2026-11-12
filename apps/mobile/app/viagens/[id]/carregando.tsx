@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import { TelaProvisoria } from "@/componentes/TelaProvisoria";
 
-// Mostra as etapas da coleta (POST /viagem/carro ou /viagem/aviao no coletor) e avisa por push.
+// Mostra as etapas da coleta (POST /viagem no coletor) e avisa por push.
 export default function Carregando() {
   const { id } = useLocalSearchParams<{ id: string }>();
   return (

@@ -193,14 +193,14 @@ _SCHEMA_ROTEIRO = {
         "properties": {"id": {"type": "string"}, "porque": {"type": "string"}}}}},
 }
 _SISTEMA_ROTEIRO = (
-    "Você ajusta a ordem das paradas de uma viagem de carro. Recebe os lugares já em ordem de km "
+    "Você ajusta a ordem das paradas de uma viagem por terra (carro, moto ou bicicleta; o veículo vem no contexto). Recebe os lugares já em ordem de km "
     "e o contexto (hora de saída, dias). Ajuste ao horário: almoço entre 11h e 14h, mirante no fim "
     "da tarde, pernoite. Não volte na estrada mais de 30 km. Para cada lugar, uma linha curta "
     "dizendo por quê, em português do Brasil.")
 
 
 async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto: dict) -> dict:
-    base = roteiro.ordenar_carro(itens)
+    base = roteiro.ordenar_na_rota(itens)
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_ROTEIRO,
                               dados={"contexto": contexto,

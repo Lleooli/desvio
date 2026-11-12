@@ -20,10 +20,8 @@ PRESO_MIN = float(os.getenv("PV_JOB_PRESO_MIN", "30"))
 async def processar(job: dict) -> dict:
     e = dict(job["entrada"])
     usuario = e.pop("usuario", None)
-    if job["tipo"] == "carro":
-        r = await coletor.planejar_carro(**e)
-    elif job["tipo"] == "aviao":
-        r = await coletor.planejar_cidades(**e)
+    if job["tipo"] in ("viagem", "carro"):  # "carro": jobs criados antes do veículo existir
+        r = await coletor.planejar_viagem(**e)
     else:
         raise ValueError(f"Tipo de job desconhecido: {job['tipo']}")
     return preferencias.personalizar(r, usuario)

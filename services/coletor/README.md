@@ -11,7 +11,8 @@ sem IA. A coleta é gratuita e sem chave; só a IA usa `GROQ_API_KEY`.
 
 | Peça | Projeto | Para quê |
 |---|---|---|
-| Rota de carro | OSRM (servidor público) | trajeto, distância, duração |
+| Rota (carro e moto) | OSRM (servidor público) | trajeto, distância, duração |
+| Rota de bicicleta | OSRM, perfil bike da FOSSGIS (`PV_OSRM_BIKE_URL`) | trajeto que evita rodovias, horas de pedal |
 | Endereço → coordenada | Nominatim / OpenStreetMap | geocodificação |
 | Cidades, postos, atrações | Overpass API / OpenStreetMap | base estável e legal de usar |
 | Fotos e notas do Google Maps | [gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper) (MIT, Docker) | raspagem do Maps |
@@ -25,7 +26,7 @@ sem IA. A coleta é gratuita e sem chave; só a IA usa `GROQ_API_KEY`.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"
+python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo bicicleta --intervalo 40
 ```
 
 **Com Google Maps (fotos, notas, avaliações):**
@@ -34,7 +35,7 @@ python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA"
 docker run -d -p 8080:8080 -v "$PWD/gmapsdata:/gmapsdata" \
   -e DISABLE_TELEMETRY=1 gosom/google-maps-scraper -data-folder /gmapsdata
 
-python cli.py carro "Alegrete, RS" "Vitória da Conquista, BA" --google
+python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --google
 ```
 
 O gosom leva no mínimo uns 3 minutos por job. Por isso o código manda todas
@@ -51,22 +52,20 @@ docker compose up --build
 
 | Método | Rota | O que faz |
 |---|---|---|
-| POST | `/viagem/carro` | origem, destino, intervalo entre paradas → `202 {job_id}` |
-| POST | `/viagem/aviao` | `[{cidade, dias}]` (escalas e destino) → `202 {job_id}` |
+| POST | `/viagem` | origem, destino, veículo (`carro`, `moto` ou `bicicleta`) e intervalo entre paradas, escolhido pela pessoa → `202 {job_id}` |
 | GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards |
 | POST | `/swipe` | grava `{usuario, card, gostou}` |
 | GET | `/perfil/{usuario}` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
-| POST | `/roteiro/carro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
-| POST | `/roteiro/cidade` | divide os aceitos em dias, na melhor ordem de visita |
+| POST | `/roteiro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
 
 Mandando `usuario` em `/viagem/*`, os cards já avaliados somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
 
 A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
 `docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`:
-`/triagem` e `/roteiro/carro` trazem `"fonte": "fixa"` ou `"geometria"` no
+`/triagem` e `/roteiro` trazem `"fonte": "fixa"` ou `"geometria"` no
 lugar de `"ia"`, e `/cards/ranquear` devolve os cards na ordem em que vieram.
 
 A API, o worker e o `cli.py` leem sozinhos o `.env` da raiz do repositório
@@ -90,7 +89,7 @@ Exemplo de card:
 `instagram_origem` = `site` (veio do site ou cadastro, confiável) ou `busca`
 (achado por busca web; mostre como "provável").
 
-## Como as paradas são escolhidas (modo carro)
+## Como as paradas são escolhidas
 
 1. Calcula a rota e marca um ponto a cada `intervalo_km` (padrão 200 km, umas 2,5 h).
 2. Em volta de cada ponto, escolhe a cidade que equilibra tamanho (população) e

@@ -99,5 +99,5 @@ def test_endpoints_sem_chave_funcionam(monkeypatch):
     cli = TestClient(app)
     assert cli.post("/triagem", json={"respostas": []}).json()["fonte"] == "fixa"
     assert [c["id"] for c in cli.post("/cards/ranquear", json={"cards": CARDS[:3], "resumo": "x"}).json()] == ["c0", "c1", "c2"]
-    r = cli.post("/roteiro/carro", json={"cards": CARDS[:3], "usar_ia": True}).json()
+    r = cli.post("/roteiro", json={"cards": CARDS[:3], "usar_ia": True}).json()
     assert r["fonte"] == "geometria"
