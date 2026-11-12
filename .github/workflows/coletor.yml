@@ -2,13 +2,26 @@ name: coletor
 
 on:
   push:
-    paths: ["services/coletor/**", ".github/workflows/coletor.yml"]
+    paths: ["services/coletor/**", "infra/supabase/**", ".github/workflows/coletor.yml"]
   pull_request:
-    paths: ["services/coletor/**", ".github/workflows/coletor.yml"]
+    paths: ["services/coletor/**", "infra/supabase/**", ".github/workflows/coletor.yml"]
 
 jobs:
   testes:
     runs-on: ubuntu-latest
+    services:
+      # Postgres vazio: os testes rodam as migrações do zero e testam a RLS
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: teste
+          POSTGRES_DB: desvio_teste
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PV_TEST_DATABASE_URL: postgresql://postgres:teste@localhost:5432/desvio_teste
     defaults:
       run:
         working-directory: services/coletor

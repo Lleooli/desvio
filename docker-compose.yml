@@ -1,6 +1,7 @@
 # API + worker de coleta + raspador do Google Maps (gosom).
-#   cp .env.example .env   (e preencha)
+#   cp .env.example .env   (e preencha, inclusive PV_DATABASE_URL do Supabase)
 #   docker compose up --build
+# Postgres local só para os testes:  docker compose --profile teste up -d banco-teste
 # API:   http://localhost:8000/docs
 # gosom: http://localhost:8080
 services:
@@ -21,11 +22,8 @@ services:
     env_file: .env
     environment:
       - PV_GOSOM_URL=http://gosom:8080
-      - PV_DB=/dados/desvio.db
     ports:
       - "8000:8000"
-    volumes:
-      - dados:/dados
     depends_on:
       - gosom
 
@@ -36,13 +34,19 @@ services:
     env_file: .env
     environment:
       - PV_GOSOM_URL=http://gosom:8080
-      - PV_DB=/dados/desvio.db
-    volumes:
-      - dados:/dados
     depends_on:
       - gosom
 
+  # Postgres vazio só para o pytest (os testes rodam as migrações e o auth de mentira de infra/supabase/local):
+  # PV_TEST_DATABASE_URL=postgresql://postgres:teste@localhost:54329/desvio_teste
+  banco-teste:
+    image: postgres:16
+    profiles: ["teste"]
+    environment:
+      - POSTGRES_PASSWORD=teste
+      - POSTGRES_DB=desvio_teste
+    ports:
+      - "54329:5432"
+
 volumes:
-  # volume do Docker, não pasta do host: o SQLite trava mal em pasta compartilhada do Windows/macOS
-  dados:
   gmaps-playwright-cache:

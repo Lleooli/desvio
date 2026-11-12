@@ -1,13 +1,15 @@
 import asyncio
+import threading
 
+import psycopg
 import pytest
 
 from app import fila, worker
 
 
 @pytest.fixture(autouse=True)
-def banco(tmp_path, monkeypatch):
-    monkeypatch.setattr(fila, "DB", str(tmp_path / "fila.db"))
+def banco(pg):
+    return pg
 
 
 def test_ciclo_de_vida():
@@ -30,6 +32,47 @@ def test_fila_nao_entrega_duas_vezes():
 
 def test_obter_inexistente():
     assert fila.obter("nao-existe") is None
+
+
+def test_obter_so_devolve_job_do_dono(pg):
+    from conftest import criar_pessoa
+    dono, _ = criar_pessoa(pg)
+    outro, _ = criar_pessoa(pg)
+    jid = fila.criar("viagem", {}, usuario=dono)
+    assert fila.obter(jid, usuario=dono)["id"] == jid
+    assert fila.obter(jid, usuario=outro) is None
+
+
+def test_dois_workers_nunca_pegam_o_mesmo_job(pg):
+    """Duas conexões abertas ao mesmo tempo: com o primeiro job travado pela transação de A,
+    B pula para o próximo (SKIP LOCKED) em vez de esperar ou pegar o mesmo."""
+    a, b = fila.criar("viagem", {}), fila.criar("viagem", {})
+    sql = ("update jobs set status='rodando' where id = (select id from jobs where status='pendente' "
+           "order by criado_em, id limit 1 for update skip locked) returning id")
+    with psycopg.connect(pg) as con_a, psycopg.connect(pg) as con_b:
+        pego_a = con_a.execute(sql).fetchone()[0]  # transação de A segue aberta
+        pego_b = con_b.execute(sql).fetchone()[0]
+        con_a.commit()
+        con_b.commit()
+    assert {pego_a, pego_b} == {a, b}
+
+
+def test_muitos_workers_em_paralelo_dividem_a_fila(pg):
+    ids = {fila.criar("viagem", {"n": i}) for i in range(40)}
+    pegos: list[str] = []
+    trava = threading.Lock()
+
+    def trabalhar():
+        while (job := fila.pegar_proximo()) is not None:
+            with trava:
+                pegos.append(job["id"])
+
+    threads = [threading.Thread(target=trabalhar) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(pegos) == sorted(ids)  # todos pegos, nenhum repetido
 
 
 def test_worker_processa(monkeypatch):
