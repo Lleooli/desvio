@@ -27,7 +27,7 @@ def test_textos_na_voz_do_design_system():
 def test_worker_grava_as_etapas_e_api_devolve(monkeypatch):
     vistos = []
 
-    async def falso(progresso=None, **kw):
+    async def falso(progresso=None, parcial=None, **kw):
         for etapa, pct in (("rota", 20), ("cidades", 35), ("lugares", 50), ("instagram", 90)):
             progresso(etapa, etapa.title(), f"detalhe de {etapa}", pct)
             vistos.append(fila.obter(jid)["progresso"])
@@ -41,6 +41,40 @@ def test_worker_grava_as_etapas_e_api_devolve(monkeypatch):
     assert vistos[0] == {"etapa": "rota", "titulo": "Rota", "detalhe": "detalhe de rota", "percentual": 20}
     j = TestClient(app).get(f"/jobs/{jid}").json()
     assert j["status"] == "pronto" and j["progresso"]["etapa"] == "instagram"
+
+
+def test_worker_grava_parcial_e_limpa_ao_concluir(monkeypatch):
+    vistos = []
+
+    async def falso(progresso=None, parcial=None, **kw):
+        parcial({"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Mirante"}]}]})
+        vistos.append(TestClient(app).get(f"/jobs/{jid}").json())
+        return {"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Mirante"},
+                                                     {"id": "gmaps:P1", "nome": "Café"}]}]}
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
+    jid = fila.criar("viagem", {"origem": "A", "destino": "B"})
+    asyncio.run(worker.rodar_uma_vez())
+    assert vistos[0]["status"] == "rodando"
+    assert vistos[0]["parcial"]["paradas"][0]["cards"][0]["id"] == "osm:node/1"
+    j = TestClient(app).get(f"/jobs/{jid}").json()
+    assert j["status"] == "pronto" and j["parcial"] is None and len(j["resultado"]["paradas"][0]["cards"]) == 2
+
+
+def test_parcial_tira_cards_ja_avaliados(monkeypatch, tmp_path):
+    from app import preferencias
+    monkeypatch.setattr(preferencias, "DB", str(tmp_path / "p.db"))
+    preferencias.registrar("leo", {"id": "osm:node/1", "categoria": "turismo"}, False)
+
+    async def falso(progresso=None, parcial=None, **kw):
+        parcial({"paradas": [{"nome": "A", "cards": [{"id": "osm:node/1", "nome": "Visto"},
+                                                     {"id": "osm:node/2", "nome": "Novo"}]}]})
+        raise RuntimeError("para aqui")
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
+    gravados = []
+    monkeypatch.setattr(worker.fila, "parcial", lambda jid, r: gravados.append(r))
+    fila.criar("viagem", {"origem": "A", "destino": "B", "usuario": "leo"})
+    asyncio.run(worker.rodar_uma_vez())
+    assert [c["id"] for c in gravados[0]["paradas"][0]["cards"]] == ["osm:node/2"]
 
 
 def test_progresso_renova_atualizado_em_e_nao_mexe_em_job_fechado():
