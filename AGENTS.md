@@ -31,6 +31,7 @@ services/coletor/           Python + FastAPI
   app/banco.py              conexão com o Postgres (PV_DATABASE_URL)
   app/auth.py               valida o token do Supabase; o usuário sai do token
   app/worker.py             consome a fila e roda a coleta
+  app/viagens.py            viagens, paradas e cards guardados no banco
   app/coletor.py            orquestra rota, paradas e cards
   app/geo.py                Nominatim (geocodificação) e OSRM (rota)
   app/osm.py                Overpass (cidades e lugares) e Wikipedia

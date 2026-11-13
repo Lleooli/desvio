@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 
+import psycopg
 from psycopg.types.json import Jsonb
 
 from . import banco
@@ -15,11 +16,15 @@ from . import banco
 _AGORA = "clock_timestamp()"  # now() é o início da transação; aqui queremos o instante real
 
 
-def criar(tipo: str, entrada: dict, usuario: str | None = None) -> str:
+def criar(tipo: str, entrada: dict, usuario: str | None = None, con: psycopg.Connection | None = None) -> str:
+    """Job novo na fila; com `con`, na transação de quem chamou (o /viagem cria a viagem junto)."""
     jid = uuid.uuid4().hex
-    with banco.conectar() as con:
-        con.execute("insert into jobs (id, usuario, tipo, entrada) values (%s, %s, %s, %s)",
-                    (jid, usuario, tipo, Jsonb(entrada)))
+    sql = "insert into jobs (id, usuario, tipo, entrada) values (%s, %s, %s, %s)"
+    if con is not None:
+        con.execute(sql, (jid, usuario, tipo, Jsonb(entrada)))
+        return jid
+    with banco.conectar() as nova:
+        nova.execute(sql, (jid, usuario, tipo, Jsonb(entrada)))
     return jid
 
 

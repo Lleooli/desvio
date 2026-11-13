@@ -52,11 +52,13 @@ docker compose up --build
 
 Todas as rotas, menos `/docs`, exigem o token do Supabase Auth no cabeçalho
 `Authorization: Bearer <access_token>` (sem token ou com token vencido: 401).
-O usuário sai do token, nunca do corpo; o job de outra pessoa responde 404.
+O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa responde 404.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| POST | `/viagem` | origem, destino, veículo (`carro`, `moto` ou `bicicleta`) e intervalo entre paradas, escolhido pela pessoa → `202 {job_id}` |
+| POST | `/viagem` | origem, destino, veículo (`carro`, `moto` ou `bicicleta`) e intervalo entre paradas, escolhido pela pessoa → `202 {job_id, viagem_id}`. A viagem já fica guardada com status `buscando` |
+| GET | `/viagens` | `{viagens: [...]}`, as da pessoa, a mais recente primeiro: `id`, `origem`, `destino`, `veiculo`, `status` (`buscando`, `pronta` ou `falhou`), `job_id`, `criado_em` e `progresso: {decididos, total}` (cards da viagem já avaliados pela pessoa) |
+| GET | `/viagens/{id}` | a viagem com `polilinha` e `paradas` (`ordem` a partir de 0, `nome`, `uf`, `tipo`, `km_na_rota`, `cards`); os cards já avaliados somem e o resto vem ordenado pelo gosto. Viagem de outra pessoa: 404 |
 | GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards. Enquanto roda, `progresso` traz `{etapa, titulo, detalhe, percentual}`, com as etapas `rota`, `cidades`, `lugares` e `instagram`, nessa ordem, e os textos da tela Carregando. Com o Google ligado, `parcial` traz as paradas só com cards do OpenStreetMap antes do gosom; o `resultado` final contém esses cards, com os mesmos ids, menos os que a pessoa já deslizou (Bora ou Passo) enquanto esperava |
 | POST | `/swipe` | grava `{card, gostou}` em `lugar` e `decisao` |
 | GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço |
@@ -66,6 +68,11 @@ O usuário sai do token, nunca do corpo; o job de outra pessoa responde 404.
 
 Em `/viagem`, os cards que a pessoa do token já avaliou somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
+
+Quando o job termina, o worker grava a viagem no banco (`viagem`, `parada`,
+`parada_lugar` e `lugar`, em `app/viagens.py`) e ela passa a `pronta`. A
+coleta atualiza o card em `lugar` (é dado do servidor); o `/swipe` nunca
+reescreve um lugar que já existe.
 
 A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
 `docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`:

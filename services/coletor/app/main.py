@@ -1,8 +1,10 @@
 """API do planejador. Rode com:  uvicorn app.main:app --reload
 
 Fluxo pensado para o front (estilo Tinder):
-1. POST /viagem (carro, moto ou bicicleta)  → job_id (202); a coleta roda no worker
+1. POST /viagem (carro, moto ou bicicleta)  → job_id e viagem_id (202); a coleta roda no worker
    GET  /jobs/{id}                          → status; quando "pronto", paradas com cards
+   GET  /viagens                            → as viagens da pessoa, a mais recente primeiro
+   GET  /viagens/{id}                       → paradas e cards ainda não avaliados, pelo gosto
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
 4. GET  /perfil                            → resumo do gosto, para a IA
@@ -27,7 +29,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import banco, fila, ia, preferencias, roteiro
+from . import banco, fila, ia, preferencias, roteiro, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -80,9 +82,26 @@ class Ranquear(BaseModel):
 
 @app.post("/viagem", status_code=202)
 def viagem(req: Viagem, eu: Usuario = Depends(usuario_atual)):
-    banco.garantir_usuario(eu.id, eu.email)
-    jid = fila.criar("viagem", {**req.model_dump(), "usuario": eu.id}, usuario=eu.id)
-    return {"job_id": jid, "status": "pendente"}
+    entrada = req.model_dump()
+    with banco.conectar() as con:  # viagem e job na mesma transação: a viagem aparece já "buscando"
+        banco.garantir_usuario(eu.id, eu.email, con)
+        vid = viagens.criar(con, eu.id, entrada)
+        jid = fila.criar("viagem", {**entrada, "usuario": eu.id, "viagem": vid}, usuario=eu.id, con=con)
+        viagens.ligar_job(con, vid, jid)
+    return {"job_id": jid, "viagem_id": vid, "status": "pendente"}
+
+
+@app.get("/viagens")
+def lista_de_viagens(eu: Usuario = Depends(usuario_atual)):
+    return {"viagens": viagens.listar(eu.id)}
+
+
+@app.get("/viagens/{viagem_id}")
+def uma_viagem(viagem_id: str, eu: Usuario = Depends(usuario_atual)):
+    v = viagens.obter(eu.id, viagem_id)  # viagem de outra pessoa: 404, como se não existisse
+    if not v:
+        raise HTTPException(404, "Viagem não encontrada")
+    return v
 
 
 @app.get("/jobs/{job_id}")

@@ -20,7 +20,7 @@ As abas **Descobrir** e **Roteiro** (`app/(abas)/descobrir.tsx` e `roteiro.tsx`)
 
 ## Parâmetros
 
-- `:id` — a viagem (criada por `POST /viagem` no coletor)
+- `:id` — a viagem (`viagem_id` de `POST /viagem` no coletor; `GET /viagens` lista as da pessoa e `GET /viagens/{id}` traz paradas e cards)
 - `:paradaId` — índice da parada na viagem (0 = primeira cidade; a última é o destino)
 - `:lugarId` — id do card (`gmaps:…` ou `osm:…`)
 
