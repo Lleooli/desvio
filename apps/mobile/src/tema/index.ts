@@ -44,6 +44,9 @@ export const medida = {
   desabilitado: 0.45,
   serraAltura: 28,
   serraPadrao: 160,
+  estradaVelocidade: 36,
+  estradaLargura: 46,
+  estradaBorda: 6,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
