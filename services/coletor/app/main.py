@@ -10,8 +10,9 @@ Fluxo pensado para o front (estilo Tinder):
 4. GET  /perfil                            → resumo do gosto, para a IA
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
-Toda rota, menos /docs, exige o token do Supabase (Authorization: Bearer);
-o usuário sai do token (app/auth.py), nunca do corpo.
+Toda rota, menos /docs e /fotos, exige o token do Supabase (Authorization: Bearer);
+o usuário sai do token (app/auth.py), nunca do corpo. /fotos não pede token (o
+<Image> do app não manda cabeçalho), mas só aceita URLs assinadas pelo coletor.
 
 IA (Groq, com plano B sem IA): POST /triagem, POST /cards/ranquear e
 POST /roteiro com "usar_ia": true.
@@ -23,15 +24,15 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import banco, conta, fila, ia, preferencias, roteiro, viagens
+from . import banco, conta, fila, gmaps, ia, preferencias, roteiro, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -165,3 +166,15 @@ async def triagem(req: Triagem, eu: Usuario = Depends(usuario_atual)):
 async def ranquear(req: Ranquear, eu: Usuario = Depends(usuario_atual)):
     async with httpx.AsyncClient() as client:
         return await ia.ranquear(client, req.cards, req.resumo)
+
+
+@app.get("/fotos/{nome:path}", include_in_schema=False)
+async def foto(nome: str, l: int = Query(gmaps.LARGURA_FOTO, ge=100, le=1600), ass: str = ""):
+    """Foto da Places API sem expor a chave: confere a assinatura e redireciona para a imagem no Google."""
+    if not gmaps.foto_valida(nome, l, ass):
+        raise HTTPException(404, "Foto não encontrada")
+    async with httpx.AsyncClient() as client:
+        destino = await gmaps.url_da_foto(client, nome, l)
+    if not destino:
+        raise HTTPException(404, "Foto não encontrada")
+    return RedirectResponse(destino, status_code=302, headers={"Cache-Control": "private, max-age=3600"})

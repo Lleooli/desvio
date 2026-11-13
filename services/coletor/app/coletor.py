@@ -223,7 +223,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
 
     Com o Google ligado, `ao_ter_parcial` recebe antes as paradas só com cards do OSM.
     """
-    # O que o cache (30 dias, entre usuários) já tem do Google não vai para o gosom
+    # O que o cache (30 dias, entre usuários) já tem do Google não vai para o Google de novo
     google: dict[str, list[dict]] = {}
     faltam_google: dict[str, str] = {}
     if usar_google_maps:
@@ -241,15 +241,17 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                     google[f"{i}|{cat}"] = guardado
 
     # 1) Base gratuita e estável: OpenStreetMap (com cache por cidade, UF e categoria)
-    leva = "leva uns 3 minutos" if faltam_google else "leva menos de 1 minuto"
+    lento = bool(faltam_google) and gmaps.fonte() == "gosom"  # a Places API responde em segundos
+    leva = "leva uns 3 minutos" if lento else "leva menos de 1 minuto"
     brutos = []
     for i, p in enumerate(paradas):
         _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
                 35 + 40 * i // len(paradas))
         brutos.append(await _pois_com_cache(client, p, categorias))
 
-    # 2) Google Maps (via gosom): um job só para a viagem inteira. Ele leva minutos, então
-    #    antes entrega um parcial só com OpenStreetMap, para a pessoa já ir deslizando.
+    # 2) Google Maps (gmaps.py: Places API ou gosom). No gosom é um job só para a viagem
+    #    inteira e leva minutos, então antes entrega um parcial só com OpenStreetMap,
+    #    para a pessoa já ir deslizando.
     avisos: list[str] = []
     enviados: list[list[dict]] = []  # cards do parcial, por parada
     if faltam_google:
@@ -259,7 +261,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
             await _completar_wikipedia(client, [c for cs in enviados for c in cs])
             ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
                             for p, cs in zip(paradas, enviados)])
-        _avisar(progresso, "lugares", "Buscando fotos e notas", "Google Maps · leva uns 3 minutos", 75)
+        _avisar(progresso, "lugares", "Buscando fotos e notas", f"Google Maps · {leva}", 75)
         try:
             novos = await gmaps.buscar_lote(client, faltam_google)
             for cid, lugares in novos.items():

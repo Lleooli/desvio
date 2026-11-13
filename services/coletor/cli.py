@@ -18,7 +18,7 @@ def main() -> None:
     ap.add_argument("--veiculo", choices=geo.VEICULOS, default="carro")
     ap.add_argument("--intervalo", type=float, default=200, help="km entre paradas (padrão 200)")
     ap.add_argument("--por-categoria", type=int, default=5)
-    ap.add_argument("--google", action="store_true", help="usar o gosom (precisa estar rodando)")
+    ap.add_argument("--google", action="store_true", help="usar o Google Maps (Places API com PV_GOOGLE_PLACES_KEY, ou o gosom rodando)")
     ap.add_argument("--sem-instagram-busca", action="store_true")
     ap.add_argument("--saida", default="viagem.json")
     args = ap.parse_args()

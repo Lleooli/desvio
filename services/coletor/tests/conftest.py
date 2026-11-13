@@ -24,6 +24,9 @@ def _isolado(monkeypatch):
     monkeypatch.setattr(conta, "_transporte", None)
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
+    # Fonte do Google previsível: gosom (o mock dos testes), a menos que o teste mude
+    for var in ("PV_GOOGLE_FONTE", "PV_GOOGLE_PLACES_KEY", "PV_API_URL_PUBLICA"):
+        monkeypatch.delenv(var, raising=False)
     yield
     cache._fechar()  # a conexão do cache não passa de um teste para o outro
     cache._desligado = False

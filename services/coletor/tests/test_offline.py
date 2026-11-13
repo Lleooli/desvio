@@ -121,6 +121,24 @@ def _handler(request: httpx.Request) -> httpx.Response:
                 linhas.append({"input_id": cid, "title": "Ruim", "review_rating": "3.1", "review_count": "10",
                                "latitude": str(ROTA[0][0]), "longitude": str(ROTA[0][1])})
         return httpx.Response(200, text=_csv_gosom(linhas))
+    if url == "https://places.googleapis.com/v1/places:searchText":
+        texto = json.loads(request.content)["textQuery"]
+        _handler.places = getattr(_handler, "places", []) + [texto]
+        if not texto.startswith("restaurantes em "):
+            return httpx.Response(200, json={})
+        cidade = texto.removeprefix("restaurantes em ").split(",")[0]
+        if cidade.startswith("Cidade"):  # nome do mock do Overpass: "Cidade{lat:.1f}"
+            lat = float(cidade.removeprefix("Cidade"))
+            lon = min(ROTA, key=lambda p: abs(p[0] - lat))[1]
+        else:
+            lat, lon = ROTA[-1]
+        return httpx.Response(200, json={"places": [{
+            "id": f"PL{lat:.1f}", "displayName": {"text": f"Churrascaria {cidade}"},
+            "location": {"latitude": lat, "longitude": lon}, "rating": 4.8, "userRatingCount": 900,
+            "websiteUri": f"https://instagram.com/churras{abs(round(lat))}",
+            "photos": [{"name": f"places/PL/photos/F{abs(round(lat))}",
+                        "authorAttributions": [{"displayName": "Ana", "uri": "https://maps.google.com/contrib/1"}]}],
+        }]})
     return httpx.Response(404)
 
 
@@ -171,6 +189,37 @@ def test_fluxo_carro_com_google(mock_http, monkeypatch):
     assert rest[0]["instagram"].startswith("https://instagram.com/churras")
     assert all(c["nome"] != "Ruim" for p in r["paradas"] for c in p["cards"])  # nota baixa / longe filtrados
     assert any(c["fonte"] == "openstreetmap" for c in rest)  # completado com OSM
+
+
+def test_fluxo_carro_com_places_api(mock_http, monkeypatch):
+    monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "chave-de-teste")
+    _handler.keywords = None
+    _handler.places = []
+    etapas = []
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True,
+                                            progresso=lambda *a: etapas.append(a)))
+    assert _handler.keywords is None  # o gosom nem foi chamado
+    assert len(_handler.places) == 3 * len(r["paradas"])  # uma Text Search por parada e categoria
+    rest = [c for c in r["paradas"][1]["cards"] if c["categoria"] == "restaurante"]
+    g = rest[0]
+    assert g["fonte"] == "google_maps" and g["id"].startswith("gmaps:PL") and g["nota"] == 4.8
+    assert g["foto"].startswith("/fotos/places/PL/photos/") and "chave-de-teste" not in g["foto"]
+    assert g["fotos_autores"][0][0]["nome"] == "Ana" and g["fotos_autores"][0][0]["uri"]
+    assert g["instagram"].startswith("https://instagram.com/churras") and g["instagram_origem"] == "site"
+    assert any(c["fonte"] == "openstreetmap" for c in rest)  # completado com OSM
+    assert not any("3 minutos" in e[2] for e in etapas)      # a Places API não leva minutos
+    assert not any(p.get("avisos") for p in r["paradas"])
+
+
+def test_places_fora_do_ar_cai_no_osm(mock_http, monkeypatch):
+    monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "chave-de-teste")
+
+    async def fora(*a, **k):
+        raise httpx.ConnectError("sem rede")
+    monkeypatch.setattr(gmaps, "_text_search", fora)
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    assert all(c["fonte"] == "openstreetmap" for p in r["paradas"] for c in p["cards"])
+    assert "Google Maps indisponível" in r["paradas"][0]["avisos"][0]
 
 
 def test_api(mock_http, pessoa):
