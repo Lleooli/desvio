@@ -5,7 +5,9 @@ Tudo gratuito e sem chave de API:
 - OSRM para calcular a rota: perfil de carro para carro e moto, perfil de
   bicicleta (servidor da FOSSGIS) para bicicleta
 Os servidores públicos têm política de uso justo (Nominatim: 1 req/s, sem uso
-pesado). Para produção, suba os seus via Docker (ver README).
+pesado). Para produção, suba os seus (infra/osm/README.md) e aponte PV_OSRM_URL,
+PV_OSRM_BIKE_URL e PV_NOMINATIM_URL; no Nominatim próprio, PV_NOMINATIM_INTERVALO=0
+tira a espera entre as chamadas.
 """
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
 NOMINATIM = os.getenv("PV_NOMINATIM_URL", "https://nominatim.openstreetmap.org")
 OSRM = os.getenv("PV_OSRM_URL", "https://router.project-osrm.org")
 OSRM_BIKE = os.getenv("PV_OSRM_BIKE_URL", "https://routing.openstreetmap.de/routed-bike")
+# Segundos de espera depois de cada chamada ao Nominatim. 1,1 respeita o servidor público (1 req/s).
+NOMINATIM_INTERVALO = float(os.getenv("PV_NOMINATIM_INTERVALO", "1.1"))
 
 VEICULOS = ("carro", "moto", "bicicleta")  # moto usa a rota de carro
 
@@ -32,7 +36,7 @@ _trava_nominatim = asyncio.Lock()
 
 
 async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> object:
-    """Chamada ao Nominatim respeitando 1 requisição por segundo."""
+    """Chamada ao Nominatim, uma por vez, com NOMINATIM_INTERVALO segundos entre elas."""
     chave = caminho + repr(sorted(params.items()))
     if chave in _cache:
         return _cache[chave]
@@ -42,7 +46,8 @@ async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> o
         return guardado
     async with _trava_nominatim:
         r = await client.get(f"{NOMINATIM}/{caminho}", params=params, headers=HEADERS, timeout=30)
-        await asyncio.sleep(1.1)
+        if NOMINATIM_INTERVALO > 0:
+            await asyncio.sleep(NOMINATIM_INTERVALO)
     r.raise_for_status()
     _cache[chave] = r.json()
     cache.guardar("nominatim|" + chave, _cache[chave])
