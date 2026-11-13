@@ -10,11 +10,28 @@ import { Destaque } from "@/componentes/Destaque";
 import { Estrada } from "@/componentes/Estrada";
 import { Icon, type IconName } from "@/componentes/Icon";
 import { Rating } from "@/componentes/Rating";
+import { PilhaSwipe } from "@/componentes/PilhaSwipe";
 import { Segmented } from "@/componentes/Segmented";
 import { StopItem } from "@/componentes/StopItem";
+import { SwipeActions } from "@/componentes/SwipeActions";
+import { SwipeCard, type CardLugar } from "@/componentes/SwipeCard";
 import { TextField } from "@/componentes/TextField";
 import { Toast } from "@/componentes/Toast";
 import { espaco, estiloTexto, TemaProvider, useCores, type Tema } from "@/tema";
+
+const exemplos: CardLugar[] = [
+  {
+    id: "exemplo:1", nome: "Churrascaria Gaúcha", categoria: "restaurante", cidade: "Lages", uf: "SC",
+    foto: "https://picsum.photos/id/1080/760/1090", nota: 4.7, avaliacoes: 1834, km: 512, horas: 6.8,
+    descricao: "Rodízio tradicional a 2 km da BR-116, aberto até as 23h.",
+    instagram: "https://instagram.com/churrascariagaucha",
+  },
+  {
+    id: "exemplo:2", nome: "Mirante do Vale", categoria: "turismo", foto: null, cidade: "Vitória da Conquista", uf: "BA",
+    nota: 4.5, avaliacoes: 642, instagram: "@mirantedovale", instagramProvavel: true,
+  },
+  { id: "exemplo:3", nome: "Posto Serra Azul", categoria: "posto", cidade: "Montes Claros", uf: "MG", km: 2104, horas: 27, nota: 4.3, avaliacoes: 211 },
+];
 
 const icones: IconName[] = [
   "x", "check", "star", "pin", "camera", "food", "fuel", "leaf", "bed",
@@ -43,6 +60,7 @@ function Catalogo({ tema }: { tema: Tema }) {
   const [area, setArea] = useState<Area>("descobrir");
   const [cidade, setCidade] = useState("");
   const nada = () => {};
+  const [pilha, setPilha] = useState(exemplos);
 
   const alternar = (cat: Categoria) =>
     setFiltros((atual) => (atual.includes(cat) ? atual.filter((x) => x !== cat) : [...atual, cat]));
@@ -150,6 +168,22 @@ function Catalogo({ tema }: { tema: Tema }) {
           <Rating nota={5} avaliacoes={12} />
           <Rating nota={4.2} />
         </View>
+      </Bloco>
+
+      <Bloco titulo="SwipeCard">
+        <SwipeCard card={exemplos[0]} />
+        <SwipeCard card={exemplos[1]} stamp="bora" />
+        <SwipeCard card={exemplos[2]} stamp="passo" />
+      </Bloco>
+
+      <Bloco titulo="SwipeActions">
+        <SwipeActions onPasso={nada} onFavorito={nada} onBora={nada} />
+        <SwipeActions onPasso={nada} onFavorito={nada} onBora={nada} disabled />
+      </Bloco>
+
+      <Bloco titulo="PilhaSwipe">
+        <PilhaSwipe cards={pilha} onDecisao={(card) => setPilha((atual) => atual.filter((x) => x.id !== card.id))} />
+        {pilha.length === 0 ? <Button onPress={() => setPilha(exemplos)} variant="secondary">Recomeçar</Button> : null}
       </Bloco>
 
       <Bloco titulo="Toast">
