@@ -47,6 +47,13 @@ export const medida = {
   estradaVelocidade: 36,
   estradaLargura: 46,
   estradaBorda: 6,
+  paradaKm: 76,
+  paradaTrilho: 20,
+  paradaTrilhoLinha: 4,
+  paradaPonto: 16,
+  paradaPontoBorda: 3,
+  paradaAltura: 72,
+  paradaAjusteTopo: 2,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
