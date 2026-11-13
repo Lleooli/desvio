@@ -27,3 +27,4 @@ dados/
 !.env.example
 .idea/
 .vscode/
+.claude/
