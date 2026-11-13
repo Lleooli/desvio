@@ -6,7 +6,7 @@
 <div id="root" class="dv-row"></div>
 <script>
   var D = window.Desvio, h = React.createElement;
-  var nomes = ['x','check','star','pin','camera','food','fuel','leaf','bed','route','compass','user','suitcase','clock','at','plane','car'];
+  var nomes = ['x','check','star','pin','camera','food','fuel','leaf','bed','route','compass','user','suitcase','clock','at','car'];
   ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null, nomes.map(function (n) {
     return h('span', { key: n, title: n, style: { display: 'inline-flex', padding: 6, color: 'var(--ink)' } }, h(D.Icon, { name: n, size: 24, label: n }));
   })));

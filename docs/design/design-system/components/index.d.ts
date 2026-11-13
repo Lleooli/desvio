@@ -3,7 +3,7 @@
 export type Categoria = "turismo" | "restaurante" | "posto" | "natureza" | "hospedagem";
 export type IconName =
   | "x" | "check" | "star" | "pin" | "camera" | "food" | "fuel" | "leaf" | "bed"
-  | "route" | "compass" | "user" | "suitcase" | "clock" | "at" | "plane" | "car";
+  | "route" | "compass" | "user" | "suitcase" | "clock" | "at" | "car";
 
 export interface IconProps {
   name: IconName;
@@ -54,9 +54,9 @@ export interface SwipeCardProps {
   uf?: string;
   nota?: number | null;
   avaliacoes?: number | null;
-  /** km na rota (modo carro). */
+  /** km na rota. */
   km?: number;
-  /** horas desde a saída (modo carro). */
+  /** horas desde a saída. */
   horas?: number;
   descricao?: string;
   /** URL ou @handle. */
@@ -82,8 +82,6 @@ export interface StopItemProps {
   km?: number;
   /** 0 = saída */
   horas?: number;
-  /** modo avião */
-  dias?: number;
   tipo?: "origem" | "parada" | "destino";
   /** parada sendo escolhida agora */
   ativo?: boolean;
@@ -153,15 +151,4 @@ export interface ToastProps {
   /** Texto do botão, ex. "Desfazer". */
   acao?: string;
   onAcao?: () => void;
-}
-
-export interface JanelaCidadeProps {
-  cidade: string;
-  uf?: string;
-  dias?: number;
-  foto?: string | null;
-  /** Fundo do céu quando não há foto. */
-  variante?: "faixa" | "placa";
-  selecionada?: boolean;
-  onClick?: () => void;
 }

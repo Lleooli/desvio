@@ -20,7 +20,7 @@ Estrada brasileira: verde das placas (`placa`), amarelo da faixa (`faixa`), asfa
 
 ## Componentes
 
-Button, Segmented, Chip, Rating, SwipeCard, SwipeActions, Toast, JanelaCidade, StopItem, TextField, BottomNav, Ceu, Estrada, Destaque, Icon. As props estão no design system; no app, reescreva cada um em React Native com os mesmos nomes e tokens.
+Button, Segmented, Chip, Rating, SwipeCard, SwipeActions, Toast, StopItem, TextField, BottomNav, Ceu, Estrada, Destaque, Icon. As props estão no design system; no app, reescreva cada um em React Native com os mesmos nomes e tokens.
 
 ## Regras que mais importam
 

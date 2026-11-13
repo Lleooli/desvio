@@ -85,7 +85,6 @@ export const raio = {
   "radius-sm": 10,
   "radius-md": 16,
   "radius-lg": 28,
-  "radius-arco": 32,
   "radius-pill": 999
 } as const;
 export const tipografia = {

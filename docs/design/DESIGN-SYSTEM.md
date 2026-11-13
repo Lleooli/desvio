@@ -17,15 +17,15 @@ Desvio planeja viagens por terra, de carro, moto ou bicicleta: o app sugere luga
 
 - **A foto decide.** No swipe, a imagem do lugar ocupa o card inteiro e o texto fica por cima, curto. O que fica sobre a foto é `vidro` fosco, para esconder o mínimo dela.
 - **Toda decisão tem botão.** O gesto é atalho; Passo, Favorito e Bora estão sempre visíveis em `SwipeActions`.
-- **A estrada é o eixo.** No modo carro, tudo se ordena por quilômetro: tags `KM 512`, a linha do tempo de `StopItem`, o roteiro final. A `Estrada`, com as cidades correndo pela pista, é a assinatura visual.
+- **A estrada é o eixo.** Tudo se ordena por quilômetro: tags `KM 512`, a linha do tempo de `StopItem`, o roteiro final. A `Estrada`, com as cidades correndo pela pista, é a assinatura visual.
 - **Calor só no topo.** O `Ceu` aquece o topo das telas de entrada; o resto da interface é areia lisa, para o conteúdo aparecer.
 
 ### Voz e texto
 
 - Português do Brasil, tratando a pessoa por "você". Frases curtas e diretas.
-- Verbos curtos e informais nos botões de decisão: **Bora**, **Passo**, **Favorito**. Nos demais botões, infinitivo: "Montar roteiro", "Adicionar escala".
+- Verbos curtos e informais nos botões de decisão: **Bora**, **Passo**, **Favorito**. Nos demais botões, infinitivo: "Montar roteiro", "Adicionar parada".
 - Títulos de tela como pergunta ou convite, com uma palavra em `Destaque`: "Para onde a *estrada* te leva?", "Escolha suas *paradas*".
-- Rótulos de campo em forma de pergunta: "De onde você sai?", "Quantos dias em Salvador?".
+- Rótulos de campo em forma de pergunta: "De onde você sai?", "Para onde vai?".
 - Números no formato brasileiro: "4,7", "1.834 avaliações", "~6h de estrada". Quilometragem em maiúsculas: "KM 512", "+6H".
 - Sem emoji na interface. Ícones do conjunto `Icon` fazem esse papel.
 - Mensagens de erro dizem o que fazer: "Não achamos essa cidade. Confira a grafia."
@@ -58,7 +58,6 @@ Desvio planeja viagens por terra, de carro, moto ou bicicleta: o app sugere luga
 - Todo alvo de toque tem pelo menos `touch` (48px). Botões principais: pílula com `button-h` (52px). Botões redondos de swipe: 64px; Favorito: 52px.
 - Raios: `radius-lg` no card de swipe e no Céu em bloco, `radius-md` em campos e listas, `radius-sm` na tag de km, `radius-pill` em botões, chips, Segmented e Toast.
 - Formas com significado, não use para outra coisa:
-  - **Janelinha de avião** (topo `radius-pill`, base `radius-arco`) = cidade do modo avião (`JanelaCidade`).
   - **Serra** (recorte de morros na base do `Ceu`) = passagem do topo aquecido para o conteúdo.
   - **Estrada** curva = a rota.
 - Layout pensado para 360–430px de largura. Em telas maiores, uma coluna de no máximo 480px, centralizada.
@@ -66,7 +65,7 @@ Desvio planeja viagens por terra, de carro, moto ou bicicleta: o app sugere luga
 
 ### Sombras
 
-- Interface plana por padrão. `shadow-1` só em opção ativa do Segmented, chip selecionado e JanelaCidade; `shadow-2` em botões redondos de swipe, Toast e folhas; `shadow-card` só no card do topo da pilha; `shadow-favorito` só no amarelo do Favorito.
+- Interface plana por padrão. `shadow-1` só em opção ativa do Segmented e chip selecionado; `shadow-2` em botões redondos de swipe, Toast e folhas; `shadow-card` só no card do topo da pilha; `shadow-favorito` só no amarelo do Favorito.
 
 ### Movimento
 
@@ -89,7 +88,7 @@ As curvas e durações estão em `components/bundle.css` como variáveis:
 ### Fotos
 
 - Fotos vêm do Google Maps ou da Wikipedia, sempre do próprio lugar. Recorte em `object-fit: cover`, sem filtros.
-- Sem foto, card e janela mostram o `Ceu` (com o ícone da categoria, no card). Não use foto genérica de banco de imagens.
+- Sem foto, o card mostra o `Ceu` com o ícone da categoria. Não use foto genérica de banco de imagens.
 - Texto sobre foto só dentro do `scrim` (em `on-scrim`) ou sobre `vidro` (em `ink`).
 
 ### Iconografia
@@ -171,14 +170,13 @@ Famílias:
 | `radius-sm` | `10px` | Tag de km. |
 | `radius-md` | `16px` | Campos, itens de lista, folhas. |
 | `radius-lg` | `28px` | Card de swipe e blocos do Céu. |
-| `radius-arco` | `32px` | Cantos de baixo da JanelaCidade; os de cima são radius-pill, formando a janelinha de avião. |
 | `radius-pill` | `999px` | Botões, chips, Segmented, Toast, botões redondos de swipe. |
 
 ### Sombras
 
 | Token | Valor | Uso |
 | --- | --- | --- |
-| `shadow-1` | claro `0 1px 2px rgba(35, 41, 43, 0.06), 0 4px 12px -4px rgba(35, 41, 43, 0.12)`<br>escuro `0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px -4px rgba(0, 0, 0, 0.5)` | Opção ativa do Segmented, chips selecionados, JanelaCidade. |
+| `shadow-1` | claro `0 1px 2px rgba(35, 41, 43, 0.06), 0 4px 12px -4px rgba(35, 41, 43, 0.12)`<br>escuro `0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px -4px rgba(0, 0, 0, 0.5)` | Opção ativa do Segmented, chips selecionados. |
 | `shadow-2` | claro `0 2px 4px rgba(35, 41, 43, 0.05), 0 22px 44px -18px rgba(35, 41, 43, 0.30)`<br>escuro `0 2px 4px rgba(0, 0, 0, 0.3), 0 22px 44px -18px rgba(0, 0, 0, 0.7)` | Botões redondos de swipe, Toast, folhas. |
 | `shadow-card` | claro `0 40px 90px -36px rgba(35, 41, 43, 0.48)`<br>escuro `0 40px 90px -36px rgba(0, 0, 0, 0.8)` | Só o card de swipe que está no topo da pilha. |
 | `shadow-favorito` | `inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 22px -10px rgba(201, 150, 0, 0.7)` | Brilho do botão Favorito. |
@@ -201,7 +199,7 @@ Barra fixa no rodapé com as quatro áreas do app: Viagens, Descobrir, Roteiro e
 ### Button
 Botão de ação para tudo que não é a decisão de swipe: criar viagem, montar roteiro, editar paradas.
 
-**O consumidor fornece:** `children` (verbo no infinitivo, curto: "Montar roteiro", "Adicionar escala"), `onClick`, opcionalmente `icon`, `variant`, `size` e `block`.
+**O consumidor fornece:** `children` (verbo no infinitivo, curto: "Montar roteiro", "Adicionar parada"), `onClick`, opcionalmente `icon`, `variant`, `size` e `block`.
 
 - `primary` (fundo `placa`, texto `on-placa`): uma por tela, a ação que avança o fluxo.
 - `secondary` (contorno `ink`): ações paralelas, como editar ou voltar ao swipe.
@@ -219,7 +217,7 @@ Fundo de céu de fim de tarde, do azul ao laranja do pôr do sol, para o topo da
 
 - Quatro brilhos radiais sobre `ceu-base`: `ceu-azul` no alto à esquerda, `ceu-claro` (ou `ceu-placa`, na variante placa) no alto à direita, `ceu-sol` embaixo à esquerda e `ceu-faixa` (ou `ceu-claro`) embaixo à direita.
 - Azul e laranja existem só aqui. Não use `ceu-azul` nem `ceu-sol` em botões, texto ou ícones.
-- Use no topo de Boas-vindas, Entrar, Nova viagem, Carregando rota e Roteiro, e como fundo do SwipeCard e da JanelaCidade sem foto. Uma vez por tela.
+- Use no topo de Boas-vindas, Entrar, Nova viagem, Carregando rota e Roteiro, e como fundo do SwipeCard sem foto. Uma vez por tela.
 - Texto em `ink` e `ink-muted`; ambos passam por cima de qualquer ponto do gradiente, nos dois temas.
 - Com `serra`, a base vira um perfil de morros que se encaixa na superfície seguinte. Passe em `fundoSerra` a cor dessa superfície.
 
@@ -261,16 +259,6 @@ Conjunto de ícones de traço do Desvio, numa grade de 24px com traço 1.8.
 - Sem `label` ele é decorativo e fica oculto para leitor de tela; use `label` só quando não há palavra ao lado.
 - Para o Instagram use `at` seguido do @: não reproduza o logotipo da marca.
 
-### JanelaCidade
-Miniatura de cidade em formato de janelinha de avião, para escalas e destino no modo avião.
-
-**O consumidor fornece:** `cidade`, `uf`, `dias`, `foto` (ou `variante` do céu quando não há foto), `selecionada` e `onClick`.
-
-- Use numa fileira rolável horizontal com `space-3` entre as janelas, na ordem da viagem.
-- Toque abre o swipe daquela cidade; a selecionada ganha a moldura em `faixa`.
-- O formato é fixo: topo em `radius-pill`, base em `radius-arco`. Não use esse formato para outra coisa; ele significa "cidade do modo avião".
-- No modo carro, use StopItem em vez da janela.
-
 ### Rating
 Nota do Google Maps com a contagem de avaliações, no formato brasileiro ("4,7 (1.834)").
 
@@ -285,7 +273,7 @@ Escolha entre duas a quatro opções exclusivas, sempre visíveis.
 
 **O consumidor fornece:** `opcoes` (`valor`, `label`, `icon` opcional), `valor` + `onChange` (ou `padrao` para deixar o estado com o componente), `rotulo` para o leitor de tela e `block` para ocupar a largura.
 
-- Uso principal: "Carro / Avião" na criação da viagem, e dias por cidade no modo avião.
+- Uso principal: "Carro / Moto / Bicicleta" na criação da viagem.
 - Mais de quatro opções: use Chips de filtro.
 - A opção ativa sobe para `surface-200` com `shadow-1`; o trilho é `surface-300`.
 - É um `radiogroup`: cada opção é um `radio` com `aria-checked`.
@@ -293,12 +281,11 @@ Escolha entre duas a quatro opções exclusivas, sempre visíveis.
 ### StopItem
 Uma linha da linha do tempo da viagem: km, cidade, horas de estrada e quantos lugares foram escolhidos ali.
 
-**O consumidor fornece:** `cidade`, `uf`, `km`, `horas` (modo carro) ou `dias` (modo avião), `tipo`, `aceitos` e `total`; `ativo` na parada que está sendo escolhida agora.
+**O consumidor fornece:** `cidade`, `uf`, `km`, `horas`, `tipo`, `aceitos` e `total`; `ativo` na parada que está sendo escolhida agora.
 
 - Empilhe vários StopItem em sequência; o trilho se conecta sozinho.
 - Origem e destino têm o ponto cheio em `placa`; a parada ativa usa `faixa`.
 - "3 de 12" conta os cards aceitos sobre os mostrados. Toque na linha abre o swipe daquela parada.
-- No modo avião, omita `km` e `horas` e passe `dias`.
 
 ### SwipeActions
 Os três botões de decisão abaixo do card: Passo, Favorito e Bora.
@@ -319,7 +306,7 @@ O card de um lugar na tela de swipe: foto cheia, nome, cidade, nota, km na rota 
 - Todo gesto tem botão equivalente em `SwipeActions` logo abaixo. Nunca dependa só do gesto.
 - Sem `foto`, o card mostra o Céu com o ícone da categoria. Não use foto de banco de imagens no lugar.
 - Chip de categoria e tag de km ficam sobre a foto em `vidro` fosco, para mostrar mais da imagem.
-- `km` e `horas` só no modo carro. No modo avião, omita: a tag some.
+- `km` e `horas` sempre que houver rota. Sem eles, a tag some.
 - O @ do Instagram abre em nova aba. Quando veio de busca, leva " · provável".
 - Largura máxima 380px, proporção fixa; na tela, o card ocupa a largura menos `space-4` de cada lado.
 
@@ -350,7 +337,7 @@ Confirmação curta que aparece na base da tela depois de uma ação, com desfaz
 export type Categoria = "turismo" | "restaurante" | "posto" | "natureza" | "hospedagem";
 export type IconName =
   | "x" | "check" | "star" | "pin" | "camera" | "food" | "fuel" | "leaf" | "bed"
-  | "route" | "compass" | "user" | "suitcase" | "clock" | "at" | "plane" | "car";
+  | "route" | "compass" | "user" | "suitcase" | "clock" | "at" | "car";
 
 export interface IconProps {
   name: IconName;
@@ -401,9 +388,9 @@ export interface SwipeCardProps {
   uf?: string;
   nota?: number | null;
   avaliacoes?: number | null;
-  /** km na rota (modo carro). */
+  /** km na rota. */
   km?: number;
-  /** horas desde a saída (modo carro). */
+  /** horas desde a saída. */
   horas?: number;
   descricao?: string;
   /** URL ou @handle. */
@@ -429,8 +416,6 @@ export interface StopItemProps {
   km?: number;
   /** 0 = saída */
   horas?: number;
-  /** modo avião */
-  dias?: number;
   tipo?: "origem" | "parada" | "destino";
   /** parada sendo escolhida agora */
   ativo?: boolean;
@@ -500,16 +485,5 @@ export interface ToastProps {
   /** Texto do botão, ex. "Desfazer". */
   acao?: string;
   onAcao?: () => void;
-}
-
-export interface JanelaCidadeProps {
-  cidade: string;
-  uf?: string;
-  dias?: number;
-  foto?: string | null;
-  /** Fundo do céu quando não há foto. */
-  variante?: "faixa" | "placa";
-  selecionada?: boolean;
-  onClick?: () => void;
 }
 ```

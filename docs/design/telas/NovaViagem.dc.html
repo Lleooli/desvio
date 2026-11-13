@@ -40,12 +40,7 @@ a{color:var(--placa)}a:hover{color:var(--ink)}
     </div>
   </div>
   <div style="position: absolute; left: 16px; right: 16px; bottom: 32px;">
-    <sc-if value="{{deCarro}}" hint-placeholder-val="{{true}}">
-      <a class="dv-btn dv-btn--primary dv-btn--block" href="Carregando.dc.html">Buscar paradas</a>
-    </sc-if>
-    <sc-if value="{{deAviao}}" hint-placeholder-val="{{false}}">
-      <a class="dv-btn dv-btn--primary dv-btn--block" href="Escalas.dc.html">Continuar para as escalas</a>
-    </sc-if>
+    <a class="dv-btn dv-btn--primary dv-btn--block" href="Carregando.dc.html">Buscar paradas</a>
   </div>
 </div>
 </x-dc>
@@ -62,10 +57,8 @@ class Component extends DCLogic {
       yes: true,
       n22: 22,
       modo: this.state.modo,
-      deCarro: this.state.modo === 'carro',
-      deAviao: this.state.modo === 'aviao',
       mudarModo: (v) => this.setState({ modo: v }),
-      modos: [{ valor: 'carro', label: 'Carro', icon: 'car' }, { valor: 'aviao', label: 'Avião', icon: 'plane' }],
+      modos: [{ valor: 'carro', label: 'Carro', icon: 'car' }, { valor: 'moto', label: 'Moto' }, { valor: 'bicicleta', label: 'Bicicleta' }],
       intervalos: [{ valor: '150', label: '150 km' }, { valor: '200', label: '200 km' }, { valor: '300', label: '300 km' }],
       categorias: ids.map((id) => ({
         id: id,

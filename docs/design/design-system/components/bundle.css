@@ -17,7 +17,7 @@ body { margin: 0; background: var(--surface-100); color: var(--ink); font-family
 .dv-stack { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
 .dv-icon { flex: none; display: block; }
 .dv-btn:focus-visible, .dv-chip:focus-visible, .dv-act__btn:focus-visible, .dv-nav__item:focus-visible,
-.dv-card__ig:focus-visible, .dv-seg__opt:focus-visible, .dv-toast__acao:focus-visible, .dv-janela:focus-visible {
+.dv-card__ig:focus-visible, .dv-seg__opt:focus-visible, .dv-toast__acao:focus-visible {
   outline: 2px solid var(--foco); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) { * { transition-duration: 0ms !important; animation-duration: 0ms !important; } }
@@ -136,21 +136,6 @@ button.dv-chip:active { transform: scale(.96); }
 .dv-toast__acao { margin-left: var(--space-1); min-height: 36px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-pill); background: transparent;
   color: var(--faixa); font: 600 15px/1 var(--font-sans); cursor: pointer; }
 @keyframes dv-toast-entra { from { opacity: 0; transform: translateY(12px) scale(.96); } }
-
-/* JanelaCidade — miniatura em forma de janelinha de avião */
-.dv-janela { display: inline-flex; flex-direction: column; gap: var(--space-2); width: 148px; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; }
-.dv-janela__moldura { display: block; position: relative; box-sizing: border-box; aspect-ratio: 3 / 4; padding: 6px; border-radius: var(--radius-pill) var(--radius-pill) var(--radius-arco) var(--radius-arco);
-  background: var(--surface-200); box-shadow: var(--shadow-1); transition: transform 280ms var(--ease-saida); }
-.dv-janela:active .dv-janela__moldura { transform: scale(.97); }
-.dv-janela__vidro { display: block; position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: var(--radius-pill) var(--radius-pill) calc(var(--radius-arco) - 6px) calc(var(--radius-arco) - 6px); }
-.dv-janela__vidro img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.dv-janela__vidro .dv-ceu { display: block; position: absolute; inset: 0; }
-.dv-janela__dias { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 2px var(--space-2); border-radius: var(--radius-pill);
-  background: var(--vidro); color: var(--ink); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
-  font: 600 14px/18px var(--font-placa); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
-.dv-janela[aria-pressed="true"] .dv-janela__moldura { background: var(--faixa); }
-.dv-janela__nome { margin: 0; font: 650 17px/20px var(--font-display); letter-spacing: -.02em; }
-.dv-janela__uf { margin: 0; font: 400 14px/18px var(--font-sans); color: var(--ink-muted); }
 
 /* StopItem */
 .dv-stop { display: grid; grid-template-columns: 76px 20px 1fr auto; align-items: start; column-gap: var(--space-2); min-height: 72px; }

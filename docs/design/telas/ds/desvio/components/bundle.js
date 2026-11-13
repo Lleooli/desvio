@@ -1,4 +1,4 @@
-/* @ds-bundle: {"format":4,"namespace":"Desvio","components":[{"name":"Ceu"},{"name":"Estrada"},{"name":"Destaque"},{"name":"Button"},{"name":"Segmented"},{"name":"Chip"},{"name":"Rating"},{"name":"SwipeCard"},{"name":"SwipeActions"},{"name":"Toast"},{"name":"JanelaCidade"},{"name":"StopItem"},{"name":"TextField"},{"name":"BottomNav"},{"name":"Icon"}]} */
+/* @ds-bundle: {"format":4,"namespace":"Desvio","components":[{"name":"Ceu"},{"name":"Estrada"},{"name":"Destaque"},{"name":"Button"},{"name":"Segmented"},{"name":"Chip"},{"name":"Rating"},{"name":"SwipeCard"},{"name":"SwipeActions"},{"name":"Toast"},{"name":"StopItem"},{"name":"TextField"},{"name":"BottomNav"},{"name":"Icon"}]} */
 (function () {
   var React = window.React, h = React.createElement;
 
@@ -29,7 +29,6 @@
     suitcase: "M4 8h16v11H4zM9 8V5.5A1.5 1.5 0 0110.5 4h3A1.5 1.5 0 0115 5.5V8M4 13h16",
     clock: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2",
     at: "M16 12a4 4 0 10-1.2 2.85M16 8v5a2.5 2.5 0 005 0v-1a9 9 0 10-3.5 7.1",
-    plane: "M10.5 13.5L3 11l1.5-1.5 8 1L16.5 6a1.8 1.8 0 012.5 2.5L14.5 12.5l1 8L14 22l-2.5-7.5L8 17.5V20l-1.5 1.5-1-3-3-1L4 16h2.5z",
     car: "M5 16v3M19 16v3M3 16h18v-4l-2-5H5l-2 5zM3 12h18M7 14h1M16 14h1"
   };
 
@@ -134,7 +133,6 @@
     var tipo = p.tipo || "parada";
     var sub = [];
     if (p.horas != null) sub.push(p.horas === 0 ? "Saída" : "~" + numero(p.horas, p.horas % 1 ? 1 : 0) + "h de estrada");
-    if (p.dias) sub.push(p.dias + (p.dias > 1 ? " dias" : " dia"));
     return h("div", { className: cx("dv-stop", "dv-stop--" + tipo, p.ativo && "dv-stop--ativo", p.className), "aria-current": p.ativo ? "step" : undefined },
       h("span", { className: "dv-stop__km" }, p.km != null ? "KM " + numero(p.km) : ""),
       h("span", { className: "dv-stop__rail", "aria-hidden": true }, h("span", { className: "dv-stop__dot" })),
@@ -236,7 +234,7 @@
         h("textPath", { href: "#" + idRef.current, startOffset: 0 }, Array(vezes + 1).join(unidade))));
   }
 
-  /* Segmented: escolha entre 2 a 4 opções exclusivas (Carro / Avião) */
+  /* Segmented: escolha entre 2 a 4 opções exclusivas (Carro / Moto / Bicicleta) */
   function Segmented(p) {
     var opcoes = p.opcoes || [];
     var interno = React.useState(p.padrao != null ? p.padrao : (opcoes[0] || {}).valor);
@@ -259,22 +257,9 @@
       p.acao ? h("button", { type: "button", className: "dv-toast__acao", onClick: p.onAcao }, p.acao) : null);
   }
 
-  /* JanelaCidade: miniatura de cidade em formato de janelinha de avião */
-  function JanelaCidade(p) {
-    var dias = p.dias != null ? p.dias + (p.dias === 1 ? " dia" : " dias") : null;
-    return h("button", { type: "button", className: cx("dv-janela", p.className), "aria-pressed": p.selecionada ? true : undefined, onClick: p.onClick },
-      h("span", { className: "dv-janela__moldura" },
-        h("span", { className: "dv-janela__vidro" },
-          p.foto ? h("img", { src: p.foto, alt: "" }) : h("span", { className: "dv-ceu" + (p.variante === "placa" ? " dv-ceu--placa" : "") }),
-          dias ? h("span", { className: "dv-janela__dias" }, dias) : null)),
-      h("span", null,
-        h("p", { className: "dv-janela__nome" }, p.cidade),
-        p.uf ? h("p", { className: "dv-janela__uf" }, p.uf) : null));
-  }
-
   window.Desvio = Object.assign(window.Desvio || {}, {
     Ceu: Ceu, Estrada: Estrada, Destaque: Destaque, Button: Button, Segmented: Segmented, Chip: Chip, Rating: Rating,
-    SwipeCard: SwipeCard, SwipeActions: SwipeActions, Toast: Toast, JanelaCidade: JanelaCidade,
+    SwipeCard: SwipeCard, SwipeActions: SwipeActions, Toast: Toast,
     StopItem: StopItem, TextField: TextField, BottomNav: BottomNav, Icon: Icon, CATEGORIAS: CATEGORIAS
   });
 })();

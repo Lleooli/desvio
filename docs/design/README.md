@@ -2,6 +2,8 @@
 
 Cópia local dos artifacts de design do Claude, baixada em 2026-10-15. As versões vivas continuam nos links abaixo; se mudarem lá, baixe de novo.
 
+Desde a saída do modo avião (PR #52), esta cópia diverge dos artifacts vivos: aqui já não existem o modo avião, a JanelaCidade, o token `radius-arco` e a tela Escalas. Até os artifacts serem atualizados, vale a cópia local.
+
 | Pasta / arquivo | Origem | O que tem |
 | --- | --- | --- |
 | [`DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md) | [Design system Desvio](https://claude.ai/artifact/4axmnGJWvKEXczHh3RP4uq) | Tudo num arquivo: brand book, tabelas de tokens (claro e escuro), guia de cada componente e tipos |
@@ -18,7 +20,6 @@ Cópia local dos artifacts de design do Claude, baixada em 2026-10-15. As versõ
 | `/triagem` | [`Triagem.dc.html`](telas/Triagem.dc.html) | [`TriagemEscuro.dc.html`](telas/TriagemEscuro.dc.html) |
 | `/viagens` | [`Viagens.dc.html`](telas/Viagens.dc.html) | [`ViagensEscuro.dc.html`](telas/ViagensEscuro.dc.html) |
 | `/viagens/nova` | [`NovaViagem.dc.html`](telas/NovaViagem.dc.html) | [`NovaViagemEscuro.dc.html`](telas/NovaViagemEscuro.dc.html) |
-| `/viagens/nova/escalas` | [`Escalas.dc.html`](telas/Escalas.dc.html) | [`EscalasEscuro.dc.html`](telas/EscalasEscuro.dc.html) |
 | `/viagens/:id/carregando` | [`Carregando.dc.html`](telas/Carregando.dc.html) | [`CarregandoEscuro.dc.html`](telas/CarregandoEscuro.dc.html) |
 | `/viagens/:id/paradas` | [`Paradas.dc.html`](telas/Paradas.dc.html) | [`ParadasEscuro.dc.html`](telas/ParadasEscuro.dc.html) |
 | `/viagens/:id/paradas/:paradaId` | [`Swipe.dc.html`](telas/Swipe.dc.html) | [`SwipeEscuro.dc.html`](telas/SwipeEscuro.dc.html) |

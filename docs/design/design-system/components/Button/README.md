@@ -1,7 +1,7 @@
 # Button
 Botão de ação para tudo que não é a decisão de swipe: criar viagem, montar roteiro, editar paradas.
 
-**O consumidor fornece:** `children` (verbo no infinitivo, curto: "Montar roteiro", "Adicionar escala"), `onClick`, opcionalmente `icon`, `variant`, `size` e `block`.
+**O consumidor fornece:** `children` (verbo no infinitivo, curto: "Montar roteiro", "Adicionar parada"), `onClick`, opcionalmente `icon`, `variant`, `size` e `block`.
 
 - `primary` (fundo `placa`, texto `on-placa`): uma por tela, a ação que avança o fluxo.
 - `secondary` (contorno `ink`): ações paralelas, como editar ou voltar ao swipe.

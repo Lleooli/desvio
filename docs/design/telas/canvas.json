@@ -11,7 +11,6 @@
     "Triagem.dc.html": { "x": 940, "y": 1240, "w": 390, "h": 844, "title": "/triagem", "is_interactive": true },
     "Viagens.dc.html": { "x": 1410, "y": 1240, "w": 390, "h": 844, "title": "/viagens", "is_interactive": true },
     "NovaViagem.dc.html": { "x": 1880, "y": 1240, "w": 390, "h": 844, "title": "/viagens/nova", "is_interactive": true },
-    "Escalas.dc.html": { "x": 2350, "y": 1240, "w": 390, "h": 844, "title": "/viagens/nova/escalas", "is_interactive": true },
     "Carregando.dc.html": { "x": 0, "y": 2204, "w": 390, "h": 844, "title": "/viagens/:id/carregando", "is_interactive": true },
     "Paradas.dc.html": { "x": 470, "y": 2204, "w": 390, "h": 844, "title": "/viagens/:id/paradas", "is_interactive": true },
     "Swipe.dc.html": { "x": 940, "y": 2204, "w": 390, "h": 844, "title": "/viagens/:id/paradas/:paradaId", "is_interactive": true },
@@ -23,7 +22,6 @@
     "TriagemEscuro.dc.html": { "x": 940, "y": 3550, "w": 390, "h": 844, "title": "/triagem · escuro", "is_interactive": true },
     "ViagensEscuro.dc.html": { "x": 1410, "y": 3550, "w": 390, "h": 844, "title": "/viagens · escuro", "is_interactive": true },
     "NovaViagemEscuro.dc.html": { "x": 1880, "y": 3550, "w": 390, "h": 844, "title": "/viagens/nova · escuro", "is_interactive": true },
-    "EscalasEscuro.dc.html": { "x": 2350, "y": 3550, "w": 390, "h": 844, "title": "/viagens/nova/escalas · escuro", "is_interactive": true },
     "CarregandoEscuro.dc.html": { "x": 0, "y": 4514, "w": 390, "h": 844, "title": "/viagens/:id/carregando · escuro", "is_interactive": true },
     "ParadasEscuro.dc.html": { "x": 470, "y": 4514, "w": 390, "h": 844, "title": "/viagens/:id/paradas · escuro", "is_interactive": true },
     "SwipeEscuro.dc.html": { "x": 940, "y": 4514, "w": 390, "h": 844, "title": "/viagens/:id/paradas/:paradaId · escuro", "is_interactive": true },
@@ -38,7 +36,6 @@
     "Triagem.dc.html",
     "Viagens.dc.html",
     "NovaViagem.dc.html",
-    "Escalas.dc.html",
     "Carregando.dc.html",
     "Paradas.dc.html",
     "Swipe.dc.html",
@@ -50,7 +47,6 @@
     "TriagemEscuro.dc.html",
     "ViagensEscuro.dc.html",
     "NovaViagemEscuro.dc.html",
-    "EscalasEscuro.dc.html",
     "CarregandoEscuro.dc.html",
     "ParadasEscuro.dc.html",
     "SwipeEscuro.dc.html",
@@ -62,7 +58,7 @@
     "telas": { "x": 0, "y": 980, "text": "Uma tela por rota · tema claro", "kind": "title1", "maxW": 2740 },
     "escuro": { "x": 0, "y": 3290, "text": "Tema escuro", "kind": "title1", "maxW": 2740 },
     "escuroInfo": { "x": 2820, "y": 3550, "w": 360, "fill": "gray", "size": "m", "text": "As telas escuras importam as claras e só trocam o tema. Edite a tela clara: a escura acompanha sozinha." },
-    "parametros": { "x": 2904, "y": 0, "w": 380, "fill": "orange", "size": "m", "text": "Parâmetros das rotas\n\n:id — a viagem (vem de POST /viagem/carro ou /viagem/aviao)\n:paradaId — índice da parada na viagem (0 = primeira cidade; a última é o destino)\n:lugarId — id do card (gmaps:… ou osm:…)\n?modo=carro|aviao — em /viagens/nova, abre no modo escolhido\n\n/triagem roda uma vez depois do primeiro login e reabre pelo Perfil (\"Refazer as perguntas\"). As perguntas são geradas pela IA a partir das respostas anteriores.\n\nAs abas da barra inferior levam sempre à viagem ativa (a última aberta)." }
+    "parametros": { "x": 2904, "y": 0, "w": 380, "fill": "orange", "size": "m", "text": "Parâmetros das rotas\n\n:id — a viagem (vem de POST /viagem)\n:paradaId — índice da parada na viagem (0 = primeira cidade; a última é o destino)\n:lugarId — id do card (gmaps:… ou osm:…)\n\n/triagem roda uma vez depois do primeiro login e reabre pelo Perfil (\"Refazer as perguntas\"). As perguntas são geradas pela IA a partir das respostas anteriores.\n\nAs abas da barra inferior levam sempre à viagem ativa (a última aberta)." }
   },
   "designSystems": [
     { "title": "Desvio", "namespace": "desvio", "artifact": "https://claude.ai/artifact/4axmnGJWvKEXczHh3RP4uq", "version": "1792076389-2ce4", "copiedAt": "2026-10-15T15:10:00Z" }

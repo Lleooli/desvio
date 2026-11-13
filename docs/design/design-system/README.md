@@ -1,18 +1,18 @@
-Desvio planeja viagens de carro e de avião: o app sugere lugares no caminho e a pessoa escolhe com o dedo, como num app de encontros. A identidade vem da estrada brasileira: o verde das placas de rodovia, o amarelo da faixa central, o asfalto e o céu de fim de tarde, do azul ao laranja do pôr do sol. É um app para celular primeiro.
+Desvio planeja viagens por terra, de carro, moto ou bicicleta: o app sugere lugares no caminho e a pessoa escolhe com o dedo, como num app de encontros. A identidade vem da estrada brasileira: o verde das placas de rodovia, o amarelo da faixa central, o asfalto e o céu de fim de tarde, do azul ao laranja do pôr do sol. É um app para celular primeiro.
 
 ## Princípios
 
 - **A foto decide.** No swipe, a imagem do lugar ocupa o card inteiro e o texto fica por cima, curto. O que fica sobre a foto é `vidro` fosco, para esconder o mínimo dela.
 - **Toda decisão tem botão.** O gesto é atalho; Passo, Favorito e Bora estão sempre visíveis em `SwipeActions`.
-- **A estrada é o eixo.** No modo carro, tudo se ordena por quilômetro: tags `KM 512`, a linha do tempo de `StopItem`, o roteiro final. A `Estrada`, com as cidades correndo pela pista, é a assinatura visual.
+- **A estrada é o eixo.** Tudo se ordena por quilômetro: tags `KM 512`, a linha do tempo de `StopItem`, o roteiro final. A `Estrada`, com as cidades correndo pela pista, é a assinatura visual.
 - **Calor só no topo.** O `Ceu` aquece o topo das telas de entrada; o resto da interface é areia lisa, para o conteúdo aparecer.
 
 ## Voz e texto
 
 - Português do Brasil, tratando a pessoa por "você". Frases curtas e diretas.
-- Verbos curtos e informais nos botões de decisão: **Bora**, **Passo**, **Favorito**. Nos demais botões, infinitivo: "Montar roteiro", "Adicionar escala".
+- Verbos curtos e informais nos botões de decisão: **Bora**, **Passo**, **Favorito**. Nos demais botões, infinitivo: "Montar roteiro", "Adicionar parada".
 - Títulos de tela como pergunta ou convite, com uma palavra em `Destaque`: "Para onde a *estrada* te leva?", "Escolha suas *paradas*".
-- Rótulos de campo em forma de pergunta: "De onde você sai?", "Quantos dias em Salvador?".
+- Rótulos de campo em forma de pergunta: "De onde você sai?", "Para onde vai?".
 - Números no formato brasileiro: "4,7", "1.834 avaliações", "~6h de estrada". Quilometragem em maiúsculas: "KM 512", "+6H".
 - Sem emoji na interface. Ícones do conjunto `Icon` fazem esse papel.
 - Mensagens de erro dizem o que fazer: "Não achamos essa cidade. Confira a grafia."
@@ -45,7 +45,6 @@ Desvio planeja viagens de carro e de avião: o app sugere lugares no caminho e a
 - Todo alvo de toque tem pelo menos `touch` (48px). Botões principais: pílula com `button-h` (52px). Botões redondos de swipe: 64px; Favorito: 52px.
 - Raios: `radius-lg` no card de swipe e no Céu em bloco, `radius-md` em campos e listas, `radius-sm` na tag de km, `radius-pill` em botões, chips, Segmented e Toast.
 - Formas com significado, não use para outra coisa:
-  - **Janelinha de avião** (topo `radius-pill`, base `radius-arco`) = cidade do modo avião (`JanelaCidade`).
   - **Serra** (recorte de morros na base do `Ceu`) = passagem do topo aquecido para o conteúdo.
   - **Estrada** curva = a rota.
 - Layout pensado para 360–430px de largura. Em telas maiores, uma coluna de no máximo 480px, centralizada.
@@ -53,7 +52,7 @@ Desvio planeja viagens de carro e de avião: o app sugere lugares no caminho e a
 
 ## Sombras
 
-- Interface plana por padrão. `shadow-1` só em opção ativa do Segmented, chip selecionado e JanelaCidade; `shadow-2` em botões redondos de swipe, Toast e folhas; `shadow-card` só no card do topo da pilha; `shadow-favorito` só no amarelo do Favorito.
+- Interface plana por padrão. `shadow-1` só em opção ativa do Segmented e chip selecionado; `shadow-2` em botões redondos de swipe, Toast e folhas; `shadow-card` só no card do topo da pilha; `shadow-favorito` só no amarelo do Favorito.
 
 ## Movimento
 
@@ -76,7 +75,7 @@ As curvas e durações estão em `components/bundle.css` como variáveis:
 ## Fotos
 
 - Fotos vêm do Google Maps ou da Wikipedia, sempre do próprio lugar. Recorte em `object-fit: cover`, sem filtros.
-- Sem foto, card e janela mostram o `Ceu` (com o ícone da categoria, no card). Não use foto genérica de banco de imagens.
+- Sem foto, o card mostra o `Ceu` com o ícone da categoria. Não use foto genérica de banco de imagens.
 - Texto sobre foto só dentro do `scrim` (em `on-scrim`) ou sobre `vidro` (em `ink`).
 
 ## Iconografia
