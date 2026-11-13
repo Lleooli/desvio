@@ -46,7 +46,7 @@ supabase db push --workdir infra --db-url "$PV_DATABASE_URL"
 
 Ou, sem a CLI, rode cada arquivo novo em ordem com `psql "$PV_DATABASE_URL" -f <arquivo>`. Mudou o schema? Crie um arquivo novo (`AAAAMMDDhhmmss_o_que_mudou.sql`); nunca edite uma migração que já foi aplicada. `infra/supabase/local/00_auth.sql` imita o `auth` do Supabase para o Postgres de teste e não vai para o Supabase.
 
-Para rodar a API e o worker juntos com o Google Maps, use `docker compose up --build` na raiz. Sem Docker, rode `uvicorn app.main:app --reload` e `python -m app.worker` em dois terminais.
+Para rodar a API e o worker juntos com o Google Maps, use `docker compose up --build` na raiz. Com o `.env` de exemplo (`COMPOSE_PROFILES=gosom`), ele sobe também o gosom, o raspador usado em desenvolvimento. Para testar com a Places API oficial, ponha `PV_GOOGLE_PLACES_KEY` no `.env` (a fonte passa a ser `places`) e, se não quiser o gosom, apague `COMPOSE_PROFILES`; é assim em produção. Sem Docker, rode `uvicorn app.main:app --reload` e `python -m app.worker` em dois terminais.
 
 **App:**
 

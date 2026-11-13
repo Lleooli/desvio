@@ -15,7 +15,8 @@ sem IA. A coleta é gratuita e sem chave; só a IA usa `GROQ_API_KEY`.
 | Rota de bicicleta | OSRM, perfil bike da FOSSGIS (`PV_OSRM_BIKE_URL`) | trajeto que evita rodovias, horas de pedal |
 | Endereço → coordenada | Nominatim / OpenStreetMap | geocodificação |
 | Cidades, postos, atrações | Overpass API / OpenStreetMap | base estável e legal de usar |
-| Fotos e notas do Google Maps | [gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper) (MIT, Docker) | raspagem do Maps |
+| Fotos e notas do Google Maps (produção) | [Places API (New)](https://developers.google.com/maps/documentation/places/web-service/op-overview) oficial (`PV_GOOGLE_PLACES_KEY`) | Text Search e Place Photos, pagos por chamada |
+| Fotos e notas do Google Maps (desenvolvimento) | [gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper) (MIT, Docker) | raspagem do Maps |
 | "Google normal" | [deedy5/ddgs](https://github.com/deedy5/ddgs) (MIT) | metabusca, achar Instagram |
 | Fotos de atrações | Wikipedia REST API | quando o OSM aponta o artigo |
 
@@ -29,7 +30,38 @@ pip install -r requirements.txt
 python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo bicicleta --intervalo 40
 ```
 
-**Com Google Maps (fotos, notas, avaliações):**
+**Com Google Maps pela Places API (produção):**
+
+```bash
+export PV_GOOGLE_PLACES_KEY=...      # ou no .env; a fonte passa a ser "places"
+python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --google
+```
+
+Uma Text Search por parada e categoria, até 5 ao mesmo tempo; a viagem toda
+sai em segundos. O field mask (`gmaps.CAMPOS_PLACES`) pede só o que vira card
+e cai no SKU **Text Search Enterprise** (nota, avaliações, site, telefone,
+horário e preço são Enterprise; o resto é Pro). `descricao` e `sobre` ficam
+vazios nessa fonte, porque os campos que os preenchem (`editorialSummary`,
+`allowsDogs`…) são Atmosphere e encareceriam todas as buscas. Não precisa de
+Place Details.
+
+Se uma busca falha ou passa de 15 s, ela fica de fora (e não entra no cache);
+se todas falham, a viagem sai só com OpenStreetMap e um aviso, como com o gosom.
+
+**Fotos e atribuição:** o card não leva a URL do Google, que exigiria a chave.
+`foto` e `fotos` apontam para `GET /fotos/places/.../photos/...?l=800&ass=...`
+da nossa API, uma URL assinada (HMAC) pelo coletor. O endpoint confere a
+assinatura, pede ao Google a URL da imagem (`skipHttpRedirect=true`) e
+redireciona (302). Não pede token, porque o `<Image>` do app não manda cabeçalho,
+mas só aceita fotos que o coletor assinou, então não vira um proxy aberto. Com
+`PV_API_URL_PUBLICA`, a URL sai absoluta; sem ela, o app junta com a base da API.
+`fotos_autores` traz, na mesma ordem de `fotos`, os autores de cada foto
+(`[{nome, uri, avatar, link_foto}]`): pelos termos do Google, o app mostra o
+nome (com link para `uri`) e o avatar junto da foto, dá acesso à foto no Google
+Maps (`link_foto`) e marca os dados do Google com "Google Maps". Numa miniatura
+dá para omitir o autor, desde que a foto ampliada o mostre.
+
+**Com Google Maps pelo gosom (só desenvolvimento):**
 
 ```bash
 docker run -d -p 8080:8080 -v "$PWD/gmapsdata:/gmapsdata" \
@@ -41,16 +73,22 @@ python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --google
 O gosom leva no mínimo uns 3 minutos por job. Por isso o código manda todas
 as buscas da viagem num job só.
 
-**Tudo junto (API + gosom):**
+Sem `PV_GOOGLE_PLACES_KEY`, a fonte é o gosom. Com a chave e o gosom ao
+mesmo tempo, `PV_GOOGLE_FONTE=gosom` força o raspador.
+
+**Tudo junto (API + worker):**
 
 ```bash
-docker compose up --build
+docker compose up --build                  # com COMPOSE_PROFILES=gosom no .env (o padrão do exemplo), sobe o gosom
+docker compose --profile gosom up --build  # o mesmo, explícito
+# produção: .env sem COMPOSE_PROFILES e com PV_GOOGLE_PLACES_KEY; o mesmo `docker compose up --build`
+# sobe só a API e o worker
 # abre http://localhost:8000/docs
 ```
 
 ## Endpoints
 
-Todas as rotas, menos `/docs`, exigem o token do Supabase Auth no cabeçalho
+Todas as rotas, menos `/docs` e `/fotos`, exigem o token do Supabase Auth no cabeçalho
 `Authorization: Bearer <access_token>` (sem token ou com token vencido: 401).
 O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa responde 404.
 
@@ -66,6 +104,7 @@ O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa respo
 | GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
+| GET | `/fotos/{nome}?l=&ass=` | sem token: foto da Places API por URL assinada pelo coletor → `302` para a imagem no Google; assinatura errada ou foto vencida: `404` |
 | POST | `/roteiro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
 
 Em `/viagem`, os cards que a pessoa do token já avaliou somem e os novos vêm
@@ -119,8 +158,8 @@ Exemplo de card:
 ## Avisos importantes
 
 - **Termos de uso:** raspar o Google Maps e a busca do Google viola os termos
-  deles. Para uso pessoal e protótipo costuma funcionar. Para produto público,
-  troque `gmaps.py` pela Places API oficial; o resto do código não muda.
+  deles. O gosom serve para protótipo; em produto público, use a Places API
+  (`PV_GOOGLE_PLACES_KEY`). O resto do código não muda.
 - **Bloqueio:** em volume alto o Google bloqueia o IP. Mantenha `-c` baixo e
   use cache. O gosom aceita proxies.
 - **Servidores públicos (OSRM, Nominatim, Overpass):** são para uso leve. Em

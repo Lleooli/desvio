@@ -36,7 +36,7 @@ services/coletor/           Python + FastAPI
   app/coletor.py            orquestra rota, paradas e cards
   app/geo.py                Nominatim (geocodificação) e OSRM (rota)
   app/osm.py                Overpass (cidades e lugares) e Wikipedia
-  app/gmaps.py              gosom (Google Maps), única porta para o Google
+  app/gmaps.py              Google Maps (Places API oficial ou gosom), única porta para o Google
   app/instagram.py          Instagram pelo site do lugar ou por busca (ddgs)
   app/preferencias.py       swipes, perfil de gosto e ordem estatística
   app/roteiro.py            ordem geométrica (km na rota)
@@ -60,7 +60,7 @@ python -m app.worker                      # worker; precisa rodar junto com a AP
 python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo moto   # coleta direto, sem API
 ```
 
-**Tudo junto com o Google Maps** (na raiz): `docker compose up --build` sobe a API, o worker e o gosom.
+**Tudo junto com o Google Maps** (na raiz): `docker compose up --build` sobe a API, o worker e o gosom (o `.env.example` traz `COMPOSE_PROFILES=gosom`). Em produção, o `.env` não tem `COMPOSE_PROFILES` e tem `PV_GOOGLE_PLACES_KEY`: o mesmo comando sobe só a API e o worker, e o Google vem da Places API.
 
 **App** (em `apps/mobile`):
 
@@ -78,7 +78,7 @@ npm run tokens        # depois de mudar packages/design-tokens/tokens.json
 - **Testes sem internet.** Simule as APIs externas com `httpx.MockTransport` ou `monkeypatch` (veja `tests/test_offline.py`).
 - **Toda chamada de IA passa por `app/ia.py`** e tem plano B: se o Groq falhar, demorar mais de 10 s ou bater no limite, a resposta usa a ordem sem IA, sem erro para o app.
 - **A chave do Groq só existe no servidor.** O app nunca fala direto com o Groq.
-- **O Google só entra por `app/gmaps.py`.** Raspar viola os termos do Google; no lançamento público esse módulo vira a Places API, e o resto do código não muda.
+- **O Google só entra por `app/gmaps.py`.** Lá ficam a Places API oficial (produção) e o gosom (raspador, só desenvolvimento, porque viola os termos do Google). `PV_GOOGLE_FONTE` escolhe; sem ela, vale `places` quando há `PV_GOOGLE_PLACES_KEY`. A chave nunca vai para o app: as fotos passam pelo endpoint `/fotos` da API.
 - **A coleta roda no worker, nunca na requisição.** A API cria o job (`fila.criar`) e responde 202; o app consulta `GET /jobs/{id}`.
 - **No app, cores, espaços, raios e fontes vêm de `@/tema`**, nunca hex ou número solto. Mudou um token? Edite `packages/design-tokens/tokens.json` e rode `npm run tokens`.
 - **Telas seguem o canvas** (`docs/design/telas/`) e as regras de voz do design system: "você", botões curtos (Bora, Passo, Favorito), sem emoji, números no formato brasileiro.
@@ -92,7 +92,8 @@ npm run tokens        # depois de mudar packages/design-tokens/tokens.json
 
 ## Armadilhas conhecidas
 
-- **gosom:** cada job leva no mínimo uns 3 minutos. Mande todas as buscas da viagem num job só (`gmaps.buscar_lote`). Ele precisa de 1 a 2 GB de RAM.
+- **gosom:** cada job leva no mínimo uns 3 minutos. Mande todas as buscas da viagem num job só (`gmaps.buscar_lote`). Ele precisa de 1 a 2 GB de RAM. Fica no perfil `gosom` do docker compose e não vai para produção.
+- **Places API:** cobra por chamada. O field mask (`gmaps.CAMPOS_PLACES`) cai no SKU Text Search Enterprise; um campo de Atmosphere (`editorialSummary`, `reviews`…) encarece todas as buscas. Cada foto vista no app é uma chamada de Place Photos. Mostre o autor da foto (`fotos_autores`) junto dela: é regra do Google.
 - **Groq gratuito:** 30 requisições e 8.000 tokens por minuto, 1.000 requisições e 200 mil tokens por dia, por modelo e por conta. Várias chaves não somam. O Llama não está mais no plano gratuito; use `openai/gpt-oss-120b` e `openai/gpt-oss-20b`.
 - **Nominatim:** 1 requisição por segundo e um e-mail real em `PV_USER_AGENT`, ou o IP é bloqueado.
 - **ddgs:** bloqueia por alguns minutos quando recebe muitas buscas seguidas. O Instagram achado por busca é "provável" (`instagram_origem = "busca"`).

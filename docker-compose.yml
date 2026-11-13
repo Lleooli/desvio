@@ -1,12 +1,19 @@
-# API + worker de coleta + raspador do Google Maps (gosom).
+# API + worker de coleta. O Google Maps vem de uma de duas fontes (services/coletor/app/gmaps.py):
+#   - Places API oficial (produção): PV_GOOGLE_PLACES_KEY no .env; o gosom não sobe.
+#   - gosom, o raspador (só desenvolvimento): perfil "gosom".
+#
 #   cp .env.example .env   (e preencha, inclusive PV_DATABASE_URL do Supabase)
-#   docker compose up --build
+#   docker compose up --build                  # desenvolvimento: o .env de exemplo tem COMPOSE_PROFILES=gosom
+#   docker compose --profile gosom up --build  # o mesmo, explícito
+#   Produção: .env sem COMPOSE_PROFILES e com PV_GOOGLE_PLACES_KEY; `docker compose up --build`
+#   sobe só a API e o worker.
 # Postgres local só para os testes:  docker compose --profile teste up -d banco-teste
 # API:   http://localhost:8000/docs
 # gosom: http://localhost:8080
 services:
   gosom:
     image: gosom/google-maps-scraper
+    profiles: ["gosom"]
     command: ["-data-folder", "/gmapsdata", "-c", "2"]
     environment:
       - DISABLE_TELEMETRY=1
@@ -25,7 +32,9 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - gosom
+      gosom:
+        condition: service_started
+        required: false  # sem o perfil "gosom", sobe sem ele
 
   worker:
     build: ./services/coletor
@@ -35,7 +44,9 @@ services:
     environment:
       - PV_GOSOM_URL=http://gosom:8080
     depends_on:
-      - gosom
+      gosom:
+        condition: service_started
+        required: false
 
   # Postgres vazio só para o pytest (os testes rodam as migrações e o auth de mentira de infra/supabase/local):
   # PV_TEST_DATABASE_URL=postgresql://postgres:teste@localhost:54329/desvio_teste
