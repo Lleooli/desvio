@@ -14,6 +14,8 @@ Desvio é um app de celular que monta viagens de carro ou de avião. A pessoa in
 | Layout de referência de cada tela | `docs/design/telas/*.dc.html` (índice em `docs/design/README.md`) |
 | Verificação da stack e decisões de infraestrutura | `docs/verificacao-stack.md` |
 | Planos de implementação já feitos | `docs/superpowers/plans/` |
+| Glossário do domínio (termo pt-BR ↔ identificador no código) | `CONTEXT.md` |
+| Decisões de arquitetura e o porquê | `docs/adr/` |
 
 ## Mapa do monorepo
 
