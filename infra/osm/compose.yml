@@ -1,0 +1,117 @@
+# Servidores próprios de OSRM, Nominatim e Overpass com o extrato do Brasil (Geofabrik). Issue #37.
+# Roda numa VPS, separado do docker-compose.yml da raiz (que é o ambiente de desenvolvimento).
+# Passo a passo, dimensionamento e atualização: infra/osm/README.md
+#
+#   cd infra/osm
+#   cp .env.example .env              (e troque NOMINATIM_SENHA)
+#   ./baixar-pbf.sh                   (2 GB, confere o MD5)
+#   ./preparar-osrm.sh carro && ./preparar-osrm.sh bicicleta
+#   docker compose up -d
+#
+# Portas no host (por padrão só em 127.0.0.1; veja OSM_BIND no README):
+#   OSRM carro e moto  :5000   ->  PV_OSRM_URL=http://<host>:5000
+#   OSRM bicicleta     :5001   ->  PV_OSRM_BIKE_URL=http://<host>:5001
+#   Nominatim          :8088   ->  PV_NOMINATIM_URL=http://<host>:8088
+#   Overpass           :12345  ->  PV_OVERPASS_URL=http://<host>:12345/api/interpreter
+
+x-osrm: &osrm
+  image: ghcr.io/project-osrm/osrm-backend:v26.10.0-debian
+  restart: unless-stopped
+  volumes:
+    # dados/osrm/<perfil>/atual é um link para a versão em uso (AAAAMMDD); atualizar.sh troca o link e reinicia
+    - ${OSM_DADOS:-./dados}/osrm:/dados/osrm:ro
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "3" }
+
+services:
+  osrm-carro:
+    <<: *osrm
+    command: ["osrm-routed", "--algorithm", "mld", "--port", "5000", "/dados/osrm/carro/atual/brasil.osrm"]
+    ports:
+      - "${OSM_BIND:-127.0.0.1}:5000:5000"
+    healthcheck:
+      # A imagem não tem curl: pergunta ao próprio OSRM pelo bash, com um ponto em Alegrete, RS
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /nearest/v1/driving/-55.7919,-29.7831 HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+
+  osrm-bicicleta:
+    <<: *osrm
+    command: ["osrm-routed", "--algorithm", "mld", "--port", "5000", "/dados/osrm/bicicleta/atual/brasil.osrm"]
+    ports:
+      - "${OSM_BIND:-127.0.0.1}:5001:5000"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /nearest/v1/bike/-55.7919,-29.7831 HTTP/1.0\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+
+  nominatim:
+    image: mediagis/nominatim:5.3.3-2026-10-26T11-48
+    restart: unless-stopped
+    shm_size: ${NOMINATIM_SHM:-4g}
+    environment:
+      # Importa o PBF baixado por baixar-pbf.sh (só na primeira subida, com o volume vazio)
+      - PBF_PATH=/dados/pbf/brazil-latest.osm.pbf
+      # Depois aplica sozinho as diferenças diárias da Geofabrik: sem reimportar todo mês
+      - REPLICATION_URL=https://download.geofabrik.de/south-america/brazil-updates/
+      - REPLICATION_UPDATE_INTERVAL=86400
+      - REPLICATION_RECHECK_INTERVAL=900
+      - UPDATE_MODE=continuous
+      # "address" basta para cidades e geocodificação reversa (o que app/geo.py usa); "full" inclui lugares
+      - IMPORT_STYLE=${NOMINATIM_ESTILO:-address}
+      # Importância da Wikipedia: desempata homônimos ("Alegrete" do RS e de Portugal)
+      - IMPORT_WIKIPEDIA=true
+      - THREADS=${OSM_THREADS:-8}
+      - NOMINATIM_PASSWORD=${NOMINATIM_SENHA:?defina NOMINATIM_SENHA no infra/osm/.env}
+    volumes:
+      - nominatim-banco:/var/lib/postgresql/16/main
+      - ${OSM_DADOS:-./dados}/pbf:/dados/pbf:ro
+    ports:
+      - "${OSM_BIND:-127.0.0.1}:8088:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/status"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 12h  # a importação do Brasil leva horas; antes disso a falha não conta
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+  overpass:
+    image: wiktorn/overpass-api:v0.7.62.11
+    restart: unless-stopped
+    environment:
+      - OVERPASS_MODE=init
+      # O PBF público da Geofabrik não tem metadados (usuário, changeset): meta=no
+      - OVERPASS_META=no
+      - OVERPASS_PLANET_URL=file:///dados/pbf/brazil-latest.osm.pbf
+      # O Overpass importa .osm.bz2: converte o PBF com o osmium que vem na imagem
+      - OVERPASS_PLANET_PREPROCESS=mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf
+      - OVERPASS_COMPRESSION=gz
+      - OVERPASS_DIFF_URL=https://download.geofabrik.de/south-america/brazil-updates/
+      - OVERPASS_UPDATE_SLEEP=3600
+      # app/osm.py só usa around:, sem area[...]: as áreas não são geradas (menos disco e CPU)
+      - OVERPASS_USE_AREAS=false
+      - OVERPASS_STOP_AFTER_INIT=false
+      - OVERPASS_FASTCGI_PROCESSES=${OVERPASS_PROCESSOS:-8}
+      - OVERPASS_RATE_LIMIT=${OVERPASS_LIMITE:-16}
+      - OVERPASS_ALLOW_DUPLICATE_QUERIES=yes
+    volumes:
+      - overpass-db:/db
+      - ${OSM_DADOS:-./dados}/pbf:/dados/pbf:ro
+    ports:
+      - "${OSM_BIND:-127.0.0.1}:12345:80"
+    # healthcheck: o da própria imagem (/app/docker-healthcheck.sh, start-period de 48 h)
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+volumes:
+  nominatim-banco:
+  overpass-db:

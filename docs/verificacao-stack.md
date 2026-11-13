@@ -30,6 +30,7 @@ Continua aberto:
 - Cache de 30 dias por cidade
 - Push pelo Expo, com development build
 - VPS para o gosom
+- VPS para OSRM, Nominatim e Overpass próprios: configuração, scripts e dimensionamento estimado prontos em [infra/osm/README.md](../infra/osm/README.md) (#37); falta subir e medir
 - Cache das respostas da IA por (cidade, categoria, perfil)
 
 ## gosom/google-maps-scraper

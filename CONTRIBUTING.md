@@ -48,6 +48,8 @@ Ou, sem a CLI, rode cada arquivo novo em ordem com `psql "$PV_DATABASE_URL" -f <
 
 Para rodar a API e o worker juntos com o Google Maps, use `docker compose up --build` na raiz. Com o `.env` de exemplo (`COMPOSE_PROFILES=gosom`), ele sobe também o gosom, o raspador usado em desenvolvimento. Para testar com a Places API oficial, ponha `PV_GOOGLE_PLACES_KEY` no `.env` (a fonte passa a ser `places`) e, se não quiser o gosom, apague `COMPOSE_PROFILES`; é assim em produção. Sem Docker, rode `uvicorn app.main:app --reload` e `python -m app.worker` em dois terminais.
 
+No desenvolvimento, o coletor usa os servidores públicos de OSRM, Nominatim e Overpass. Os servidores próprios, com o extrato do Brasil, rodam numa VPS e não cabem num notebook comum: veja [infra/osm/README.md](infra/osm/README.md).
+
 **App:**
 
 ```bash

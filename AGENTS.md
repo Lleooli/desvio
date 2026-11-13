@@ -13,6 +13,7 @@ Desvio é um app de celular que monta viagens por terra: de carro, moto ou bicic
 | Design system (tokens, componentes, voz) | `docs/design/DESIGN-SYSTEM.md` |
 | Layout de referência de cada tela | `docs/design/telas/*.dc.html` (índice em `docs/design/README.md`) |
 | Verificação da stack e decisões de infraestrutura | `docs/verificacao-stack.md` |
+| Servidores próprios de OSRM, Nominatim e Overpass (VPS) | `infra/osm/README.md` |
 | Planos de implementação já feitos | `docs/superpowers/plans/` |
 | Glossário do domínio (termo pt-BR ↔ identificador no código) | `CONTEXT.md` |
 | Decisões de arquitetura e o porquê | `docs/adr/` |
@@ -42,6 +43,8 @@ services/coletor/           Python + FastAPI
   app/roteiro.py            ordem geométrica (km na rota)
   app/ia.py                 Groq: triagem, ranqueamento e roteiro, sempre com plano B
   tests/                    pytest, sem internet
+infra/supabase/             migrações do Postgres
+infra/osm/                  OSRM, Nominatim e Overpass próprios com o extrato do Brasil (compose separado)
 packages/design-tokens/     tokens.json, a fonte única de cores, tipos, espaços e raios
 docs/                       PRD, rotas, design, verificação, planos
 ```
@@ -61,6 +64,8 @@ python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo moto   # cole
 ```
 
 **Tudo junto com o Google Maps** (na raiz): `docker compose up --build` sobe a API, o worker e o gosom (o `.env.example` traz `COMPOSE_PROFILES=gosom`). Em produção, o `.env` não tem `COMPOSE_PROFILES` e tem `PV_GOOGLE_PLACES_KEY`: o mesmo comando sobe só a API e o worker, e o Google vem da Places API.
+
+**Servidores próprios de mapa** (numa VPS, em `infra/osm`): `docker compose up -d` sobe OSRM (carro e bicicleta), Nominatim e Overpass com o extrato do Brasil. Passo a passo, dimensionamento e atualização mensal em `infra/osm/README.md`. O coletor só muda de servidor pelas variáveis `PV_OSRM_URL`, `PV_OSRM_BIKE_URL`, `PV_NOMINATIM_URL` e `PV_OVERPASS_URL`.
 
 **App** (em `apps/mobile`):
 
@@ -95,7 +100,7 @@ npm run tokens        # depois de mudar packages/design-tokens/tokens.json
 - **gosom:** cada job leva no mínimo uns 3 minutos. Mande todas as buscas da viagem num job só (`gmaps.buscar_lote`). Ele precisa de 1 a 2 GB de RAM. Fica no perfil `gosom` do docker compose e não vai para produção.
 - **Places API:** cobra por chamada. O field mask (`gmaps.CAMPOS_PLACES`) cai no SKU Text Search Enterprise; um campo de Atmosphere (`editorialSummary`, `reviews`…) encarece todas as buscas. Cada foto vista no app é uma chamada de Place Photos. Mostre o autor da foto (`fotos_autores`) junto dela: é regra do Google.
 - **Groq gratuito:** 30 requisições e 8.000 tokens por minuto, 1.000 requisições e 200 mil tokens por dia, por modelo e por conta. Várias chaves não somam. O Llama não está mais no plano gratuito; use `openai/gpt-oss-120b` e `openai/gpt-oss-20b`.
-- **Nominatim:** 1 requisição por segundo e um e-mail real em `PV_USER_AGENT`, ou o IP é bloqueado.
+- **Nominatim:** 1 requisição por segundo e um e-mail real em `PV_USER_AGENT`, ou o IP é bloqueado. No servidor próprio (`infra/osm`), `PV_NOMINATIM_INTERVALO=0` tira a espera.
 - **ddgs:** bloqueia por alguns minutos quando recebe muitas buscas seguidas. O Instagram achado por busca é "provável" (`instagram_origem = "busca"`).
 - **Push:** o Expo Go não recebe push no Android. Para testar o aviso de busca pronta, use um development build.
 - **`.env` nunca vai para o Git.** Só o `.env.example`.

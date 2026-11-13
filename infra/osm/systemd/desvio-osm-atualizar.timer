@@ -1,0 +1,11 @@
+# Dia 3 de cada mês, de madrugada (horário da VPS). Persistent=true roda na volta se a VPS estava desligada.
+[Unit]
+Description=Desvio: atualização mensal dos servidores OSM
+
+[Timer]
+OnCalendar=*-*-03 03:30:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

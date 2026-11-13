@@ -1,0 +1,15 @@
+# Atualização mensal do extrato do Brasil e do OSRM (infra/osm/atualizar.sh).
+# Instalação: infra/osm/README.md, seção "Atualização mensal". Ajuste o caminho do repositório.
+[Unit]
+Description=Desvio: extrato do Brasil novo e OSRM refeito
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/desvio/infra/osm
+ExecStart=/opt/desvio/infra/osm/atualizar.sh
+# O pré-processamento dos dois perfis leva horas; não deixe o systemd matar no meio
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=idle
