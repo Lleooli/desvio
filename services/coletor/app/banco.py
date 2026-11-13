@@ -24,19 +24,26 @@ class SemBanco(RuntimeError):
     pass
 
 
-def conectar() -> psycopg.Connection:
+def conectar(autocommit: bool = False) -> psycopg.Connection:
     """Conexão nova; `with banco.conectar() as con:` faz commit no fim e fecha."""
     if not URL:
         raise SemBanco("PV_DATABASE_URL não configurada (veja o .env.example)")
-    return psycopg.connect(URL, connect_timeout=5, prepare_threshold=None, row_factory=dict_row)
+    return psycopg.connect(URL, connect_timeout=5, prepare_threshold=None, row_factory=dict_row,
+                           autocommit=autocommit)
 
 
-def garantir_usuario(usuario: str, email: str | None = None) -> None:
+def garantir_usuario(usuario: str, email: str | None = None, con: psycopg.Connection | None = None) -> None:
     """Cria a linha em `usuario` se a conta ainda não tem (o gatilho do Supabase Auth
-    normalmente já criou; aqui cobre contas antigas e o Postgres local)."""
-    with conectar() as con:
-        con.execute("insert into usuario (id, email) values (%s, %s) on conflict (id) do nothing",
-                    (usuario, email))
+    normalmente já criou; aqui cobre contas antigas e o Postgres local).
+
+    Com `con`, roda na transação de quem chamou (o /swipe grava tudo numa só).
+    """
+    sql = "insert into usuario (id, email) values (%s, %s) on conflict (id) do nothing"
+    if con is not None:
+        con.execute(sql, (usuario, email))
+        return
+    with conectar() as nova:
+        nova.execute(sql, (usuario, email))
 
 
 def aplicar_migracoes(url: str, com_auth_local: bool = False) -> None:

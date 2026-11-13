@@ -296,15 +296,39 @@ def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatc
 
 
 def test_cache_quebrado_nao_derruba_a_coleta(mock_http, monkeypatch):
+    """Issue #62: com o banco fora, o cache tenta conectar uma vez e a coleta segue sem ele."""
     import psycopg
     from app import banco
+    tentativas = []
 
-    def fora_do_ar():
+    def fora_do_ar(*a, **k):
+        tentativas.append(1)
         raise psycopg.OperationalError("connection refused")
     monkeypatch.setattr(banco, "URL", "postgresql://banco-fora-do-ar")
     monkeypatch.setattr(banco, "conectar", fora_do_ar)
     r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
     assert r["paradas"][0]["cards"]
+    assert len(tentativas) == 1
+    # o próximo job tenta de novo (o banco pode ter voltado)
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
+    assert len(tentativas) == 2
+
+
+def test_coleta_com_varias_paradas_abre_uma_conexao_so(mock_http, monkeypatch, pg):
+    """Issue #62: o cache reaproveita a conexão; nada de um TLS novo por parada × categoria."""
+    from app import banco
+    original, conexoes = banco.conectar, []
+
+    def contando(*a, **k):
+        conexoes.append(1)
+        return original(*a, **k)
+    monkeypatch.setattr(banco, "conectar", contando)
+    r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))
+    assert len(r["paradas"]) >= 4
+    assert len(conexoes) == 1
+    geo._cache.clear()
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200))  # agora lendo do cache
+    assert len(conexoes) == 2  # uma por job: a do job anterior foi fechada no fim dele
 
 
 def test_sem_google_nao_tem_parcial(mock_http):

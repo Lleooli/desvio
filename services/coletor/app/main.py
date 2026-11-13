@@ -89,8 +89,7 @@ def job(job_id: str, eu: Usuario = Depends(usuario_atual)):
 def swipe(req: Swipe, eu: Usuario = Depends(usuario_atual)):
     if not isinstance(req.card.get("id"), str) or not req.card["id"]:
         raise HTTPException(422, "Card sem id")
-    banco.garantir_usuario(eu.id, eu.email)
-    preferencias.registrar(eu.id, req.card, req.gostou)
+    preferencias.registrar(eu.id, req.card, req.gostou, eu.email)  # uma transação, com garantir_usuario
     return {"ok": True}
 
 

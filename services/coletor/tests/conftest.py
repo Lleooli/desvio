@@ -17,10 +17,13 @@ SEGREDO = "segredo-de-teste-com-mais-de-32-caracteres"
 @pytest.fixture(autouse=True)
 def _isolado(monkeypatch):
     """Por padrão, nenhum teste fala com banco de verdade nem com o Supabase."""
-    from app import auth, banco
+    from app import auth, banco, cache
     monkeypatch.setattr(banco, "URL", "")
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
+    yield
+    cache._fechar()  # a conexão do cache não passa de um teste para o outro
+    cache._desligado = False
 
 
 @pytest.fixture(scope="session")

@@ -309,7 +309,7 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
     gosom (minutos); o resultado final contém todos os cards do parcial, com os mesmos ids.
     """
     categorias = categorias or CATEGORIAS_PADRAO
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient() as client, cache.sessao():  # uma conexão com o cache por job
         o = await geo.geocodificar(client, origem)
         d = await geo.geocodificar(client, destino)
         rota = await geo.rota(client, (o["lat"], o["lon"]), (d["lat"], d["lon"]), veiculo)

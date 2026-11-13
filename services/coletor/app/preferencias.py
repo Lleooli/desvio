@@ -16,15 +16,19 @@ from . import banco
 CAMPOS_PERFIL = ("categoria", "tipo", "faixa_preco", "nota")
 
 
-def registrar(usuario: str, card: dict, gostou: bool) -> None:
+def registrar(usuario: str, card: dict, gostou: bool, email: str | None = None) -> None:
     """Guarda o card em `lugar` (compartilhado entre pessoas) e a decisão em `decisao`
     (uma por pessoa e lugar; deslizar de novo troca a decisão).
+
+    Tudo numa conexão e numa transação: garante a linha em `usuario`, o lugar e a
+    decisão; se uma parte falha, nada fica gravado.
 
     O card vem do cliente, então nunca reescreve um `lugar` que já existe: só o
     primeiro swipe grava. O que entra no perfil fica na própria decisão, e assim o
     card de uma pessoa não muda o perfil de outra.
     """
     with banco.conectar() as con:
+        banco.garantir_usuario(usuario, email, con)
         con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) on conflict (id) do nothing",
                     (card["id"], Jsonb(card), card.get("fonte")))
         con.execute("insert into decisao (usuario, lugar, tipo, card) values (%s, %s, %s, %s) "

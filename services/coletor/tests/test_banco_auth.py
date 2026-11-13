@@ -62,3 +62,38 @@ def test_decisao_antiga_sem_card_usa_o_lugar(pg):
                         (f"osm:node/{i}", psycopg.types.json.Jsonb({"categoria": "turismo"})))
             con.execute("insert into decisao (usuario, lugar, tipo) values (%s, %s, 'bora')", (a, f"osm:node/{i}"))
     assert preferencias.perfil(a)["categoria"] == {"turismo": {"aceitos": 2, "vistos": 2, "taxa": 1.0}}
+
+
+# Issue #62: o /swipe grava numa conexão e numa transação só
+
+def test_swipe_grava_em_uma_conexao_e_uma_transacao(pg, monkeypatch):
+    from app import banco
+    a, cab = criar_pessoa(pg)
+    with psycopg.connect(pg, autocommit=True) as con:
+        con.execute("delete from usuario where id = %s", (a,))  # conta antiga, sem a linha em usuario
+    original, conexoes = banco.conectar, []
+
+    def contando(*a, **k):
+        con = original(*a, **k)
+        conexoes.append(con)
+        return con
+    monkeypatch.setattr(banco, "conectar", contando)
+    assert TestClient(app).post("/swipe", json={"card": CARD, "gostou": True}, headers=cab).status_code == 200
+    assert len(conexoes) == 1
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from usuario where id = %s", (a,)).fetchone()[0] == 1
+        assert con.execute("select count(*) from decisao where usuario = %s", (a,)).fetchone()[0] == 1
+
+
+def test_swipe_que_falha_no_meio_nao_deixa_nada_gravado(pg, monkeypatch):
+    """Na mesma transação: se a decisão não grava, a linha em usuario também não fica."""
+    a, cab = criar_pessoa(pg)
+    with psycopg.connect(pg, autocommit=True) as con:
+        con.execute("delete from usuario where id = %s", (a,))
+    monkeypatch.setattr(preferencias, "CAMPOS_PERFIL", None)  # quebra o registrar depois do garantir_usuario
+    r = TestClient(app, raise_server_exceptions=False).post("/swipe", json={"card": CARD, "gostou": True},
+                                                            headers=cab)
+    assert r.status_code == 500
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from usuario where id = %s", (a,)).fetchone()[0] == 0
+        assert con.execute("select count(*) from lugar").fetchone()[0] == 0
