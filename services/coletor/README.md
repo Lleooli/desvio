@@ -60,6 +60,8 @@ O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa respo
 | GET | `/viagens` | `{viagens: [...]}`, as da pessoa, a mais recente primeiro: `id`, `origem`, `destino`, `veiculo`, `status` (`buscando`, `pronta` ou `falhou`), `job_id`, `criado_em` e `progresso: {decididos, total}` (cards da viagem já avaliados pela pessoa) |
 | GET | `/viagens/{id}` | a viagem com `polilinha` e `paradas` (`ordem` a partir de 0, `nome`, `uf`, `tipo`, `km_na_rota`, `cards`); os cards já avaliados somem e o resto vem ordenado pelo gosto. Viagem de outra pessoa: 404 |
 | GET | `/jobs/{id}` | `status` (`pendente`, `rodando`, `pronto`, `falhou`); quando pronto, `resultado` traz as paradas com cards. Enquanto roda, `progresso` traz `{etapa, titulo, detalhe, percentual}`, com as etapas `rota`, `cidades`, `lugares` e `instagram`, nessa ordem, e os textos da tela Carregando. Com o Google ligado, `parcial` traz as paradas só com cards do OpenStreetMap antes do gosom; o `resultado` final contém esses cards, com os mesmos ids, menos os que a pessoa já deslizou (Bora ou Passo) enquanto esperava |
+| GET | `/eu/exportar` | LGPD: JSON com `usuario` (email, provedor, perfil_gosto, tema, criado_em), `perfil`, `viagens` (com paradas, cards e roteiro) e `decisoes`; só os dados de quem pede |
+| DELETE | `/eu` | LGPD: corpo `{"confirmar": "APAGAR"}` (sem isso, 422). Apaga na hora a linha em `usuario` (e em cascata viagens, paradas, decisões e roteiros) e os jobs, e pede ao Supabase Auth que apague a conta. Responde `{dados: "apagados", conta: "apagada" ou "pendente"}`; pendente é quando o Supabase falhou, e o worker tenta de novo (até 15 dias, veja [docs/privacidade.md](../../docs/privacidade.md)) |
 | POST | `/swipe` | grava `{card, gostou}` em `lugar` e `decisao` |
 | GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta ou `fim` com o resumo do gosto |
@@ -73,6 +75,11 @@ Quando o job termina, o worker grava a viagem no banco (`viagem`, `parada`,
 `parada_lugar` e `lugar`, em `app/viagens.py`) e ela passa a `pronta`. A
 coleta atualiza o card em `lugar` (é dado do servidor); o `/swipe` nunca
 reescreve um lugar que já existe.
+
+Para apagar a conta no Supabase Auth, a API usa `SUPABASE_SERVICE_ROLE_KEY`
+(só no servidor). Sem ela, ou com o Supabase fora do ar, os dados somem do
+mesmo jeito e a conta fica em `exclusao_pendente` até o worker conseguir
+(`PV_EXCLUSAO_INTERVALO_MIN`, padrão 10). Enquanto isso, o token antigo responde 401.
 
 A API não coleta nada sozinha: rode o worker junto (`python -m app.worker`, ou
 `docker compose up`). Os endpoints de IA respondem mesmo sem `GROQ_API_KEY`:

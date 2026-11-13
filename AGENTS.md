@@ -32,6 +32,7 @@ services/coletor/           Python + FastAPI
   app/auth.py               valida o token do Supabase; o usuário sai do token
   app/worker.py             consome a fila e roda a coleta
   app/viagens.py            viagens, paradas e cards guardados no banco
+  app/conta.py              LGPD: exportar os dados e apagar a conta (Admin API do Supabase)
   app/coletor.py            orquestra rota, paradas e cards
   app/geo.py                Nominatim (geocodificação) e OSRM (rota)
   app/osm.py                Overpass (cidades e lugares) e Wikipedia

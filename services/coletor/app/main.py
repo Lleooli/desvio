@@ -8,6 +8,7 @@ Fluxo pensado para o front (estilo Tinder):
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
 4. GET  /perfil                            → resumo do gosto, para a IA
+5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
 Toda rota, menos /docs, exige o token do Supabase (Authorization: Bearer);
 o usuário sai do token (app/auth.py), nunca do corpo.
@@ -23,13 +24,14 @@ import os
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from . import banco, fila, ia, preferencias, roteiro, viagens
+from . import banco, conta, fila, ia, preferencias, roteiro, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -110,6 +112,26 @@ def job(job_id: str, eu: Usuario = Depends(usuario_atual)):
     if not j:
         raise HTTPException(404, "Viagem não encontrada")
     return j
+
+
+class ApagarConta(BaseModel):
+    confirmar: str = Field(description='Precisa ser exatamente "APAGAR"', examples=["APAGAR"])
+
+
+@app.get("/eu/exportar")
+def exportar_meus_dados(eu: Usuario = Depends(usuario_atual)):
+    """LGPD: tudo o que o Desvio guarda da pessoa, em JSON."""
+    banco.garantir_usuario(eu.id, eu.email)  # conta apagada ou com exclusão pendente: 401
+    return JSONResponse(jsonable_encoder(conta.exportar(eu.id)),
+                        headers={"Content-Disposition": 'attachment; filename="desvio-meus-dados.json"'})
+
+
+@app.delete("/eu")
+def apagar_minha_conta(req: ApagarConta, eu: Usuario = Depends(usuario_atual)):
+    """LGPD: apaga os dados na hora e a conta no Supabase Auth (ou em até 15 dias, se ele falhar)."""
+    if req.confirmar != conta.CONFIRMACAO:
+        raise HTTPException(422, 'Para apagar a conta, confirme com "APAGAR".')
+    return conta.apagar(eu.id)
 
 
 @app.post("/swipe")

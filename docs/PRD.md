@@ -162,7 +162,7 @@ A base é o OpenStreetMap, gratuito e liberado para uso. O Google Maps entra com
 | --- | --- |
 | Desempenho | Swipe a 60 quadros por segundo em aparelho intermediário; próximo card pré-carregado; primeira tela em menos de 2 s |
 | Busca | Primeiro card em menos de 60 s com cache; até 4 min sem cache, com aviso push ao terminar |
-| Privacidade (LGPD) | Coleta mínima: e-mail, perfil de gosto e decisões; sem localização em segundo plano; exportar e apagar dados pelo perfil |
+| Privacidade (LGPD) | Coleta mínima: e-mail, perfil de gosto e decisões; sem localização em segundo plano; exportar e apagar dados pelo perfil. Detalhes na [política de privacidade](privacidade.md) |
 | Termos de uso | Raspagem do Google só em ambiente de teste. Para lançamento público, trocar pela Places API oficial (o código já isola essa fonte num módulo) |
 | Servidores públicos | OSRM, Nominatim e Overpass são para uso leve; em produção, rodar instâncias próprias em Docker |
 | Acessibilidade | Contraste AA nos dois temas (já verificado no design system); toda decisão de swipe também por botão; alvos de toque de 48 px ou mais; menos movimento respeitado |

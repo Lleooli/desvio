@@ -52,6 +52,10 @@ Cada pessoa do grupo tem um site com o contexto, o problema, a solução e a evo
 
 - Leonardo: [liaa-leonardo.github.io](https://liaa-leonardo.github.io)
 
+## Privacidade
+
+O que o Desvio guarda, o que vai para a IA (Groq) e para as fontes de dados, e como exportar ou apagar seus dados: [política de privacidade](docs/privacidade.md).
+
 ## Avisos
 
 Raspar o Google Maps viola os termos de uso do Google. Use só em teste; para lançamento público, troque `services/coletor/app/gmaps.py` pela Places API oficial. Veja a seção de riscos do PRD.

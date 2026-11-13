@@ -17,8 +17,11 @@ SEGREDO = "segredo-de-teste-com-mais-de-32-caracteres"
 @pytest.fixture(autouse=True)
 def _isolado(monkeypatch):
     """Por padrão, nenhum teste fala com banco de verdade nem com o Supabase."""
-    from app import auth, banco, cache
+    from app import auth, banco, cache, conta
     monkeypatch.setattr(banco, "URL", "")
+    monkeypatch.setattr(conta, "SUPABASE_URL", "")
+    monkeypatch.setattr(conta, "SERVICE_ROLE_KEY", "")
+    monkeypatch.setattr(conta, "_transporte", None)
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
     yield
@@ -48,7 +51,7 @@ def pg(_schema, monkeypatch):
     import psycopg
     from app import banco
     with psycopg.connect(_schema, autocommit=True) as con:
-        con.execute("truncate jobs, cache, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
+        con.execute("truncate jobs, cache, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
     monkeypatch.setattr(banco, "URL", _schema)
     return _schema
 

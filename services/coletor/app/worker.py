@@ -8,14 +8,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 
-from . import cache, coletor, fila, preferencias, viagens
+from . import cache, coletor, conta, fila, preferencias, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
 # um job do gosom leva minutos e o worker espera até 30 min por ele sem gravar progresso;
 # "rodando" sem mudar por mais que isso (com folga) é worker que morreu
 PRESO_MIN = float(os.getenv("PV_JOB_PRESO_MIN", "45"))
+# de quanto em quanto tempo o worker tenta de novo as contas que o Supabase Auth não apagou (LGPD)
+EXCLUSAO_MIN = float(os.getenv("PV_EXCLUSAO_INTERVALO_MIN", "10"))
 
 
 async def processar(job: dict) -> dict:
@@ -53,8 +56,21 @@ async def rodar_uma_vez() -> bool:
     return True
 
 
+def completar_exclusoes() -> None:
+    """Contas apagadas pelo app que o Supabase Auth ainda não apagou (app/conta.py)."""
+    try:
+        if feitas := conta.completar_pendentes():
+            log.info("%d contas apagadas no Supabase Auth", feitas)
+    except Exception:  # tenta de novo na próxima volta
+        log.exception("erro ao completar exclusões pendentes")
+
+
 async def _laco() -> None:
+    ultima_exclusao = float("-inf")
     while True:
+        if time.monotonic() - ultima_exclusao >= EXCLUSAO_MIN * 60:
+            ultima_exclusao = time.monotonic()
+            completar_exclusoes()
         try:
             if fila.recuperar_presos(PRESO_MIN):
                 log.warning("jobs presos em 'rodando' voltaram para a fila")

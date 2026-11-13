@@ -42,17 +42,21 @@ def garantir_usuario(usuario: str, email: str | None = None, con: psycopg.Connec
 
     Com `con`, roda na transação de quem chamou (o /swipe grava tudo numa só).
     Conta apagada com o token ainda válido: `usuario` aponta para auth.users e o
-    insert quebra a chave estrangeira; vira ContaApagada.
+    insert quebra a chave estrangeira; vira ContaApagada. Também vira ContaApagada a
+    conta com exclusão pendente (app/conta.py): ela ainda está em auth.users, mas a
+    pessoa pediu para apagar, e a linha em `usuario` não pode voltar.
     """
-    sql = "insert into usuario (id, email) values (%s, %s) on conflict (id) do nothing"
-    try:
-        if con is not None:
-            con.execute(sql, (usuario, email))
-            return
+    if con is None:
         with conectar() as nova:
-            nova.execute(sql, (usuario, email))
+            return garantir_usuario(usuario, email, nova)
+    try:
+        cur = con.execute("insert into usuario (id, email) select %s, %s where not exists "
+                          "(select 1 from exclusao_pendente where usuario = %s) on conflict (id) do nothing",
+                          (usuario, email, usuario))
     except psycopg.errors.ForeignKeyViolation:
         raise ContaApagada(usuario) from None
+    if cur.rowcount == 0 and not con.execute("select 1 from usuario where id = %s", (usuario,)).fetchone():
+        raise ContaApagada(usuario)
 
 
 def aplicar_migracoes(url: str, com_auth_local: bool = False) -> None:
