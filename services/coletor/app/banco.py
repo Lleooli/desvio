@@ -24,6 +24,10 @@ class SemBanco(RuntimeError):
     pass
 
 
+class ContaApagada(RuntimeError):
+    """O token ainda vale (até 1 h), mas a conta já saiu de auth.users; a API responde 401."""
+
+
 def conectar(autocommit: bool = False) -> psycopg.Connection:
     """Conexão nova; `with banco.conectar() as con:` faz commit no fim e fecha."""
     if not URL:
@@ -37,13 +41,18 @@ def garantir_usuario(usuario: str, email: str | None = None, con: psycopg.Connec
     normalmente já criou; aqui cobre contas antigas e o Postgres local).
 
     Com `con`, roda na transação de quem chamou (o /swipe grava tudo numa só).
+    Conta apagada com o token ainda válido: `usuario` aponta para auth.users e o
+    insert quebra a chave estrangeira; vira ContaApagada.
     """
     sql = "insert into usuario (id, email) values (%s, %s) on conflict (id) do nothing"
-    if con is not None:
-        con.execute(sql, (usuario, email))
-        return
-    with conectar() as nova:
-        nova.execute(sql, (usuario, email))
+    try:
+        if con is not None:
+            con.execute(sql, (usuario, email))
+            return
+        with conectar() as nova:
+            nova.execute(sql, (usuario, email))
+    except psycopg.errors.ForeignKeyViolation:
+        raise ContaApagada(usuario) from None
 
 
 def aplicar_migracoes(url: str, com_auth_local: bool = False) -> None:

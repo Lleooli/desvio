@@ -20,8 +20,9 @@ from __future__ import annotations
 import os
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -34,6 +35,13 @@ app = FastAPI(title="Planejador de Viagem — coleta de lugares")
 _ORIGENS_PADRAO = "" if os.getenv("PV_AMBIENTE") == "producao" else "*"
 ORIGENS = [o.strip() for o in os.getenv("PV_CORS_ORIGINS", _ORIGENS_PADRAO).split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.exception_handler(banco.ContaApagada)
+def _conta_apagada(request: Request, exc: banco.ContaApagada) -> JSONResponse:
+    """Token ainda válido de uma conta apagada: 401, como sessão inválida, e não 500."""
+    return JSONResponse({"detail": "Essa conta não existe mais. Entre de novo."}, status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"})
 
 Categoria = str  # turismo | restaurante | posto | natureza | hospedagem
 

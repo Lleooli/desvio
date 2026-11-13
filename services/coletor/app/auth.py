@@ -30,13 +30,17 @@ class Usuario:
     email: str | None = None
 
 
+class ChavesIndisponiveis(RuntimeError):
+    """Não deu para buscar o JWKS do Supabase (falha de rede); a API responde 503, não 401."""
+
+
 @lru_cache(maxsize=1)
 def _jwks(url: str) -> jwt.PyJWKClient:
     return jwt.PyJWKClient(f"{url}/auth/v1/.well-known/jwks.json", cache_keys=True, lifespan=3600)
 
 
 def validar(token: str) -> Usuario:
-    """Usuário do token, ou jwt.InvalidTokenError."""
+    """Usuário do token, ou jwt.InvalidTokenError (ChavesIndisponiveis se o JWKS não responde)."""
     alg = jwt.get_unverified_header(token).get("alg")
     if alg == "HS256":
         if not JWT_SECRET:
@@ -47,6 +51,8 @@ def validar(token: str) -> Usuario:
             raise jwt.InvalidTokenError("sem SUPABASE_URL para buscar as chaves públicas")
         try:
             chave = _jwks(SUPABASE_URL).get_signing_key_from_jwt(token).key
+        except jwt.PyJWKClientConnectionError as e:  # rede: o token pode estar ótimo
+            raise ChavesIndisponiveis(str(e)) from e
         except jwt.PyJWKClientError as e:
             raise jwt.InvalidTokenError(str(e)) from e
     else:
@@ -63,13 +69,18 @@ def validar(token: str) -> Usuario:
 
 
 def usuario_atual(authorization: str | None = Header(None)) -> Usuario:
-    """Dependência do FastAPI: 401 sem token ou com token inválido."""
+    """Dependência do FastAPI: 401 sem token ou com token inválido.
+
+    JWKS fora do ar é 503: é falha passageira, e o app não deve tirar a pessoa da conta.
+    """
     tipo, _, token = (authorization or "").partition(" ")
     if tipo.lower() != "bearer" or not token:
         raise HTTPException(401, "Entre na sua conta para continuar",
                             headers={"WWW-Authenticate": "Bearer"})
     try:
         return validar(token.strip())
+    except ChavesIndisponiveis:
+        raise HTTPException(503, "Não deu para confirmar sua conta agora. Tente de novo em instantes.") from None
     except jwt.InvalidTokenError:
         raise HTTPException(401, "Sua sessão expirou. Entre de novo.",
                             headers={"WWW-Authenticate": "Bearer"}) from None

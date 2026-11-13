@@ -1,10 +1,17 @@
 """Achados da revisão do #58: swipe, conexão com o Postgres e erros de autenticação."""
+import time
+
+import jwt
 import psycopg
+import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
-from app import preferencias
+from app import auth, preferencias
 from app.main import app
 from conftest import criar_pessoa
+
+UID = "00000000-0000-4000-8000-000000000001"
 
 CARD = {"id": "gmaps:P1", "nome": "Churrascaria Gaúcha", "categoria": "restaurante", "tipo": "churrascaria",
         "faixa_preco": "$$", "nota": 4.7, "fonte": "google_maps"}
@@ -97,3 +104,54 @@ def test_swipe_que_falha_no_meio_nao_deixa_nada_gravado(pg, monkeypatch):
     with psycopg.connect(pg) as con:
         assert con.execute("select count(*) from usuario where id = %s", (a,)).fetchone()[0] == 0
         assert con.execute("select count(*) from lugar").fetchone()[0] == 0
+
+
+# Issue #63: conta apagada responde 401 e JWKS fora do ar responde 503
+
+@pytest.mark.parametrize("rota,corpo", [
+    ("/viagem", {"origem": "A, RS", "destino": "B, BA", "intervalo_km": 100}),
+    ("/swipe", {"card": CARD, "gostou": True}),
+])
+def test_conta_apagada_com_token_valido_da_401(pg, rota, corpo):
+    a, cab = criar_pessoa(pg)
+    with psycopg.connect(pg, autocommit=True) as con:
+        con.execute("delete from auth.users where id = %s", (a,))  # o token ainda vale por até 1 h
+    r = TestClient(app, raise_server_exceptions=False).post(rota, json=corpo, headers=cab)
+    assert r.status_code == 401
+    assert r.headers["www-authenticate"] == "Bearer"
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from jobs").fetchone()[0] == 0
+
+
+def test_jwks_fora_do_ar_da_503_sem_dizer_que_a_sessao_expirou(monkeypatch):
+    privada = ec.generate_private_key(ec.SECP256R1())
+    url = "https://projeto.supabase.co"
+    tok = jwt.encode({"sub": UID, "aud": "authenticated", "exp": int(time.time()) + 60, "iss": f"{url}/auth/v1"},
+                     privada, algorithm="ES256", headers={"kid": "k1"})
+
+    class JwksForaDoAr:
+        def get_signing_key_from_jwt(self, t):
+            raise jwt.PyJWKClientConnectionError("Fail to fetch data from the url, err: timed out")
+
+    monkeypatch.setattr(auth, "SUPABASE_URL", url)
+    monkeypatch.setattr(auth, "_jwks", lambda u: JwksForaDoAr())
+    r = TestClient(app).get("/perfil", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 503
+    assert "expirou" not in r.json()["detail"]
+    assert "www-authenticate" not in r.headers
+
+
+def test_jwks_sem_a_chave_do_token_continua_401(monkeypatch):
+    """Erro do JWKS que não é de rede (kid desconhecido) segue sendo token inválido."""
+    privada = ec.generate_private_key(ec.SECP256R1())
+    url = "https://projeto.supabase.co"
+    tok = jwt.encode({"sub": UID, "aud": "authenticated", "exp": int(time.time()) + 60, "iss": f"{url}/auth/v1"},
+                     privada, algorithm="ES256", headers={"kid": "outro"})
+
+    class JwksSemChave:
+        def get_signing_key_from_jwt(self, t):
+            raise jwt.PyJWKClientError('Unable to find a signing key that matches: "outro"')
+
+    monkeypatch.setattr(auth, "SUPABASE_URL", url)
+    monkeypatch.setattr(auth, "_jwks", lambda u: JwksSemChave())
+    assert TestClient(app).get("/perfil", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
