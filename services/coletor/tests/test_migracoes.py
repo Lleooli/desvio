@@ -38,6 +38,14 @@ def test_conta_nova_cria_usuario(pg):
         assert con.execute("select count(*) from usuario where id=%s", (uid,)).fetchone()[0] == 1
 
 
+def test_criar_usuario_nao_fica_exposta_na_api(pg):
+    with psycopg.connect(pg) as con:
+        for papel in ("anon", "authenticated"):
+            pode = con.execute("select has_function_privilege(%s, 'public.criar_usuario()', 'execute')",
+                               (papel,)).fetchone()[0]
+            assert not pode, papel
+
+
 @pytest.fixture
 def duas_viagens(pg):
     a, _ = criar_pessoa(pg)

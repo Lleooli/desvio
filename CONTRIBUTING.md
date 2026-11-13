@@ -36,6 +36,8 @@ Sem `PV_TEST_DATABASE_URL`, os testes que precisam de banco são pulados (no CI 
 
 **Banco (Supabase):**
 
+O projeto se chama `desvio`, fica em São Paulo (`sa-east-1`) e está no plano gratuito. `SUPABASE_URL` é `https://bqtflbmbnkrtjvxsartx.supabase.co`, e a chave pública (`SUPABASE_ANON_KEY`) está em Project Settings > API Keys. A `PV_DATABASE_URL` sai de Connect > Session pooler, com a senha do banco: peça a quem administra o projeto e nunca a coloque no Git. Projeto gratuito parado por 7 dias é pausado; para reativar, clique em Restore no painel.
+
 As migrações ficam em `infra/supabase/migrations/`, uma por arquivo, em ordem pelo nome. Para aplicar no projeto do Supabase, com a [Supabase CLI](https://supabase.com/docs/guides/cli):
 
 ```bash
