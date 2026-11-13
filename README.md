@@ -46,6 +46,12 @@ As telas ainda são provisórias: cada uma mostra a rota e as histórias de usu�
 - Telas e navegação: [canvas de rotas](https://claude.ai/artifact/Y8YekNeBFE8R8nxLUVuPXQ), nos temas claro e escuro
 - Mudou um token? Atualize `packages/design-tokens/tokens.json` e rode `npm run tokens` em `apps/mobile`.
 
+## Sites da disciplina
+
+Cada pessoa do grupo tem um site com o contexto, o problema, a solução e a evolução do projeto (A13):
+
+- Leonardo: [liaa-leonardo.github.io](https://liaa-leonardo.github.io)
+
 ## Avisos
 
 Raspar o Google Maps viola os termos de uso do Google. Use só em teste; para lançamento público, troque `services/coletor/app/gmaps.py` pela Places API oficial. Veja a seção de riscos do PRD.
