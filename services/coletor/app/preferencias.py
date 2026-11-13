@@ -12,17 +12,26 @@ from psycopg.types.json import Jsonb
 from . import banco
 
 
+# Campos do card que entram no perfil; ficam na decisão de cada pessoa (#61)
+CAMPOS_PERFIL = ("categoria", "tipo", "faixa_preco", "nota")
+
+
 def registrar(usuario: str, card: dict, gostou: bool) -> None:
     """Guarda o card em `lugar` (compartilhado entre pessoas) e a decisão em `decisao`
-    (uma por pessoa e lugar; deslizar de novo troca a decisão)."""
+    (uma por pessoa e lugar; deslizar de novo troca a decisão).
+
+    O card vem do cliente, então nunca reescreve um `lugar` que já existe: só o
+    primeiro swipe grava. O que entra no perfil fica na própria decisão, e assim o
+    card de uma pessoa não muda o perfil de outra.
+    """
     with banco.conectar() as con:
-        con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) "
-                    "on conflict (id) do update set dados = excluded.dados, fonte = excluded.fonte, "
-                    "coletado_em = now()",
+        con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) on conflict (id) do nothing",
                     (card["id"], Jsonb(card), card.get("fonte")))
-        con.execute("insert into decisao (usuario, lugar, tipo) values (%s, %s, %s) "
-                    "on conflict (usuario, lugar) do update set tipo = excluded.tipo, quando = now()",
-                    (usuario, card["id"], "bora" if gostou else "passo"))
+        con.execute("insert into decisao (usuario, lugar, tipo, card) values (%s, %s, %s, %s) "
+                    "on conflict (usuario, lugar) do update set tipo = excluded.tipo, card = excluded.card, "
+                    "quando = now()",
+                    (usuario, card["id"], "bora" if gostou else "passo",
+                     Jsonb({k: card.get(k) for k in CAMPOS_PERFIL})))
 
 
 def _nota(valor) -> float | None:
@@ -31,8 +40,9 @@ def _nota(valor) -> float | None:
 
 def perfil(usuario: str) -> dict:
     with banco.conectar() as con:
-        rs = con.execute("select d.tipo, l.dados from decisao d join lugar l on l.id = d.lugar "
-                         "where d.usuario = %s", (usuario,)).fetchall()
+        # o card que a própria pessoa viu; decisões de antes do #61 não têm e usam o lugar
+        rs = con.execute("select d.tipo, coalesce(d.card, l.dados) as dados from decisao d "
+                         "join lugar l on l.id = d.lugar where d.usuario = %s", (usuario,)).fetchall()
     # (gostou, categoria, tipo, faixa_preco, nota); favorito também conta como gostou
     linhas = [(int(r["tipo"] != "passo"), r["dados"].get("categoria"), r["dados"].get("tipo"),
                r["dados"].get("faixa_preco"), _nota(r["dados"].get("nota"))) for r in rs]
