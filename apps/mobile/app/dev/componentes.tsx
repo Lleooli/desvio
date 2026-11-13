@@ -4,10 +4,15 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BottomNav, type Area } from "@/componentes/BottomNav";
 import { Button } from "@/componentes/Button";
+import { Ceu } from "@/componentes/Ceu";
 import { categorias, Chip, type Categoria } from "@/componentes/Chip";
+import { Destaque } from "@/componentes/Destaque";
+import { Estrada } from "@/componentes/Estrada";
 import { Icon, type IconName } from "@/componentes/Icon";
+import { JanelaCidade } from "@/componentes/JanelaCidade";
 import { Rating } from "@/componentes/Rating";
 import { Segmented } from "@/componentes/Segmented";
+import { StopItem } from "@/componentes/StopItem";
 import { TextField } from "@/componentes/TextField";
 import { Toast } from "@/componentes/Toast";
 import { espaco, estiloTexto, TemaProvider, useCores, type Tema } from "@/tema";
@@ -38,6 +43,7 @@ function Catalogo({ tema }: { tema: Tema }) {
   const [filtros, setFiltros] = useState<Categoria[]>(["turismo", "posto"]);
   const [area, setArea] = useState<Area>("descobrir");
   const [cidade, setCidade] = useState("");
+  const [janela, setJanela] = useState("Salvador");
   const nada = () => {};
 
   const alternar = (cat: Categoria) =>
@@ -111,6 +117,51 @@ function Catalogo({ tema }: { tema: Tema }) {
         />
       </Bloco>
 
+      <Bloco titulo="Ceu e Destaque">
+        <Ceu serra>
+          <Text style={[estiloTexto("display-xl"), { color: c.ink }]}>
+            Para onde a <Destaque>estrada</Destaque> te leva?
+          </Text>
+          <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>Lugares no caminho, escolhidos por você.</Text>
+        </Ceu>
+        <Ceu variante="placa" arredondado>
+          <Text style={[estiloTexto("title"), { color: c.ink }]}>
+            Seu roteiro está <Destaque>pronto</Destaque>
+          </Text>
+          <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>Variante placa, em bloco</Text>
+        </Ceu>
+      </Bloco>
+
+      <Bloco titulo="Estrada">
+        <Estrada cidades={["Alegrete", "Lages", "Curitiba", "São Paulo", "Vitória da Conquista"]} />
+        <Estrada cidades={["Alegrete", "Lages", "Curitiba"]} variante="subida" parado />
+      </Bloco>
+
+      <Bloco titulo="StopItem">
+        <View>
+          <StopItem cidade="Alegrete" uf="RS" km={0} horas={0} tipo="origem" />
+          <StopItem cidade="Lages" uf="SC" km={512} horas={6} ativo aceitos={3} total={12} />
+          <StopItem cidade="Curitiba" uf="PR" km={1834} horas={22.5} aceitos={0} total={8} />
+          <StopItem cidade="Vitória da Conquista" uf="BA" km={3120} horas={39} tipo="destino" />
+        </View>
+        <View>
+          <StopItem cidade="Salvador" uf="BA" dias={3} tipo="origem" />
+          <StopItem cidade="Recife" uf="PE" dias={1} aceitos={2} total={10} />
+        </View>
+      </Bloco>
+
+      <Bloco titulo="JanelaCidade">
+        <ScrollView horizontal contentContainerStyle={s.janelas}>
+          {[
+            { cidade: "Salvador", uf: "BA", dias: 3 },
+            { cidade: "Recife", uf: "PE", dias: 1, variante: "placa" as const },
+            { cidade: "Natal", uf: "RN", dias: 2 },
+          ].map((j) => (
+            <JanelaCidade key={j.cidade} {...j} selecionada={janela === j.cidade} onPress={() => setJanela(j.cidade)} />
+          ))}
+        </ScrollView>
+      </Bloco>
+
       <Bloco titulo="Rating">
         <View style={s.linha}>
           <Rating nota={4.7} avaliacoes={1834} />
@@ -147,4 +198,5 @@ const s = StyleSheet.create({
   bloco: { gap: espaco["space-3"] },
   linha: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: espaco["space-2"] },
   foto: { padding: espaco["space-4"] },
+  janelas: { gap: espaco["space-3"] },
 });
