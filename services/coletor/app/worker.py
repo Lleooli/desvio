@@ -10,7 +10,9 @@ import logging
 import os
 import time
 
-from . import cache, coletor, conta, fila, preferencias, viagens
+import httpx
+
+from . import cache, coletor, conta, fila, geo, preferencias, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -47,13 +49,26 @@ async def rodar_uma_vez() -> bool:
         fila.concluir(job["id"], await processar(job))
     except Exception as e:  # o worker não pode morrer por causa de um job
         log.exception("job %s falhou", job["id"])
-        fila.falhar(job["id"], str(e) or e.__class__.__name__)
+        fila.falhar(job["id"], mensagem_amigavel(e))  # o erro completo fica só no log
         if viagem := (job.get("entrada") or {}).get("viagem"):
             try:
                 viagens.marcar_falha(viagem)
             except Exception:
                 log.exception("não consegui marcar a viagem %s como falhou", viagem)
     return True
+
+
+ERRO_MAPAS = "Um serviço de mapas não respondeu. Tente de novo em alguns minutos."
+ERRO_GENERICO = "Não conseguimos montar a viagem agora. Tente de novo em alguns minutos."
+
+
+def mensagem_amigavel(e: Exception) -> str:
+    """O que /jobs/{id} mostra: nada de URL, host ou traceback."""
+    if isinstance(e, geo.ErroConhecido):
+        return str(e)
+    if isinstance(e, (httpx.HTTPError, TimeoutError)):
+        return ERRO_MAPAS
+    return ERRO_GENERICO
 
 
 def completar_exclusoes() -> None:

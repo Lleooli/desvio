@@ -31,7 +31,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import banco, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
@@ -64,13 +64,26 @@ class Viagem(BaseModel):
     buscar_instagram: bool = True
 
 
+class Card(BaseModel):
+    """Card de lugar como o coletor devolve. Só o id é obrigatório; o resto passa como veio."""
+    model_config = ConfigDict(extra="allow")
+    id: str = Field(min_length=1, examples=["osm:node/123"])
+    lat: float | None = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    lon: float | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    km_na_rota: float | None = Field(None, allow_inf_nan=False)
+
+
+def _dicts(cards: list[Card]) -> list[dict]:
+    return [c.model_dump(exclude_unset=True) for c in cards]
+
+
 class Swipe(BaseModel):
-    card: dict
+    card: Card
     gostou: bool
 
 
 class Roteiro(BaseModel):
-    cards: list[dict]
+    cards: list[Card]
     usar_ia: bool = False
     contexto: dict = {}
 
@@ -80,7 +93,7 @@ class Triagem(BaseModel):
 
 
 class Ranquear(BaseModel):
-    cards: list[dict]
+    cards: list[Card]
     resumo: str = ""
 
 
@@ -138,9 +151,9 @@ def apagar_minha_conta(req: ApagarConta, eu: Usuario = Depends(usuario_atual)):
 
 @app.post("/swipe")
 def swipe(req: Swipe, eu: Usuario = Depends(usuario_atual)):
-    if not isinstance(req.card.get("id"), str) or not preferencias.ID_VALIDO.fullmatch(req.card["id"]):
+    if not preferencias.ID_VALIDO.fullmatch(req.card.id):
         raise HTTPException(422, "Card sem id válido")
-    preferencias.registrar(eu.id, req.card, req.gostou, eu.email)  # uma transação, com garantir_usuario
+    preferencias.registrar(eu.id, req.card.model_dump(exclude_unset=True), req.gostou, eu.email)  # uma transação, com garantir_usuario
     return {"ok": True}
 
 
@@ -152,9 +165,9 @@ def perfil(eu: Usuario = Depends(usuario_atual)):
 @app.post("/roteiro")
 async def roteiro_da_viagem(req: Roteiro, eu: Usuario = Depends(usuario_atual)):
     if not req.usar_ia:
-        return {"itens": roteiro.ordenar_na_rota(req.cards), "explicacoes": {}, "fonte": "geometria"}
+        return {"itens": roteiro.ordenar_na_rota(_dicts(req.cards)), "explicacoes": {}, "fonte": "geometria"}
     async with httpx.AsyncClient() as client:
-        return await ia.ajustar_roteiro(client, req.cards, req.contexto)
+        return await ia.ajustar_roteiro(client, _dicts(req.cards), req.contexto)
 
 
 @app.post("/triagem")
@@ -166,7 +179,7 @@ async def triagem(req: Triagem, eu: Usuario = Depends(usuario_atual)):
 @app.post("/cards/ranquear")
 async def ranquear(req: Ranquear, eu: Usuario = Depends(usuario_atual)):
     async with httpx.AsyncClient() as client:
-        return await ia.ranquear(client, req.cards, req.resumo)
+        return await ia.ranquear(client, _dicts(req.cards), req.resumo)
 
 
 @app.get("/fotos/{nome:path}", include_in_schema=False)

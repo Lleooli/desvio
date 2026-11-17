@@ -274,7 +274,8 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 cache.guardar(chave + faltam_google[cid], lugares)
             google.update(novos)
         except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
-            avisos.append(f"Google Maps indisponível, usei só OpenStreetMap: {e}")
+            log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", e)
+            avisos.append("O Google Maps não respondeu, então os lugares vieram só do OpenStreetMap.")
 
     # 3) Junta, prioriza e corta por categoria; o que já foi no parcial continua, com o mesmo id
     for i, p in enumerate(paradas):

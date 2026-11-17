@@ -48,6 +48,22 @@ VEICULOS = ("carro", "moto", "bicicleta")  # moto usa a rota de carro
 
 Ponto = tuple[float, float]  # (lat, lon)
 
+
+class ErroConhecido(ValueError):
+    """Erro que a pessoa entende; a mensagem vai como está para o app."""
+
+
+class LugarNaoEncontrado(ErroConhecido):
+    def __init__(self, lugar: str):
+        self.lugar = lugar
+        super().__init__(f"Não achamos {lugar}. Confira o nome da cidade e a UF.")
+
+
+class RotaNaoEncontrada(ErroConhecido):
+    def __init__(self, motivo: str = ""):
+        self.motivo = motivo  # vai só para o log
+        super().__init__("Não achamos uma rota entre essas cidades.")
+
 _cache: dict[str, dict] = {}
 _trava_nominatim = asyncio.Lock()
 
@@ -74,7 +90,7 @@ async def _nominatim(client: httpx.AsyncClient, caminho: str, params: dict) -> o
 async def geocodificar(client: httpx.AsyncClient, lugar: str) -> dict:
     dados = await _nominatim(client, "search", {"q": lugar, "format": "jsonv2", "limit": 1, "addressdetails": 1})
     if not dados:
-        raise ValueError(f"Lugar não encontrado: {lugar}")
+        raise LugarNaoEncontrado(lugar)
     d = dados[0]
     end = d.get("address", {})
     return {
@@ -117,7 +133,7 @@ async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo
     r.raise_for_status()
     dados = r.json()
     if dados.get("code") != "Ok" or not dados.get("routes"):
-        raise ValueError(f"OSRM não achou rota: {dados.get('message', dados.get('code'))}")
+        raise RotaNaoEncontrada(str(dados.get("message") or dados.get("code")))
     rota = dados["routes"][0]
     pontos = [(lat, lon) for lon, lat in rota["geometry"]["coordinates"]]
     resultado = {

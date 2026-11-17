@@ -228,7 +228,7 @@ def test_places_fora_do_ar_cai_no_osm(mock_http, monkeypatch):
     monkeypatch.setattr(gmaps, "_text_search", fora)
     r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
     assert all(c["fonte"] == "openstreetmap" for p in r["paradas"] for c in p["cards"])
-    assert "Google Maps indisponível" in r["paradas"][0]["avisos"][0]
+    assert "Google Maps não respondeu" in r["paradas"][0]["avisos"][0]
 
 
 def test_api(mock_http, pessoa):

@@ -4,7 +4,7 @@ import threading
 import psycopg
 import pytest
 
-from app import fila, worker
+from app import fila, geo, worker
 
 
 @pytest.fixture(autouse=True)
@@ -109,7 +109,7 @@ def test_worker_processa(monkeypatch):
 
 def test_worker_marca_falha(monkeypatch):
     async def quebra(**kw):
-        raise ValueError("Não achamos essa cidade")
+        raise geo.LugarNaoEncontrado("Cidadezinha, XX")
     monkeypatch.setattr(worker.coletor, "planejar_viagem", quebra)
     ruim = fila.criar("carro", {"origem": "?", "destino": "?"})
     bom = fila.criar("tipo-desconhecido", {})
