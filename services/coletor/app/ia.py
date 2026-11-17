@@ -122,7 +122,9 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
         usados = int((r.json().get("usage") or {}).get("total_tokens") or tokens)
     except (TypeError, ValueError, AttributeError):
         usados = tokens
-    uso_ia.registrar(modelo, usados)  # conta na cota do dia, mesmo se a saída vier ruim
+    # conta na cota do dia, mesmo se a saída vier ruim; numa thread e sem esperar, para
+    # o banco lento nunca empurrar a resposta da IA para além do prazo
+    asyncio.get_running_loop().run_in_executor(None, uso_ia.registrar, modelo, usados)
     try:
         saida = json.loads(r.json()["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError, ValueError) as e:

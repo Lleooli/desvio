@@ -4,7 +4,7 @@ Status: **pendente**. Falta o uso real do beta fechado (#44). Esta página tem a
 
 ## Como medir
 
-Cada chamada que chega ao Groq é somada por modelo e por dia na tabela `uso_ia` (`services/coletor/app/uso_ia.py`):
+Cada chamada que chega ao Groq é somada por modelo e por dia (UTC) na tabela `uso_ia` do Postgres, compartilhada pela API e pelo worker (`services/coletor/app/uso_ia.py`, migração `20261113040000_uso_ia.sql`). Se a cota do Groq virar em outro horário, o dia do alerta e o da cota podem não bater por algumas horas:
 
 - `GET /uso/ia?dias=30`, com o cabeçalho `X-Admin-Token: $PV_ADMIN_TOKEN`, devolve chamadas, tokens e a fração da cota usada em cada dia. Sem `PV_ADMIN_TOKEN` configurado, a rota responde 404.
 - Quando um modelo passa de 80% da cota do dia (requisições ou tokens), o log do coletor registra `ALERTA cota do Groq`, uma vez por modelo e por dia.

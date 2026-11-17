@@ -56,7 +56,7 @@ def pg(_schema, monkeypatch):
     import psycopg
     from app import banco
     with psycopg.connect(_schema, autocommit=True) as con:
-        con.execute("truncate jobs, cache, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
+        con.execute("truncate jobs, cache, uso_ia, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
     monkeypatch.setattr(banco, "URL", _schema)
     return _schema
 
@@ -81,9 +81,3 @@ def criar_pessoa(url: str) -> tuple[str, dict]:
 @pytest.fixture
 def pessoa(pg):
     return criar_pessoa(pg)
-
-@pytest.fixture(autouse=True)
-def _uso_ia_isolado(tmp_path, monkeypatch):
-    """Chamadas simuladas ao Groq não somam no uso de verdade (planejador.db)."""
-    from app import uso_ia
-    monkeypatch.setattr(uso_ia, "DB", str(tmp_path / "uso_ia.db"))

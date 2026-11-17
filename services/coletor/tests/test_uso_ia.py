@@ -14,8 +14,9 @@ SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}},
 
 
 @pytest.fixture(autouse=True)
-def banco(tmp_path, monkeypatch):
-    monkeypatch.setattr(uso_ia, "DB", str(tmp_path / "uso.db"))
+def banco(request, monkeypatch):
+    if request.node.name != "test_sem_banco_nao_derruba_a_ia":
+        request.getfixturevalue("pg")
     monkeypatch.setenv("GROQ_API_KEY", "teste")
     ia._limitadores.clear()
 
@@ -72,9 +73,21 @@ def test_alerta_por_tokens(monkeypatch, caplog):
     assert "ALERTA cota do Groq: m" in caplog.text
 
 
-def test_banco_quebrado_nao_derruba_a_ia(monkeypatch, tmp_path):
-    monkeypatch.setattr(uso_ia, "DB", str(tmp_path))  # pasta: o SQLite não abre
-    assert chamar(ok({"total_tokens": 10})) == {"ok": True}
+def test_sem_banco_nao_derruba_a_ia():
+    assert chamar(ok({"total_tokens": 10})) == {"ok": True}  # sem PV_DATABASE_URL: só um aviso no log
+
+
+def test_banco_lento_nao_atrasa_a_resposta(monkeypatch):
+    import time
+    monkeypatch.setattr(uso_ia, "registrar", lambda *a: time.sleep(1.5))
+    inicio = time.perf_counter()
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: ok())) as c:
+            r = await ia.chamar_json(c, modelo="m", sistema="s", dados={}, schema=SCHEMA, nome="t")
+            return r, time.perf_counter() - inicio
+    r, gasto = asyncio.run(go())
+    assert r == {"ok": True} and gasto < 1
 
 
 def test_consulta_exige_token_de_admin(monkeypatch):
