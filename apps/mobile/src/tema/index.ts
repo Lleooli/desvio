@@ -60,6 +60,16 @@ export const medida = {
   paradaAjusteTopo: 2,
   /** Largura da caixa invisível onde a Estrada mede o texto (bem larga, para não quebrar). */
   estradaMedicao: 10000,
+  // Card do swipe: .dv-card e .dv-stamp em docs/design/design-system/components/bundle.css
+  cardLarguraMaxima: 380,
+  cardProporcao: 3 / 4.3,
+  cardIconeSemFoto: 72,
+  cardCarimboTopo: 96,
+  cardCarimboBorda: 3,
+  cardCarimboTexto: 34,
+  cardCarimboLinha: 38,
+  cardHorasTexto: 13,
+  cardHorasLinha: 16,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */

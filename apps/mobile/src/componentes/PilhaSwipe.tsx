@@ -12,7 +12,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { espaco } from "@/tema";
+import { espaco, medida } from "@/tema";
 import { SwipeActions } from "./SwipeActions";
 import { Carimbo, SwipeCard, type CardLugar, type Decisao } from "./SwipeCard";
 
@@ -28,8 +28,6 @@ const LIMIAR = 0.3;
 const GIRO_MAXIMO = 12;
 const DURACAO_SAIDA = 420;
 const EASE_FOLHA = Easing.bezier(0.32, 0.72, 0, 1);
-const LARGURA_MAXIMA = 380;
-const PROPORCAO = 3 / 4.3;
 
 /**
  * Decide o que um arrasto significa: direita Bora, esquerda Passo, cima Favorito.
@@ -52,7 +50,7 @@ export function decisaoDoArrasto(x: number, y: number, largura: number): Decisao
 /** A pilha do swipe: card do topo com gesto, o próximo já carregado atrás e os botões embaixo. */
 export function PilhaSwipe({ cards, onDecisao }: Props) {
   const { width } = useWindowDimensions();
-  const largura = Math.min(width - 2 * espaco["space-4"], LARGURA_MAXIMA);
+  const largura = Math.min(width - 2 * espaco["space-4"], medida.cardLarguraMaxima);
   const topo = useRef<{ decidir: (decisao: Decisao) => void }>(null);
   const [saindo, setSaindo] = useState(false);
   const [atual, proximo] = cards;
@@ -76,7 +74,7 @@ export function PilhaSwipe({ cards, onDecisao }: Props) {
 
   return (
     <View style={s.pilha}>
-      <View style={{ width: largura, aspectRatio: PROPORCAO }}>
+      <View style={{ width: largura, aspectRatio: medida.cardProporcao }}>
         {proximo ? (
           <View style={StyleSheet.absoluteFill} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
             <SwipeCard card={proximo} atras />
@@ -88,6 +86,7 @@ export function PilhaSwipe({ cards, onDecisao }: Props) {
           card={atual}
           largura={largura}
           onSaida={() => setSaindo(true)}
+          onVolta={() => setSaindo(false)}
           onDecisao={decidir}
         />
       </View>
@@ -105,22 +104,43 @@ type CardDoTopoProps = {
   card: CardLugar;
   largura: number;
   onSaida: () => void;
+  /** O card voltou ao centro porque quem usa não o tirou da lista (ex.: o swipe falhou). */
+  onVolta: () => void;
   onDecisao: (card: CardLugar, decisao: Decisao) => void;
   ref: Ref<{ decidir: (decisao: Decisao) => void }>;
 };
 
 /** Montado de novo a cada card (key = id), então o deslocamento sempre começa em zero. */
-function CardDoTopo({ card, largura, onSaida, onDecisao, ref }: CardDoTopoProps) {
+function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, ref }: CardDoTopoProps) {
   const menosMovimento = useReducedMotion();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
+  // true do começo da saída até o card sumir: o gesto e os botões não disparam a decisão de novo
+  const saiu = useSharedValue(false);
+  const montado = useRef(true);
+  useEffect(() => () => {
+    montado.current = false;
+  }, []);
   const limiar = largura * LIMIAR;
 
-  const concluir = (decisao: Decisao) => onDecisao(card, decisao);
+  const concluir = (decisao: Decisao) => {
+    onDecisao(card, decisao);
+    // Quem usa tira o card da lista e este componente desmonta (key = id). Se ele continuar
+    // aqui, a decisão não pegou: o card volta ao centro e os botões voltam a funcionar.
+    setTimeout(() => {
+      if (!montado.current) return;
+      x.value = 0;
+      y.value = 0;
+      saiu.value = false;
+      onVolta();
+    }, 0);
+  };
 
   /** Leva o card para fora da tela e registra a decisão; com menos movimento, troca na hora. */
   const sair = (decisao: Decisao) => {
     "worklet";
+    if (saiu.value) return;
+    saiu.value = true;
     if (menosMovimento) {
       runOnJS(concluir)(decisao);
       return;
@@ -138,10 +158,12 @@ function CardDoTopo({ card, largura, onSaida, onDecisao, ref }: CardDoTopoProps)
 
   const gesto = Gesture.Pan()
     .onUpdate((e) => {
+      if (saiu.value) return; // agarrar o card saindo não interrompe a saída
       x.value = e.translationX;
       y.value = e.translationY;
     })
     .onEnd((e) => {
+      if (saiu.value) return;
       const decisao = decisaoDoArrasto(e.translationX, e.translationY, largura);
       if (decisao) {
         runOnJS(onSaida)();

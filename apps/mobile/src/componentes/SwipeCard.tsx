@@ -1,5 +1,5 @@
 import { Image, Linking, StyleSheet, Text, View } from "react-native";
-import { espaco, estiloTexto, fontes, raio, tamanhoIcone, useCores } from "@/tema";
+import { medida, espaco, estiloTexto, fontes, raio, tamanhoIcone, useCores } from "@/tema";
 import { categorias, Chip, type Categoria } from "./Chip";
 import { Icon } from "./Icon";
 import { numero, Rating } from "./Rating";
@@ -16,9 +16,9 @@ export type CardLugar = {
   uf?: string | null;
   nota?: number | null;
   avaliacoes?: number | null;
-  /** km na rota; só no modo carro. */
+  /** km na rota. */
   km?: number | null;
-  /** Horas desde a saída; só no modo carro. */
+  /** Horas desde a saída. */
   horas?: number | null;
   descricao?: string | null;
   /** URL ou @handle. */
@@ -35,11 +35,13 @@ type Props = {
   atras?: boolean;
 };
 
-/** Extrai o @ de uma URL do Instagram ou de um "@handle". */
+/** Extrai o @ de uma URL do Instagram ou de um "@handle"; outra coisa (um site qualquer) vira null. */
 export function handleInstagram(instagram?: string | null): string | null {
   if (!instagram) return null;
   const achado = /instagram\.com\/([A-Za-z0-9_.]+)/.exec(instagram);
-  return achado ? achado[1] : instagram.replace(/^@/, "");
+  if (achado) return achado[1];
+  const handle = instagram.trim().replace(/^@/, "");
+  return /^[A-Za-z0-9_.]{1,30}$/.test(handle) ? handle : null;
 }
 
 /** "KM 512" e "+6,8H" (ou "+27H"), no padrão brasileiro. */
@@ -181,20 +183,15 @@ export function Carimbo({ decisao }: { decisao: Decisao }) {
   );
 }
 
-// Medidas do card em docs/design/design-system/components/bundle.css (.dv-card e .dv-stamp).
-const tamanhoIconeSemFoto = 72;
-const larguraMaxima = 380;
-const topoCarimbo = 96;
-const bordaCarimbo = 3;
-const tamanhoCarimbo = 34;
-const alturaCarimbo = 38;
-const textoHoras = { tamanho: 13, altura: 16 };
+// Medidas do card em docs/design/design-system/components/bundle.css (.dv-card e .dv-stamp), via medida.
+const tamanhoIconeSemFoto = medida.cardIconeSemFoto;
+const tamanhoCarimbo = medida.cardCarimboTexto;
 
 const s = StyleSheet.create({
   card: {
     width: "100%",
-    maxWidth: larguraMaxima,
-    aspectRatio: 3 / 4.3,
+    maxWidth: medida.cardLarguraMaxima,
+    aspectRatio: medida.cardProporcao,
     borderRadius: raio["radius-lg"],
   },
   recorte: { flex: 1, borderRadius: raio["radius-lg"], overflow: "hidden" },
@@ -217,7 +214,7 @@ const s = StyleSheet.create({
     borderRadius: raio["radius-sm"],
   },
   maiusculas: { textTransform: "uppercase" },
-  horas: { fontSize: textoHoras.tamanho, lineHeight: textoHoras.altura },
+  horas: { fontSize: medida.cardHorasTexto, lineHeight: medida.cardHorasLinha },
   corpo: {
     position: "absolute",
     left: 0,
@@ -232,15 +229,15 @@ const s = StyleSheet.create({
   lugar: { flexDirection: "row", alignItems: "center", gap: espaco["space-1"] },
   instagram: { fontFamily: fontes.sansForte, textDecorationLine: "underline", alignSelf: "flex-start" },
   provavel: { fontFamily: fontes.sans, opacity: 0.85 },
-  faixaCarimbo: { position: "absolute", top: topoCarimbo, left: espaco["space-4"], right: espaco["space-4"], flexDirection: "row" },
+  faixaCarimbo: { position: "absolute", top: medida.cardCarimboTopo, left: espaco["space-4"], right: espaco["space-4"], flexDirection: "row" },
   carimbo: {
     paddingVertical: espaco["space-1"],
     paddingHorizontal: espaco["space-3"],
-    borderWidth: bordaCarimbo,
+    borderWidth: medida.cardCarimboBorda,
     borderRadius: raio["radius-sm"],
     fontFamily: fontes.placaForte,
     fontSize: tamanhoCarimbo,
-    lineHeight: alturaCarimbo,
+    lineHeight: medida.cardCarimboLinha,
     letterSpacing: 0.08 * tamanhoCarimbo,
     textTransform: "uppercase",
     overflow: "hidden",
