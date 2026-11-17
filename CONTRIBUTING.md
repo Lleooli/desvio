@@ -58,6 +58,13 @@ npm install
 npx expo start
 ```
 
+O Expo Go da loja só abre a versão de SDK dele; se o projeto estiver em outra, aparece "Something went wrong". Para não depender disso, use o development build (app "Desvio" separado, que também recebe push):
+
+- **Pelo EAS** (precisa de convite no projeto [@lleooliv/desvio](https://expo.dev/accounts/lleooliv/projects/desvio)): `npx eas-cli build --profile development --platform android`, instale o APK pelo link e rode `npx expo start --dev-client`.
+- **Local, com o celular no USB** (Android Studio instalado): `npx expo run:android`. Se o app não achar o Metro, rode `adb reverse tcp:8081 tcp:8081`.
+
+O perfil `preview` do `eas.json` gera o APK do beta fechado (distribuição interna, por link). A pasta `android/` que o build local cria não vai para o Git.
+
 ## Escolhendo o que fazer
 
 - O trabalho fica nas issues do GitHub. Cada issue cita a história do PRD (HU01 a HU19).
