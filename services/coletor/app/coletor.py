@@ -61,6 +61,8 @@ CATEGORIAS_PADRAO = ["turismo", "restaurante", "posto"]
 # teto de paradas por viagem: 10 km numa viagem de 4.000 km dariam 400 paradas, horas de
 # Overpass e Nominatim (1 req/s) e um job do gosom enorme. Acima disso o intervalo cresce.
 MAX_PARADAS = int(os.getenv("PV_MAX_PARADAS", "30"))
+# busca do Google que voltou vazia (cidade sem nada ou que o gosom não alcançou) vale só 1 dia
+VAZIO_GOOGLE_DIAS = 1
 
 
 def intervalo_efetivo(distancia_km: float, intervalo_km: float) -> float:
@@ -232,6 +234,8 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 texto = _consulta_cidade(cat, p)
                 guardado = cache.obter("gmaps|" + texto)
                 if guardado is None:
+                    guardado = cache.obter("gmaps-vazio|" + texto, dias=VAZIO_GOOGLE_DIAS)
+                if guardado is None:
                     faltam_google[f"{i}|{cat}"] = texto
                 else:
                     google[f"{i}|{cat}"] = guardado
@@ -259,7 +263,10 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
         try:
             novos = await gmaps.buscar_lote(client, faltam_google)
             for cid, lugares in novos.items():
-                cache.guardar("gmaps|" + faltam_google[cid], lugares)
+                # vazio pode ser cidade que o gosom não alcançou antes do max_time: em vez de
+                # 30 dias de "nada", vale só 1 dia (chave à parte, lida com dias=1)
+                chave = "gmaps|" if lugares else "gmaps-vazio|"
+                cache.guardar(chave + faltam_google[cid], lugares)
             google.update(novos)
         except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
             avisos.append(f"Google Maps indisponível, usei só OpenStreetMap: {e}")

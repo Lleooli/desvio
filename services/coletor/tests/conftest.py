@@ -29,6 +29,8 @@ def _schema():
         if os.getenv("CI"):  # no CI os testes de banco nunca podem sumir em silêncio
             pytest.fail("PV_TEST_DATABASE_URL não configurada no CI")
         pytest.skip("PV_TEST_DATABASE_URL não configurada (veja tests/conftest.py)")
+    if "supabase.co" in PG or "supabase.com" in PG:  # o setup apaga o schema public inteiro
+        pytest.exit("PV_TEST_DATABASE_URL aponta para o Supabase; use o Postgres de teste local", 2)
     import psycopg
     from app import banco
     with psycopg.connect(PG, autocommit=True) as con:  # do zero: prova que as migrações rodam num banco vazio

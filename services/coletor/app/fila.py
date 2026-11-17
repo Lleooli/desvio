@@ -26,7 +26,7 @@ def criar(tipo: str, entrada: dict, usuario: str | None = None) -> str:
 def pegar_proximo() -> dict | None:
     with banco.conectar() as con:
         l = con.execute(
-            f"update jobs set status='rodando', atualizado_em={_AGORA} "
+            f"update jobs set status='rodando', progresso=null, atualizado_em={_AGORA} "
             "where id = (select id from jobs where status='pendente' order by criado_em, id "
             "            limit 1 for update skip locked) "
             "returning id, tipo, entrada").fetchone()
@@ -36,7 +36,8 @@ def pegar_proximo() -> dict | None:
 def recuperar_presos(minutos: float = 30) -> int:
     """Devolve à fila os jobs "rodando" sem atualização há `minutos` (worker morreu no meio)."""
     with banco.conectar() as con:
-        cur = con.execute(f"update jobs set status='pendente', atualizado_em={_AGORA} "
+        # progresso e parcial da execução que morreu não valem para a próxima
+        cur = con.execute(f"update jobs set status='pendente', progresso=null, parcial=null, atualizado_em={_AGORA} "
                           f"where status='rodando' and atualizado_em <= {_AGORA} - make_interval(secs => %s)",
                           (minutos * 60,))
     return cur.rowcount
@@ -63,7 +64,7 @@ def progresso(job_id: str, etapa: str, titulo: str, detalhe: str, percentual: in
 def _fechar(job_id: str, status: str, resultado: dict | None, erro: str | None) -> None:
     with banco.conectar() as con:
         con.execute(f"update jobs set status=%s, resultado=%s, erro=%s, parcial=null, atualizado_em={_AGORA} "
-                    "where id=%s",
+                    "where id=%s and status='rodando'",  # job já fechado não é sobrescrito
                     (status, Jsonb(resultado) if resultado is not None else None, erro, job_id))
 
 

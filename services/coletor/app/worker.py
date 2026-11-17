@@ -13,8 +13,9 @@ from . import cache, coletor, fila, preferencias
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
-# um job do gosom leva minutos; "rodando" sem mudar por mais que isso é worker que morreu
-PRESO_MIN = float(os.getenv("PV_JOB_PRESO_MIN", "30"))
+# um job do gosom leva minutos e o worker espera até 30 min por ele sem gravar progresso;
+# "rodando" sem mudar por mais que isso (com folga) é worker que morreu
+PRESO_MIN = float(os.getenv("PV_JOB_PRESO_MIN", "45"))
 
 
 async def processar(job: dict) -> dict:

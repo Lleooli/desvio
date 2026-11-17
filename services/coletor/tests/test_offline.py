@@ -383,3 +383,20 @@ def test_mesmo_lugar_do_google_em_duas_categorias_aparece_uma_vez_na_parada():
     ids = [c["id"] for c in cards]
     assert ids == ["gmaps:P1", "gmaps:P2"]
     assert cards[0]["categoria"] == "turismo"
+
+
+def test_busca_do_google_vazia_vale_so_um_dia(mock_http, monkeypatch, pg):
+    import psycopg
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    with psycopg.connect(pg, autocommit=True) as con:
+        vazias = con.execute("select count(*) from cache where chave like 'gmaps-vazio|%'").fetchone()[0]
+        cheias = con.execute("select count(*) from cache where chave like 'gmaps|%' "
+                             "and valor = '[]'::jsonb").fetchone()[0]
+        assert vazias > 0 and cheias == 0  # vazio nunca entra na chave de 30 dias
+        con.execute("update cache set guardado_em = now() - interval '2 days' where chave like 'gmaps-vazio|%'")
+    geo._cache.clear()
+    cont = _contar_chamadas(monkeypatch)
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    assert cont["gosom"] == 1  # o vazio venceu: tenta o Google de novo

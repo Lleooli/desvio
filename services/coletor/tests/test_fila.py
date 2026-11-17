@@ -34,6 +34,27 @@ def test_obter_inexistente():
     assert fila.obter("nao-existe") is None
 
 
+def test_job_preso_volta_sem_progresso_nem_parcial(pg):
+    jid = fila.criar("carro", {})
+    fila.pegar_proximo()
+    fila.progresso(jid, "lugares", "Buscando", "Cidade", 60)
+    fila.parcial(jid, {"paradas": [{"cards": [{"id": "osm:1"}]}]})
+    with psycopg.connect(pg, autocommit=True) as con:
+        con.execute("update jobs set atualizado_em = now() - interval '2 hours' where id=%s", (jid,))
+    assert fila.recuperar_presos(45) == 1
+    j = fila.obter(jid)
+    assert j["status"] == "pendente" and j["progresso"] is None and j["parcial"] is None
+
+
+def test_job_fechado_nao_e_sobrescrito_por_execucao_repetida():
+    jid = fila.criar("carro", {})
+    fila.pegar_proximo()
+    fila.concluir(jid, {"paradas": ["primeira"]})
+    fila.falhar(jid, "segunda execução, atrasada")
+    j = fila.obter(jid)
+    assert j["status"] == "pronto" and j["resultado"] == {"paradas": ["primeira"]}
+
+
 def test_obter_so_devolve_job_do_dono(pg):
     from conftest import criar_pessoa
     dono, _ = criar_pessoa(pg)
