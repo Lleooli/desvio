@@ -34,7 +34,7 @@ _transporte: httpx.BaseTransport | None = None  # os testes trocam por um httpx.
 # --- Exportar ----------------------------------------------------------------
 
 def exportar(usuario: str) -> dict:
-    """Tudo o que é da pessoa: conta, perfil de gosto, viagens (com paradas, cards e roteiro) e decisões."""
+    """Tudo o que é da pessoa: conta, perfil de gosto, viagens (com paradas, cards e roteiro), decisões e buscas."""
     with banco.conectar() as con:
         u = con.execute("select email, provedor, perfil_gosto, tema, criado_em from usuario where id = %s",
                         (usuario,)).fetchone()
@@ -56,6 +56,10 @@ def exportar(usuario: str) -> dict:
             "select d.lugar, l.dados ->> 'nome' as nome, d.tipo, d.viagem, d.parada, d.card, d.quando "
             "from decisao d join lugar l on l.id = d.lugar where d.usuario = %s order by d.quando",
             (usuario,)).fetchall()
+        # as buscas (entrada com origem e destino, resultado) também são dados da pessoa
+        buscas = con.execute(
+            "select id, tipo, status, entrada, resultado, erro, criado_em, atualizado_em from jobs "
+            "where usuario = %s order by criado_em", (usuario,)).fetchall()
     por_parada: dict[tuple, list[dict]] = {}
     for c in cards:
         por_parada.setdefault((c["viagem"], c["parada"]), []).append(
@@ -79,6 +83,7 @@ def exportar(usuario: str) -> dict:
                 "atualizado_em": v["roteiro_atualizado_em"]},
         } for v in viagens],
         "decisoes": [{**d, "viagem": str(d["viagem"]) if d["viagem"] else None} for d in decisoes],
+        "buscas": [dict(b) for b in buscas],
     }
 
 

@@ -47,7 +47,7 @@ Não vendemos seus dados e não usamos seus dados para publicidade.
 | Google Maps, e no lançamento a Google Places API | Uma busca como "restaurante em Santa Maria, RS" | Trazer nota, fotos, horários e preço |
 | DuckDuckGo (ddgs) e o site do lugar | O nome do lugar e a cidade | Achar o Instagram do lugar |
 
-O resultado dessas consultas fica no nosso cache por **30 dias** e depois é apagado. O cache guarda lugares e rotas, não guarda quem pediu.
+O resultado dessas consultas fica no nosso cache por **30 dias** e depois é apagado. O cache guarda lugares e rotas, não guarda quem pediu. A busca da origem e do destino é guardada com o texto que você digitou: se você digitar um endereço em vez de uma cidade, esse texto fica no cache, sem ligação com a sua conta, até completar os 30 dias, mesmo que você apague a conta antes.
 
 ## Por quanto tempo guardamos
 

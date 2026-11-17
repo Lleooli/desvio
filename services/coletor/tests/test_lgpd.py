@@ -79,13 +79,15 @@ def test_exportacao_contem_viagens_decisoes_e_perfil(pg, monkeypatch):
     assert v["roteiro"]["itens"] == [{"id": "osm:node/1"}]
     assert sorted((x["lugar"], x["tipo"]) for x in d["decisoes"]) == [("osm:node/1", "bora"),
                                                                      ("osm:node/2", "passo")]
+    [busca] = d["buscas"]  # o job com origem e destino digitados também é dado da pessoa
+    assert busca["entrada"]["origem"] == "Alegrete, RS" and busca["status"] == "pronto"
 
 
 def test_exportacao_so_traz_os_dados_de_quem_pede(pg, monkeypatch):
     pessoa_com_dados(pg, monkeypatch)
     _, cab_b = criar_pessoa(pg)
     d = TestClient(app).get("/eu/exportar", headers=cab_b).json()
-    assert d["viagens"] == [] and d["decisoes"] == [] and d["perfil"]["total_swipes"] == 0
+    assert d["viagens"] == [] and d["decisoes"] == [] and d["buscas"] == [] and d["perfil"]["total_swipes"] == 0
 
 
 # Apagar
