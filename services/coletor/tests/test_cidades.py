@@ -5,10 +5,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import token
+
 from app import cidades
 from app.main import app
 
-api = TestClient(app)
+api = TestClient(app, headers={"Authorization": f"Bearer {token('00000000-0000-4000-8000-000000000001')}"})
 
 
 def rotulos(q, **kw):
@@ -102,3 +104,14 @@ def test_geocodificar_usa_a_lista_local_sem_nominatim():
             return await geo.geocodificar(c, "Alegrete, RS")
     r = asyncio.run(go())
     assert r["nome"] == "Alegrete" and r["uf"] == "RS"
+
+
+def test_endpoint_pede_token():
+    assert TestClient(app).get("/cidades", params={"q": "porto"}).status_code == 401
+
+
+def test_duas_letras_no_fim_sem_virgula_nao_escondem_outras_ufs():
+    from app import cidades
+    rotulos = [c["rotulo"] for c in cidades.buscar("alto al")]
+    assert "Alto Alegre, RR" in rotulos and "Alto Alegre, RS" in rotulos
+    assert [c["uf"] for c in cidades.buscar("lages, sc")] == ["SC"]  # com vírgula, a UF manda

@@ -13,6 +13,7 @@ sem IA. A coleta é gratuita e sem chave; só a IA usa `GROQ_API_KEY`.
 |---|---|---|
 | Rota (carro e moto) | OSRM (servidor público) | trajeto, distância, duração |
 | Rota de bicicleta | OSRM, perfil bike da FOSSGIS (`PV_OSRM_BIKE_URL`) | trajeto que evita rodovias, horas de pedal |
+| Autocompletar de cidade com UF | Lista de municípios do IBGE (Fonte: IBGE; via [kelvins/municipios-brasileiros](https://github.com/kelvins/municipios-brasileiros), MIT) | busca local, sem gastar o Nominatim |
 | Endereço → coordenada | Nominatim / OpenStreetMap | geocodificação |
 | Cidades, postos, atrações | Overpass API / OpenStreetMap | base estável e legal de usar |
 | Fotos e notas do Google Maps (produção) | [Places API (New)](https://developers.google.com/maps/documentation/places/web-service/op-overview) oficial (`PV_GOOGLE_PLACES_KEY`) | Text Search e Place Photos, pagos por chamada |

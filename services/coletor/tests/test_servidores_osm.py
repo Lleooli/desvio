@@ -77,7 +77,7 @@ def test_chamadas_vao_para_as_urls_configuradas(monkeypatch):
 
     async def rodar():
         async with _cliente(urls) as c:
-            await geo.geocodificar(c, "Alegrete, RS")
+            await geo.geocodificar(c, "Rua dos Andradas, Alegrete")
             await geo.rota(c, (-29.78, -55.79), (-14.86, -40.84), "moto")
             await geo.rota(c, (-29.78, -55.79), (-14.86, -40.84), "bicicleta")
             await osm._overpass(c, "[out:json];node(1);out;")
@@ -103,8 +103,8 @@ def _esperas(monkeypatch, intervalo: float) -> list[float]:
 
     async def rodar():
         async with _cliente([]) as c:
-            await geo.geocodificar(c, "Alegrete, RS")
-            await geo.geocodificar(c, "Lages, SC")
+            await geo.geocodificar(c, "Rua dos Andradas, Alegrete")
+            await geo.geocodificar(c, "Praça João Costa, Lages")
 
     asyncio.run(rodar())
     return esperas

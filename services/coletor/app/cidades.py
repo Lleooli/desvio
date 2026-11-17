@@ -53,8 +53,18 @@ def _publico(m: dict) -> dict:
 @functools.lru_cache(maxsize=2048)
 def _buscar(q: str, limite: int) -> tuple[dict, ...]:
     nome, uf = _separar_uf(q)
+    achados = _achados(nome, uf)
+    if uf and "," not in q:
+        # sem vírgula, "alto al" pode ser "Alto Al…" no meio da digitação (Alto Alegre, RR e RS):
+        # depois dos da UF, vêm os que começam com o texto inteiro
+        vistos = {a[-1]["rotulo"] for a in achados}
+        achados += [a for a in _achados(normalizar(q), None) if a[-1]["rotulo"] not in vistos]
+    return tuple(_publico(a[-1]) for a in achados[:limite])
+
+
+def _achados(nome: str, uf: str | None) -> list[tuple]:
     if len(nome.replace(" ", "")) < MINIMO_LETRAS:
-        return ()
+        return []
     achados = []
     for m in _municipios():
         if uf and m["uf"] != uf:
@@ -68,7 +78,7 @@ def _buscar(q: str, limite: int) -> tuple[dict, ...]:
             continue
         achados.append((nivel, not m["_capital"], len(n), n, m["uf"], m))
     achados.sort(key=lambda a: a[:5])
-    return tuple(_publico(a[-1]) for a in achados[:limite])
+    return achados
 
 
 def buscar(q: str, limite: int = LIMITE) -> list[dict]:
