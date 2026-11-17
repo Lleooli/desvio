@@ -21,11 +21,28 @@ from . import cache
 
 USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-email@exemplo.com)")
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
-NOMINATIM = os.getenv("PV_NOMINATIM_URL", "https://nominatim.openstreetmap.org")
+NOMINATIM_PUBLICO = "https://nominatim.openstreetmap.org"
+NOMINATIM = os.getenv("PV_NOMINATIM_URL", NOMINATIM_PUBLICO)
 OSRM = os.getenv("PV_OSRM_URL", "https://router.project-osrm.org")
 OSRM_BIKE = os.getenv("PV_OSRM_BIKE_URL", "https://routing.openstreetmap.de/routed-bike")
+
+
+def _intervalo_nominatim(texto: str, url: str) -> float:
+    """Segundos entre chamadas ao Nominatim. Aceita "1,1"; valor inválido vira 1,1.
+
+    No servidor público nunca fica abaixo de 1 s (1 req/s, senão o IP é bloqueado).
+    """
+    try:
+        valor = float(texto.replace(",", "."))
+    except ValueError:
+        valor = 1.1
+    if "nominatim.openstreetmap.org" in url:
+        valor = max(valor, 1.0)
+    return max(valor, 0.0)
+
+
 # Segundos de espera depois de cada chamada ao Nominatim. 1,1 respeita o servidor público (1 req/s).
-NOMINATIM_INTERVALO = float(os.getenv("PV_NOMINATIM_INTERVALO", "1.1"))
+NOMINATIM_INTERVALO = _intervalo_nominatim(os.getenv("PV_NOMINATIM_INTERVALO", "1.1"), NOMINATIM)
 
 VEICULOS = ("carro", "moto", "bicicleta")  # moto usa a rota de carro
 

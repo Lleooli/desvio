@@ -116,3 +116,12 @@ def test_nominatim_publico_espera_entre_chamadas(monkeypatch):
 
 def test_nominatim_proprio_sem_espera(monkeypatch):
     assert _esperas(monkeypatch, 0) == []
+
+
+def test_intervalo_do_nominatim_aceita_virgula_e_protege_o_servidor_publico():
+    from app import geo
+    proprio = "http://localhost:8088"
+    assert geo._intervalo_nominatim("1,5", proprio) == 1.5
+    assert geo._intervalo_nominatim("abc", proprio) == 1.1
+    assert geo._intervalo_nominatim("0", proprio) == 0.0
+    assert geo._intervalo_nominatim("0", geo.NOMINATIM_PUBLICO) == 1.0
