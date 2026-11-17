@@ -16,6 +16,13 @@
     "plugins": ["expo-router", "expo-font"],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "622be9fc-1a3b-45c5-9c2b-798c81680c8c"
+      }
+    },
+    "owner": "lleooliv"
   }
 }
