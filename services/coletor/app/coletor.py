@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import unicodedata
 
@@ -22,6 +23,14 @@ import httpx
 from . import geo, gmaps, instagram, osm
 
 CATEGORIAS_PADRAO = ["turismo", "restaurante", "posto"]
+# teto de paradas por viagem: 10 km numa viagem de 4.000 km dariam 400 paradas, horas de
+# Overpass e Nominatim (1 req/s) e um job do gosom enorme. Acima disso o intervalo cresce.
+MAX_PARADAS = int(os.getenv("PV_MAX_PARADAS", "30"))
+
+
+def intervalo_efetivo(distancia_km: float, intervalo_km: float) -> float:
+    """O intervalo pedido, ou o menor que cabe em MAX_PARADAS paradas."""
+    return max(intervalo_km, distancia_km / MAX_PARADAS) if MAX_PARADAS > 0 else intervalo_km
 CONSULTA_GOOGLE = {
     "turismo": "pontos turísticos",
     "restaurante": "restaurantes",
@@ -152,6 +161,7 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         pontos = rota["pontos"]
         acc = geo.acumuladas(pontos)
         total = acc[-1]
+        intervalo_km = intervalo_efetivo(total, intervalo_km)
 
         paradas: list[dict] = []
         vistas = {_norm(o["nome"]), _norm(d["nome"])}
@@ -178,7 +188,7 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
 
     return {
         "veiculo": veiculo,
-        "intervalo_km": intervalo_km,
+        "intervalo_km": round(intervalo_km, 1),
         "origem": o, "destino": d,
         "rota": {"distancia_km": round(rota["distancia_km"]), "duracao_h": round(rota["duracao_h"], 1),
                  "polilinha": geo.simplificar(pontos)},

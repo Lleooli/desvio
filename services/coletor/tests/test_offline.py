@@ -227,3 +227,10 @@ def test_api_job_inexistente(tmp_path, monkeypatch):
     from app.main import app
     monkeypatch.setattr(fila, "DB", str(tmp_path / "x.db"))
     assert TestClient(app).get("/jobs/nao-existe").status_code == 404
+
+
+def test_intervalo_curto_em_viagem_longa_respeita_o_teto_de_paradas():
+    from app import coletor
+    assert coletor.intervalo_efetivo(500, 100) == 100
+    assert coletor.intervalo_efetivo(4000, 10) == 4000 / coletor.MAX_PARADAS
+    assert 4000 / coletor.intervalo_efetivo(4000, 10) <= coletor.MAX_PARADAS
