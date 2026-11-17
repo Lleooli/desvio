@@ -44,13 +44,13 @@ def test_roteiro_ordena_pelo_km_na_rota():
 def test_preferencias(pessoa):
     leo, _ = pessoa
     for i, (cat, ok) in enumerate([("restaurante", 1), ("restaurante", 1), ("posto", 0), ("posto", 0)]):
-        preferencias.registrar(leo, {"id": f"c{i}", "categoria": cat, "nota": 4.5}, bool(ok))
+        preferencias.registrar(leo, {"id": f"osm:node/{i}", "categoria": cat, "nota": 4.5}, bool(ok))
     p = preferencias.perfil(leo)
     assert p["categoria"]["restaurante"]["taxa"] == 1.0 and p["categoria"]["posto"]["taxa"] == 0.0
     ordem = preferencias.pontuar([{"id": "a", "categoria": "posto"}, {"id": "b", "categoria": "restaurante"}], p)
     assert ordem[0]["id"] == "b"
-    assert preferencias.ja_vistos(leo) == {"c0", "c1", "c2", "c3"}
-    preferencias.registrar(leo, {"id": "c2", "categoria": "posto"}, True)  # mudou de ideia: troca, não duplica
+    assert preferencias.ja_vistos(leo) == {"osm:node/0", "osm:node/1", "osm:node/2", "osm:node/3"}
+    preferencias.registrar(leo, {"id": "osm:node/2", "categoria": "posto"}, True)  # mudou de ideia: troca, não duplica
     assert preferencias.perfil(leo)["total_swipes"] == 4
 
 

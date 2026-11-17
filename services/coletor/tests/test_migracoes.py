@@ -91,6 +91,21 @@ def test_rls_nao_deixa_mexer_no_dos_outros(pg, duas_viagens):
             con.execute("insert into jobs (id, usuario, tipo, entrada) values ('x', %s, 'viagem', '{}')", (a,))
 
 
+def test_rls_decisao_nao_aponta_para_viagem_dos_outros(pg, duas_viagens):
+    a, b, ids = duas_viagens
+    with psycopg.connect(pg) as con:
+        con.execute("insert into lugar (id, dados) values ('osm:node/2', '{}')")
+    with psycopg.connect(pg) as con:
+        como(con, a)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            con.execute("insert into decisao (usuario, lugar, viagem, tipo) values (%s, 'osm:node/2', %s, 'bora')",
+                        (a, ids[b]))
+    with psycopg.connect(pg) as con:
+        como(con, a)
+        con.execute("insert into decisao (usuario, lugar, viagem, tipo) values (%s, 'osm:node/2', %s, 'bora')",
+                    (a, ids[a]))
+
+
 def test_anonimo_so_le_lugar(pg, duas_viagens):
     with psycopg.connect(pg) as con:
         como(con, None)

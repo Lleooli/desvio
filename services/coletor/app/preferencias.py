@@ -5,6 +5,7 @@ decisões anteriores, e também serve para pré-ordenar os próximos cards.
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 from psycopg.types.json import Jsonb
@@ -14,6 +15,32 @@ from . import banco
 
 # Campos do card que entram no perfil; ficam na decisão de cada pessoa (#61)
 CAMPOS_PERFIL = ("categoria", "tipo", "faixa_preco", "nota")
+
+# `lugar` é público (RLS de leitura para todos) e o card vem do cliente: só entram os
+# campos que o coletor produz, com tamanho limitado, e só ids no formato do coletor.
+CAMPOS_LUGAR = ("id", "fonte", "nome", "categoria", "tipo", "cidade", "uf", "lat", "lon", "foto", "fotos",
+                "nota", "avaliacoes", "faixa_preco", "descricao", "sobre", "endereco", "site", "telefone",
+                "instagram", "instagram_origem", "wikipedia", "horarios", "link_maps")
+ID_VALIDO = re.compile(r"(osm|gmaps):[\w.:/-]{1,120}")
+MAX_TEXTO = 1000
+MAX_LISTA = 10
+
+
+def _valor_limpo(v):
+    if v is None or isinstance(v, (bool, int, float)):
+        return v
+    if isinstance(v, str):
+        return v[:MAX_TEXTO]
+    if isinstance(v, list):
+        return [x[:MAX_TEXTO] for x in v[:MAX_LISTA] if isinstance(x, str)]
+    return None  # objeto aninhado não faz parte de um card
+
+
+def card_limpo(card: dict) -> dict:
+    """Só os campos conhecidos do card, com textos e listas cortados. ValueError se o id não vale."""
+    if not isinstance(card.get("id"), str) or not ID_VALIDO.fullmatch(card["id"]):
+        raise ValueError("id de card inválido")
+    return {k: _valor_limpo(card[k]) for k in CAMPOS_LUGAR if k in card}
 
 
 def registrar(usuario: str, card: dict, gostou: bool, email: str | None = None) -> None:
@@ -25,8 +52,10 @@ def registrar(usuario: str, card: dict, gostou: bool, email: str | None = None) 
 
     O card vem do cliente, então nunca reescreve um `lugar` que já existe: só o
     primeiro swipe grava. O que entra no perfil fica na própria decisão, e assim o
-    card de uma pessoa não muda o perfil de outra.
+    card de uma pessoa não muda o perfil de outra. Só entram campos conhecidos, com
+    tamanho limitado (`card_limpo`).
     """
+    card = card_limpo(card)
     with banco.conectar() as con:
         banco.garantir_usuario(usuario, email, con)
         con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) on conflict (id) do nothing",

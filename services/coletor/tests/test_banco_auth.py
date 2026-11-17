@@ -155,3 +155,25 @@ def test_jwks_sem_a_chave_do_token_continua_401(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_URL", url)
     monkeypatch.setattr(auth, "_jwks", lambda u: JwksSemChave())
     assert TestClient(app).get("/perfil", headers={"Authorization": f"Bearer {tok}"}).status_code == 401
+
+
+def test_swipe_so_grava_no_lugar_campos_conhecidos_e_cortados(pg):
+    from app import preferencias
+    uid, _ = criar_pessoa(pg)
+    card = {"id": "osm:node/77", "nome": "x" * 5000, "categoria": "turismo",
+            "lixo": "não é campo de card", "fotos": ["a"] * 50, "sobre": {"aninhado": True}}
+    preferencias.registrar(uid, card, True)
+    with psycopg.connect(pg) as con:
+        dados = con.execute("select dados from lugar where id='osm:node/77'").fetchone()[0]
+    assert "lixo" not in dados and dados["sobre"] is None
+    assert len(dados["nome"]) == preferencias.MAX_TEXTO and len(dados["fotos"]) == preferencias.MAX_LISTA
+
+
+def test_swipe_com_id_inventado_da_422(pg):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app, headers=cab)
+    for id_ in ("qualquer-coisa", "osm:", "gmaps:" + "x" * 500, "http://exemplo.com"):
+        r = cli.post("/swipe", json={"card": {"id": id_, "nome": "X"}, "gostou": True})
+        assert r.status_code == 422, id_
