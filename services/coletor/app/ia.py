@@ -11,6 +11,7 @@ import asyncio
 import collections
 import json
 import os
+import re
 import time
 import unicodedata
 
@@ -92,6 +93,8 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
         await asyncio.wait_for(lim.reservar(tokens, timeout), timeout)
     except TimeoutError as e:
         raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {timeout:g}s") from e
+    except RuntimeError as e:  # lock preso a outro event loop (vários asyncio.run): plano B, não 500
+        raise IAIndisponivel(f"limite do Groq indisponível: {e}") from e
     restante = timeout - (time.monotonic() - inicio)
     if restante <= 0:
         raise IAIndisponivel(f"Groq: prazo de {timeout:g}s esgotado na fila")
@@ -135,11 +138,12 @@ PERGUNTAS_RESERVA = [
     {"pergunta": "Quanto quer gastar por refeição?", "opcoes": ["Até R$ 50", "R$ 50 a 100", "Mais de R$ 100"]},
     {"pergunta": "Prefere lugares famosos ou escondidos?", "opcoes": ["Famosos", "Escondidos", "Um pouco de cada"]},
 ]
-# assunto de cada pergunta de reserva, reconhecido por palavras na pergunta (sem acento)
+# assunto de cada pergunta de reserva, reconhecido pelo começo das palavras da pergunta (sem acento);
+# "pet" só como palavra inteira, para "petisco" e "repetir" não contarem
 _ASSUNTOS_RESERVA = [
-    ("companhia", ("com quem", "acompanh", "companhia", "sozinh", "familia", "pet")),
+    ("companhia", ("com quem", "acompanh", "companhia", "sozinh", "familia", r"pets?\b")),
     ("comida", ("comida", "comer", "culinaria", "gastronom", "restaurante", "prato")),
-    ("orcamento", ("gastar", "gasto", "orcamento", "preco", "quanto", "r$", "custo")),
+    ("orcamento", ("gastar", "gasto", "orcamento", "preco", r"r\$", "custo")),
     ("fama", ("famos", "escondid", "conhecid", "fora do roteiro", "alternativ")),
 ]
 
@@ -150,7 +154,8 @@ def _sem_acento(s: str) -> str:
 
 def _assuntos(perguntas: list[str]) -> set[str]:
     textos = [_sem_acento(p) for p in perguntas]
-    return {nome for nome, chaves in _ASSUNTOS_RESERVA if any(k in t for t in textos for k in chaves)}
+    return {nome for nome, chaves in _ASSUNTOS_RESERVA
+            if any(re.search(r"(?<!\w)" + k, t) for t in textos for k in chaves)}
 
 
 def resumo_simples(respostas: list[dict]) -> str | None:

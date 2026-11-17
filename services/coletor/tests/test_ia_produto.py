@@ -102,3 +102,11 @@ def test_endpoints_sem_chave_funcionam(monkeypatch):
     assert [c["id"] for c in cli.post("/cards/ranquear", json={"cards": CARDS[:3], "resumo": "x"}).json()] == ["c0", "c1", "c2"]
     r = cli.post("/roteiro", json={"cards": CARDS[:3], "usar_ia": True}).json()
     assert r["fonte"] == "geometria"
+
+
+def test_assunto_da_reserva_por_palavra_inteira():
+    from app import ia
+    assert ia._assuntos(["Vai levar o pet?"]) == {"companhia"}
+    assert ia._assuntos(["Gosta de petisco?", "Quer repetir a cidade?"]) == set()
+    assert ia._assuntos(["Quanto tempo você tem?"]) == set()
+    assert ia._assuntos(["Quanto quer gastar por dia?"]) == {"orcamento"}
