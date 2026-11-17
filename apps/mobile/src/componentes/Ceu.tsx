@@ -36,7 +36,7 @@ const brilhos: Record<VarianteCeu, Brilho[]> = {
 // Um "dente" do perfil de morros, repetido na largura (máscara de .dv-ceu--serra).
 const morro = "M0 28V20C14 20 22 6 38 6s20 12 34 12 18-14 34-14 22 16 36 16c8 0 12-4 18-4v12Z";
 
-/** Só o gradiente do céu, preenchendo o pai. Fundo do Ceu e da JanelaCidade sem foto. */
+/** Só o gradiente do céu, preenchendo o pai. Fundo do Ceu. */
 export function FundoCeu({ variante = "faixa" }: { variante?: VarianteCeu }) {
   const { c } = useCores();
   // O useId do React traz caracteres que não valem dentro de url(#…).

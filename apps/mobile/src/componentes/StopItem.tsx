@@ -5,12 +5,10 @@ import { numero } from "./Rating";
 type Props = {
   cidade: string;
   uf?: string;
-  /** km na rota (modo carro). */
+  /** km na rota. */
   km?: number;
-  /** Horas de estrada desde a saída; 0 é a saída (modo carro). */
+  /** Horas de estrada desde a saída; 0 é a saída. */
   horas?: number;
-  /** Dias na cidade (modo avião, no lugar de km e horas). */
-  dias?: number;
   tipo?: "origem" | "parada" | "destino";
   /** A parada que está sendo escolhida agora. */
   ativo?: boolean;
@@ -23,14 +21,13 @@ type Props = {
  * Uma linha da linha do tempo da viagem. Empilhe vários em sequência: o trilho se
  * conecta sozinho. Quem usa decide o que o toque abre (o swipe daquela parada).
  */
-export function StopItem({ cidade, uf, km, horas, dias, tipo = "parada", ativo = false, aceitos = 0, total }: Props) {
+export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false, aceitos = 0, total }: Props) {
   const { c } = useCores();
 
   const nome = uf ? `${cidade}, ${uf}` : cidade;
   const rotuloKm = km != null ? `KM ${numero(km)}` : "";
   const detalhes: string[] = [];
   if (horas != null) detalhes.push(horas === 0 ? "Saída" : `~${numero(horas, horas % 1 ? 1 : 0)}h de estrada`);
-  if (dias) detalhes.push(dias > 1 ? `${dias} dias` : "1 dia");
   const contagem = total != null ? `${aceitos} de ${total}` : null;
 
   const pontaDaViagem = tipo === "origem" || tipo === "destino";

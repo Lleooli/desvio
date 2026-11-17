@@ -9,7 +9,6 @@ import { categorias, Chip, type Categoria } from "@/componentes/Chip";
 import { Destaque } from "@/componentes/Destaque";
 import { Estrada } from "@/componentes/Estrada";
 import { Icon, type IconName } from "@/componentes/Icon";
-import { JanelaCidade } from "@/componentes/JanelaCidade";
 import { Rating } from "@/componentes/Rating";
 import { Segmented } from "@/componentes/Segmented";
 import { StopItem } from "@/componentes/StopItem";
@@ -43,7 +42,6 @@ function Catalogo({ tema }: { tema: Tema }) {
   const [filtros, setFiltros] = useState<Categoria[]>(["turismo", "posto"]);
   const [area, setArea] = useState<Area>("descobrir");
   const [cidade, setCidade] = useState("");
-  const [janela, setJanela] = useState("Salvador");
   const nada = () => {};
 
   const alternar = (cat: Categoria) =>
@@ -144,22 +142,6 @@ function Catalogo({ tema }: { tema: Tema }) {
           <StopItem cidade="Curitiba" uf="PR" km={1834} horas={22.5} aceitos={0} total={8} />
           <StopItem cidade="Vitória da Conquista" uf="BA" km={3120} horas={39} tipo="destino" />
         </View>
-        <View>
-          <StopItem cidade="Salvador" uf="BA" dias={3} tipo="origem" />
-          <StopItem cidade="Recife" uf="PE" dias={1} aceitos={2} total={10} />
-        </View>
-      </Bloco>
-
-      <Bloco titulo="JanelaCidade">
-        <ScrollView horizontal contentContainerStyle={s.janelas}>
-          {[
-            { cidade: "Salvador", uf: "BA", dias: 3 },
-            { cidade: "Recife", uf: "PE", dias: 1, variante: "placa" as const },
-            { cidade: "Natal", uf: "RN", dias: 2 },
-          ].map((j) => (
-            <JanelaCidade key={j.cidade} {...j} selecionada={janela === j.cidade} onPress={() => setJanela(j.cidade)} />
-          ))}
-        </ScrollView>
       </Bloco>
 
       <Bloco titulo="Rating">
@@ -198,5 +180,4 @@ const s = StyleSheet.create({
   bloco: { gap: espaco["space-3"] },
   linha: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: espaco["space-2"] },
   foto: { padding: espaco["space-4"] },
-  janelas: { gap: espaco["space-3"] },
 });

@@ -114,6 +114,6 @@ export function Estrada({
 const s = StyleSheet.create({
   caixa: { width: "100%", aspectRatio: 2, overflow: "hidden" },
   // Fora do fluxo e bem larga, para o texto medido não quebrar.
-  medida: { position: "absolute", top: 0, left: 0, width: 10000, opacity: 0 },
+  medida: { position: "absolute", top: 0, left: 0, width: medida.estradaMedicao, opacity: 0 },
   textoMedido: { alignSelf: "flex-start" },
 });

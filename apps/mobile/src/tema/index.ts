@@ -54,14 +54,8 @@ export const medida = {
   paradaPontoBorda: 3,
   paradaAltura: 72,
   paradaAjusteTopo: 2,
-  janelaLargura: 148,
-  janelaMoldura: 6,
-  janelaNome: 17,
-  janelaNomeLinha: 20,
-  janelaDias: 14,
-  janelaDiasLinha: 18,
-  janelaDiasRespiro: 2,
-  janelaDiasBase: 14,
+  /** Largura da caixa invisível onde a Estrada mede o texto (bem larga, para não quebrar). */
+  estradaMedicao: 10000,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
