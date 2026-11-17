@@ -211,6 +211,15 @@ def test_fluxo_carro_com_places_api(mock_http, monkeypatch):
     assert not any(p.get("avisos") for p in r["paradas"])
 
 
+def test_places_api_nao_grava_lugares_do_google_no_cache(mock_http, monkeypatch, pg):
+    import psycopg
+    monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "chave-de-teste")
+    _handler.places = []
+    asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from cache where chave like 'gmaps%'").fetchone()[0] == 0
+
+
 def test_places_fora_do_ar_cai_no_osm(mock_http, monkeypatch):
     monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "chave-de-teste")
 

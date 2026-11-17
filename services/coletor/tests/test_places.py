@@ -138,7 +138,7 @@ def test_fotos_vao_pelo_proxy_assinado_sem_chave(places):
     r = places(lambda c: gmaps.buscar_lote(c, {"0|restaurante": "restaurantes em Lages, SC"}))
     lugar = r["0|restaurante"][0]
     assert len(lugar["fotos"]) == 2 and lugar["foto"] == lugar["fotos"][0]
-    assert lugar["foto"].startswith("/fotos/places/ChIJabc/photos/F1?l=800&ass=")
+    assert lugar["foto"].startswith("/fotos/places/ChIJabc/photos/F1?l=800&exp=")
     assert all(CHAVE not in u for u in lugar["fotos"])
     assert lugar["fotos_autores"] == [[{"nome": "Ana", "uri": "https://maps.google.com/contrib/1",
                                         "avatar": "https://lh3/ana", "link_foto": "https://maps.google.com/foto/F1"}],
@@ -148,7 +148,7 @@ def test_fotos_vao_pelo_proxy_assinado_sem_chave(places):
 def test_url_publica_deixa_a_foto_absoluta(monkeypatch):
     monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", CHAVE)
     monkeypatch.setenv("PV_API_URL_PUBLICA", "https://api.desvio.app/")
-    assert gmaps.url_foto("places/A/photos/B").startswith("https://api.desvio.app/fotos/places/A/photos/B?l=800&ass=")
+    assert gmaps.url_foto("places/A/photos/B").startswith("https://api.desvio.app/fotos/places/A/photos/B?l=800&exp=")
 
 
 def test_status_preco_e_horario_ausentes():
@@ -180,13 +180,32 @@ def test_lote_vazio_nao_chama_nada(places):
 def test_assinatura_da_foto(monkeypatch):
     monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", CHAVE)
     url = gmaps.url_foto("places/A/photos/B", 400)
-    ass = parse_qs(urlsplit(url).query)["ass"][0]
-    assert gmaps.foto_valida("places/A/photos/B", 400, ass)
-    assert not gmaps.foto_valida("places/A/photos/B", 800, ass)        # largura trocada
-    assert not gmaps.foto_valida("places/A/photos/C", 400, ass)        # outra foto
-    assert not gmaps.foto_valida("../../places:searchText", 400, ass)  # só nomes de foto
+    q = parse_qs(urlsplit(url).query)
+    ass, exp = q["ass"][0], int(q["exp"][0])
+    assert gmaps.foto_valida("places/A/photos/B", 400, ass, exp)
+    assert not gmaps.foto_valida("places/A/photos/B", 800, ass, exp)        # largura trocada
+    assert not gmaps.foto_valida("places/A/photos/C", 400, ass, exp)        # outra foto
+    assert not gmaps.foto_valida("../../places:searchText", 400, ass, exp)  # só nomes de foto
+    assert not gmaps.foto_valida("places/A/photos/B", 400, ass, exp + 86400)  # validade esticada
+    monkeypatch.setattr(gmaps.time, "time", lambda: exp + 1)
+    assert not gmaps.foto_valida("places/A/photos/B", 400, ass, exp)        # vencida
+    monkeypatch.undo()
     monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "")
-    assert not gmaps.foto_valida("places/A/photos/B", 400, ass)        # sem chave, sem foto
+    assert not gmaps.foto_valida("places/A/photos/B", 400, ass, exp)        # sem chave, sem foto
+
+
+def test_segredo_proprio_das_fotos_sobrevive_a_troca_da_chave(monkeypatch):
+    monkeypatch.setenv("PV_FOTOS_SEGREDO", "segredo-das-fotos")
+    monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", CHAVE)
+    q = parse_qs(urlsplit(gmaps.url_foto("places/A/photos/B", 400)).query)
+    monkeypatch.setenv("PV_GOOGLE_PLACES_KEY", "chave-nova")
+    assert gmaps.foto_valida("places/A/photos/B", 400, q["ass"][0], int(q["exp"][0]))
+
+
+def test_teto_de_buscas_por_viagem(places, monkeypatch):
+    monkeypatch.setattr(gmaps, "MAX_BUSCAS_PLACES", 2)
+    r = places(lambda c: gmaps.buscar_lote(c, {"a": "restaurantes em Lages, SC", "d": "vazio", "e": "vazio"}))
+    assert set(r) == {"a", "d"} and len(places.pedidos) == 2
 
 
 def test_url_da_foto_pede_sem_redirecionar(places):

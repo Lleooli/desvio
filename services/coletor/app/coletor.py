@@ -264,7 +264,10 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
         _avisar(progresso, "lugares", "Buscando fotos e notas", f"Google Maps · {leva}", 75)
         try:
             novos = await gmaps.buscar_lote(client, faltam_google)
-            for cid, lugares in novos.items():
+            # os termos da Places API proíbem guardar o conteúdo dos lugares (só o place_id):
+            # com a API oficial, nada do Google vai para o cache compartilhado
+            guardar_google = gmaps.fonte() != "places"
+            for cid, lugares in novos.items() if guardar_google else ():
                 # vazio pode ser cidade que o gosom não alcançou antes do max_time: em vez de
                 # 30 dias de "nada", vale só 1 dia (chave à parte, lida com dias=1)
                 chave = "gmaps|" if lugares else "gmaps-vazio|"

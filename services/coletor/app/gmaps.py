@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 
 import httpx
@@ -55,6 +56,12 @@ MAX_FOTOS = 6
 BUSCAS_SIMULTANEAS = 5
 TIMEOUT_PLACES_S = 15
 _NOME_FOTO = re.compile(r"^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$")
+FOTO_VALIDADE_DIAS = 7
+FOTO_URI_CACHE_S = 3600  # a photoUri do Google fica guardada em memória por 1 h
+_fotos_recentes: dict[tuple[str, int], tuple[str, float]] = {}
+# Teto de buscas (Text Search Enterprise, cobradas uma a uma) por viagem. O que passar
+# disso fica só com OpenStreetMap. Uma viagem de 30 paradas × 3 categorias dá 90.
+MAX_BUSCAS_PLACES = int(os.getenv("PV_PLACES_MAX_BUSCAS", "60"))
 
 
 class GoogleIndisponivel(RuntimeError):
@@ -94,25 +101,29 @@ async def buscar_lote(client: httpx.AsyncClient, consultas: dict[str, str], *, l
 
 # ---------------------------------------------------------------- Places API (New)
 
-def _assinatura(nome: str, largura: int) -> str:
-    segredo = ("desvio-fotos|" + _chave_places()).encode()
-    return hmac.new(segredo, f"{nome}|{largura}".encode(), hashlib.sha256).hexdigest()[:32]
+def _assinatura(nome: str, largura: int, expira: int) -> str:
+    # PV_FOTOS_SEGREDO deixa trocar a chave do Google sem invalidar as URLs já entregues
+    segredo = ("desvio-fotos|" + (os.getenv("PV_FOTOS_SEGREDO", "").strip() or _chave_places())).encode()
+    return hmac.new(segredo, f"{nome}|{largura}|{expira}".encode(), hashlib.sha256).hexdigest()[:32]
 
 
 def url_foto(nome: str, largura: int = LARGURA_FOTO) -> str:
-    """URL do nosso endpoint /fotos para uma foto da Places API, assinada.
+    """URL do nosso endpoint /fotos para uma foto da Places API, assinada e com validade.
 
+    Vale FOTO_VALIDADE_DIAS (arredondado ao dia, para o app poder guardar a imagem): uma URL
+    vazada não vira um jeito eterno de gastar a cota de fotos.
     Com PV_API_URL_PUBLICA, a URL é absoluta; sem ela, relativa à API (o app junta a base).
     """
     base = os.getenv("PV_API_URL_PUBLICA", "").strip().rstrip("/")
-    return f"{base}/fotos/{nome}?l={largura}&ass={_assinatura(nome, largura)}"
+    expira = (int(time.time()) // 86400 + FOTO_VALIDADE_DIAS) * 86400
+    return f"{base}/fotos/{nome}?l={largura}&exp={expira}&ass={_assinatura(nome, largura, expira)}"
 
 
-def foto_valida(nome: str, largura: int, assinatura: str) -> bool:
-    """Só fotos que o coletor assinou passam: o endpoint não vira um proxy aberto (e pago)."""
-    if not _chave_places() or not _NOME_FOTO.match(nome or ""):
+def foto_valida(nome: str, largura: int, assinatura: str, expira: int = 0) -> bool:
+    """Só fotos que o coletor assinou, dentro da validade: o endpoint não vira um proxy aberto (e pago)."""
+    if not _chave_places() or not _NOME_FOTO.match(nome or "") or expira < time.time():
         return False
-    return hmac.compare_digest(_assinatura(nome, largura), assinatura or "")
+    return hmac.compare_digest(_assinatura(nome, largura, expira), assinatura or "")
 
 
 async def url_da_foto(client: httpx.AsyncClient, nome: str, largura: int = LARGURA_FOTO) -> str | None:
@@ -121,12 +132,20 @@ async def url_da_foto(client: httpx.AsyncClient, nome: str, largura: int = LARGU
     Usa skipHttpRedirect=true: o Google devolve {"photoUri"} em vez da imagem.
     Erro ou foto vencida: None (o app mostra o card sem foto).
     """
+    guardada = _fotos_recentes.get((nome, largura))
+    if guardada and time.monotonic() - guardada[1] < FOTO_URI_CACHE_S:
+        return guardada[0]  # a mesma foto aberta de novo não é cobrada de novo
     try:
         r = await client.get(f"{PLACES_URL}/{nome}/media",
                              params={"maxWidthPx": largura, "skipHttpRedirect": "true"},
                              headers={"X-Goog-Api-Key": _chave_places()}, timeout=TIMEOUT_PLACES_S)
         r.raise_for_status()
-        return r.json().get("photoUri") or None
+        uri = r.json().get("photoUri") or None
+        if uri:
+            if len(_fotos_recentes) >= 5000:
+                _fotos_recentes.clear()
+            _fotos_recentes[(nome, largura)] = (uri, time.monotonic())
+        return uri
     except (httpx.HTTPError, ValueError):
         log.warning("não consegui a foto %s da Places API", nome, exc_info=True)
         return None
@@ -209,6 +228,12 @@ async def _text_search(client: httpx.AsyncClient, texto: str) -> list[dict]:
 async def _buscar_lote_places(client: httpx.AsyncClient, consultas: dict[str, str]) -> dict[str, list[dict]]:
     if not _chave_places():
         raise GoogleIndisponivel("PV_GOOGLE_FONTE=places, mas PV_GOOGLE_PLACES_KEY está vazia")
+    if not os.getenv("PV_API_URL_PUBLICA", "").strip():
+        log.warning("PV_API_URL_PUBLICA vazia: as fotos da Places API saem com URL relativa (/fotos/...)")
+    if len(consultas) > MAX_BUSCAS_PLACES:
+        log.warning("viagem pediu %d buscas na Places API; só as %d primeiras vão", len(consultas),
+                    MAX_BUSCAS_PLACES)
+        consultas = dict(list(consultas.items())[:MAX_BUSCAS_PLACES])
     limite = asyncio.Semaphore(BUSCAS_SIMULTANEAS)
 
     async def uma(cid: str, texto: str) -> tuple[str, list[dict] | None, str]:

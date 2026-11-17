@@ -169,9 +169,9 @@ async def ranquear(req: Ranquear, eu: Usuario = Depends(usuario_atual)):
 
 
 @app.get("/fotos/{nome:path}", include_in_schema=False)
-async def foto(nome: str, l: int = Query(gmaps.LARGURA_FOTO, ge=100, le=1600), ass: str = ""):
-    """Foto da Places API sem expor a chave: confere a assinatura e redireciona para a imagem no Google."""
-    if not gmaps.foto_valida(nome, l, ass):
+async def foto(nome: str, l: int = Query(gmaps.LARGURA_FOTO, ge=100, le=1600), ass: str = "", exp: int = 0):
+    """Foto da Places API sem expor a chave: confere assinatura e validade e redireciona para a imagem no Google."""
+    if not gmaps.foto_valida(nome, l, ass, exp):
         raise HTTPException(404, "Foto não encontrada")
     async with httpx.AsyncClient() as client:
         destino = await gmaps.url_da_foto(client, nome, l)
