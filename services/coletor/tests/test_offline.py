@@ -300,3 +300,16 @@ def test_intervalo_curto_em_viagem_longa_respeita_o_teto_de_paradas():
     assert coletor.intervalo_efetivo(500, 100) == 100
     assert coletor.intervalo_efetivo(4000, 10) == 4000 / coletor.MAX_PARADAS
     assert 4000 / coletor.intervalo_efetivo(4000, 10) <= coletor.MAX_PARADAS
+
+
+def test_mesmo_lugar_do_google_em_duas_categorias_aparece_uma_vez_na_parada():
+    from app import coletor
+    parada = {"nome": "Cidade", "uf": "BA", "lat": -12.0, "lon": -40.0, "raio_km": 8}
+    parque = {"place_id": "P1", "nome": "Parque da Serra", "lat": -12.01, "lon": -40.01,
+              "nota": 4.7, "avaliacoes": 900, "categoria_google": "Parque"}
+    outro = {**parque, "place_id": "P2", "nome": "Mirante"}
+    google = {"0|turismo": [parque], "0|natureza": [dict(parque), outro]}
+    cards = coletor._escolher(0, parada, [], google, ["turismo", "natureza"], 5, 4.0)
+    ids = [c["id"] for c in cards]
+    assert ids == ["gmaps:P1", "gmaps:P2"]
+    assert cards[0]["categoria"] == "turismo"

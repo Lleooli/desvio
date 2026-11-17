@@ -119,12 +119,17 @@ def _consulta_cidade(cat: str, parada: dict) -> str:
 
 def _escolher(i: int, p: dict, brutos: list[dict], google: dict[str, list[dict]], categorias: list[str],
               por_categoria: int, nota_minima: float) -> list[dict]:
-    """Cards de uma parada: Google primeiro (pela nota), completados com OSM, sem nome repetido."""
+    """Cards de uma parada: Google primeiro (pela nota), completados com OSM, sem lugar repetido.
+
+    O mesmo lugar pode voltar do Google em duas categorias (um parque em "turismo" e em
+    "natureza"): fica só na primeira, por id e por nome.
+    """
     centro = (p["lat"], p["lon"])
     cards: list[dict] = []
+    vistos: set[str] = set()
+    ids: set[str] = set()
     for cat in categorias:
         escolhidos: list[dict] = []
-        vistos: set[str] = set()
         candidatos = [g for g in google.get(f"{i}|{cat}", [])
                       if g["lat"] is not None
                       and geo.distancia_km(centro, (g["lat"], g["lon"])) <= p["raio_km"] * 2
@@ -132,8 +137,14 @@ def _escolher(i: int, p: dict, brutos: list[dict], google: dict[str, list[dict]]
                       and (g.get("status") or "").lower() not in {"closed permanently", "fechado permanentemente"}]
         # nota bayesiana: 4,8 com 5 avaliações não passa na frente de 4,6 com 2.000
         candidatos.sort(key=lambda g: -((g["nota"] or 0) * (g["avaliacoes"] or 0) + 4.2 * 30) / ((g["avaliacoes"] or 0) + 30))
-        for g in candidatos[:por_categoria]:
-            escolhidos.append(_card_google(g, cat, p))
+        for g in candidatos:
+            if len(escolhidos) >= por_categoria:
+                break
+            card = _card_google(g, cat, p)
+            if card["id"] in ids or _norm(g["nome"]) in vistos:
+                continue
+            escolhidos.append(card)
+            ids.add(card["id"])
             vistos.add(_norm(g["nome"]))
         osm_cat = sorted((x for x in brutos if x["categoria"] == cat), key=lambda x: -osm.relevancia(x, centro))
         for x in osm_cat:
