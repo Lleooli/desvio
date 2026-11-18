@@ -5,6 +5,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useCores } from "@/tema";
+import "@/sessao"; // liga o token da sessão às chamadas à API antes de qualquer tela
 
 export default function RaizLayout() {
   const { tema, c } = useCores();

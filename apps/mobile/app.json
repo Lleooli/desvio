@@ -8,12 +8,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.desvio"
+      "bundleIdentifier": "app.desvio",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "app.desvio"
     },
-    "plugins": ["expo-router", "expo-font"],
+    "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-apple-authentication"],
     "experiments": {
       "typedRoutes": true
     },
