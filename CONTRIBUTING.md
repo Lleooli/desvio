@@ -65,6 +65,14 @@ O Expo Go da loja só abre a versão de SDK dele; se o projeto estiver em outra,
 
 O perfil `preview` do `eas.json` gera o APK do beta fechado (distribuição interna, por link). A pasta `android/` que o build local cria não vai para o Git.
 
+**Login (Supabase Auth):** copie `apps/mobile/.env.example` para `apps/mobile/.env` e preencha `EXPO_PUBLIC_SUPABASE_URL` e `EXPO_PUBLIC_SUPABASE_ANON_KEY`. No painel do Supabase, em Authentication:
+
+- **URL Configuration > Redirect URLs:** `desvio://**` (development build e lojas) e `exp://**` (Expo Go). É para lá que voltam o Google, a Apple no navegador e o link por e-mail.
+- **Sign In / Providers > Email:** link por e-mail ligado, com validade (Email OTP Expiration) de `900` segundos, os 15 minutos da HU01.
+- **Sign In / Providers > Google e Apple:** ligados, com as credenciais de cada um. No iOS a Apple entra pelo app nativo (`signInWithIdToken`); ponha o bundle id `app.desvio` em Client IDs da Apple.
+
+O primeiro login de uma conta leva à triagem e marca `ja_entrou` no metadata da conta; os seguintes, em qualquer celular, levam a Minhas viagens.
+
 ## Escolhendo o que fazer
 
 - O trabalho fica nas issues do GitHub. Cada issue cita a história do PRD (HU01 a HU19).
