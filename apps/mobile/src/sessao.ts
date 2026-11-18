@@ -98,6 +98,8 @@ function parametrosDoLink(url: string): Record<string, string> {
 
 // O mesmo código pode chegar duas vezes (pelo navegador e pelo deep link); só vale trocar uma.
 const trocas = new Map<string, Promise<Session>>();
+// Código já trocado (ou recusado) não entra de novo: senão a mesma URL reaberta devolveria a sessão antiga.
+const usados = new Set<string>();
 
 async function trocarCodigo(codigo: string): Promise<Session> {
   const { data, error } = await supabase.auth.exchangeCodeForSession(codigo);
@@ -117,10 +119,13 @@ export async function sessaoDoLink(url: string): Promise<Session | null> {
   if (parametros.error_code === "otp_expired") throw new ErroEntrar("link-vencido");
   if (parametros.error || parametros.error_code) throw new ErroEntrar("provedor");
   const codigo = parametros.code;
-  if (!codigo) return null;
+  if (!codigo || usados.has(codigo)) return null;
   let troca = trocas.get(codigo);
   if (!troca) {
-    troca = trocarCodigo(codigo);
+    troca = trocarCodigo(codigo).finally(() => {
+      trocas.delete(codigo);
+      usados.add(codigo);
+    });
     trocas.set(codigo, troca);
   }
   return troca;
