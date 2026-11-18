@@ -26,6 +26,9 @@ const LINK_PRIVACIDADE = process.env.EXPO_PUBLIC_PRIVACIDADE_URL;
 
 const EMAIL_VALIDO = /^\S+@\S+\.\S+$/;
 
+// Linking.useURL relê o link que abriu o app a cada montagem; cada link só é tratado uma vez.
+let ultimoLinkTratado: string | null = null;
+
 function mensagemDe(erro: unknown): string {
   return erro instanceof ErroEntrar ? erro.message : new ErroEntrar("provedor").message;
 }
@@ -57,7 +60,9 @@ export default function Entrar() {
 
   // O link por e-mail abre o app aqui, com o código de acesso.
   useEffect(() => {
-    if (link) seguir(() => sessaoDoLink(link));
+    if (!link || link === ultimoLinkTratado) return;
+    ultimoLinkTratado = link;
+    seguir(() => sessaoDoLink(link));
     // seguir muda a cada render; só um link novo deve disparar
   }, [link]);
 
