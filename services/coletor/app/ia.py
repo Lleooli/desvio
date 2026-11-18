@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import hashlib
 import json
 import os
 import re
@@ -17,7 +18,7 @@ import unicodedata
 
 import httpx
 
-from . import roteiro, uso_ia
+from . import cache, roteiro, uso_ia
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODELO_RACIOCINIO = os.getenv("PV_MODELO_RACIOCINIO", "openai/gpt-oss-120b")
@@ -251,6 +252,75 @@ async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) ->
     except IAIndisponivel:
         return cards
     return _reordenar(topo, r["ids"]) + resto
+
+
+def _norm_cidade(s: str) -> str:
+    """Igual a coletor._norm: a chave do cache não muda com acento ou maiúscula."""
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+def chave_ranque(cidade: str, categoria: str, resumo: str) -> str:
+    """Cache do ranqueamento: (cidade, categoria, hash do resumo da triagem)."""
+    digest = hashlib.sha256(resumo.encode()).hexdigest()
+    return f"ranque|{_norm_cidade(cidade)}|{categoria}|{digest}"
+
+
+def _categorias_do_topo(cards: list[dict]) -> list[str]:
+    return list(dict.fromkeys(c.get("categoria") or "" for c in cards))
+
+
+def _ordem_em_cache(parada: dict, resumo: str) -> list | None:
+    """A ordem já ranqueada destes mesmos cards, ou None se a cidade/categoria/resumo não bate."""
+    topo = (parada.get("cards") or [])[:MAX_RANQUEAR]
+    if len(topo) < 2 or not resumo:
+        return None
+    ids = [c["id"] for c in topo]
+    cidade = parada.get("nome") or ""
+    for cat in _categorias_do_topo(topo):
+        guardado = cache.obter(chave_ranque(cidade, cat, resumo))
+        if isinstance(guardado, list) and len(guardado) == len(ids) and set(guardado) == set(ids):
+            return guardado
+    return None
+
+
+def reaplicar_cache(paradas: list[dict], resumo: str | None) -> None:
+    """Reordena pelo cache, sem chamar o Groq. Sem resumo ou sem cache, a ordem fica como está."""
+    if not resumo:
+        return
+    for parada in paradas:
+        ordem = _ordem_em_cache(parada, resumo)
+        if not ordem:
+            continue
+        topo, resto = parada["cards"][:MAX_RANQUEAR], parada["cards"][MAX_RANQUEAR:]
+        parada["cards"] = _reordenar(topo, ordem) + resto
+
+
+async def ranquear_paradas(paradas: list[dict], resumo: str | None) -> None:
+    """Ranqueia os 30 primeiros cards de cada parada com o resumo da triagem.
+
+    A ordem de quem chamou (a estatística) vale para o resto e para o plano B.
+    Sem resumo, não chama a IA. Cidade e categoria já ranqueadas com o mesmo
+    resumo saem do cache e não vão ao Groq de novo.
+    """
+    if not resumo:
+        return
+    async with httpx.AsyncClient() as client:
+        for parada in paradas:
+            cards = parada.get("cards") or []
+            topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
+            if len(topo) < 2:
+                continue
+            ordem = _ordem_em_cache(parada, resumo)
+            if ordem:
+                parada["cards"] = _reordenar(topo, ordem) + resto
+                continue
+            ordenados = await ranquear(client, topo, resumo)
+            ordem = [c["id"] for c in ordenados]
+            cidade = parada.get("nome") or ""
+            for cat in _categorias_do_topo(topo):
+                cache.guardar(chave_ranque(cidade, cat, resumo), ordem)
+            parada["cards"] = ordenados + resto
 
 
 # --- Roteiro -----------------------------------------------------------------

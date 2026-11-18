@@ -71,11 +71,55 @@ def _nota(valor) -> float | None:
     return float(valor) if isinstance(valor, (int, float)) and not isinstance(valor, bool) else None
 
 
+def _respostas_limpas(respostas: list) -> list[dict]:
+    """No máximo uma resposta por pergunta da triagem, com texto cortado."""
+    from . import ia
+    saida = []
+    for item in respostas[:ia.MAX_PERGUNTAS]:
+        if not isinstance(item, dict):
+            continue
+        resposta = item.get("resposta")
+        if isinstance(resposta, str):
+            resposta = resposta[:MAX_TEXTO]
+        elif isinstance(resposta, list):
+            resposta = [str(x)[:200] for x in resposta[:MAX_LISTA]]
+        elif resposta is not None and not isinstance(resposta, (int, float, bool)):
+            resposta = str(resposta)[:MAX_TEXTO]
+        saida.append({"pergunta": str(item.get("pergunta") or "")[:MAX_TEXTO], "resposta": resposta})
+    return saida
+
+
+def _gosto(valor) -> dict:
+    return valor if isinstance(valor, dict) else {}
+
+
+def guardar_triagem(usuario: str, email: str | None, respostas: list, resumo: str | None, *,
+                    pulou: bool) -> None:
+    """Grava respostas e resumo em `usuario.perfil_gosto`, sem apagar outras chaves do JSON.
+
+    Pular guarda o que já foi respondido e deixa o resumo vazio: o ranqueamento
+    fica só na estatística. Concluir grava o resumo que a triagem devolveu.
+    """
+    respostas = _respostas_limpas(respostas)
+    if not isinstance(resumo, str) or not resumo.strip():
+        resumo = None
+    else:
+        resumo = resumo[:MAX_TEXTO]
+    with banco.conectar() as con:
+        banco.garantir_usuario(usuario, email, con)
+        atual = con.execute("select perfil_gosto from usuario where id = %s", (usuario,)).fetchone()
+        base = {**_gosto(atual["perfil_gosto"] if atual else None),
+                "respostas": respostas, "resumo": resumo, "pulou": pulou}
+        con.execute("update usuario set perfil_gosto = %s where id = %s", (Jsonb(base), usuario))
+
+
 def perfil(usuario: str) -> dict:
     with banco.conectar() as con:
         # o card que a própria pessoa viu; decisões de antes do #61 não têm e usam o lugar
         rs = con.execute("select d.tipo, coalesce(d.card, l.dados) as dados from decisao d "
                          "join lugar l on l.id = d.lugar where d.usuario = %s", (usuario,)).fetchall()
+        gosto = _gosto((con.execute("select perfil_gosto from usuario where id = %s", (usuario,)).fetchone()
+                        or {}).get("perfil_gosto"))
     # (gostou, categoria, tipo, faixa_preco, nota); favorito também conta como gostou
     linhas = [(int(r["tipo"] != "passo"), r["dados"].get("categoria"), r["dados"].get("tipo"),
                r["dados"].get("faixa_preco"), _nota(r["dados"].get("nota"))) for r in rs]
@@ -89,8 +133,11 @@ def perfil(usuario: str) -> dict:
         taxa[campo] = {k: {"aceitos": a, "vistos": v, "taxa": round(a / v, 2)}
                        for k, (a, v) in sorted(cont.items(), key=lambda kv: -kv[1][1]) if v >= 2}
     notas = [l[4] for l in linhas if l[0] and l[4]]
+    # a estatística das decisões e a triagem ficam juntas na resposta; a coluna só guarda a triagem
     return {"total_swipes": len(linhas), "aceitos": sum(l[0] for l in linhas),
-            "nota_media_aceitos": round(sum(notas) / len(notas), 2) if notas else None, **taxa}
+            "nota_media_aceitos": round(sum(notas) / len(notas), 2) if notas else None, **taxa,
+            "resumo": gosto.get("resumo"), "respostas": gosto.get("respostas") or [],
+            "pulou": bool(gosto.get("pulou"))}
 
 
 def ja_vistos(usuario: str) -> set[str]:
@@ -110,11 +157,12 @@ def pontuar(cards: list[dict], p: dict) -> list[dict]:
     return sorted(cards, key=score, reverse=True)
 
 
-def personalizar(resultado: dict, usuario: str | None) -> dict:
-    """Tira cards já avaliados e ordena os novos pelo gosto do usuário."""
+def personalizar(resultado: dict, usuario: str | None, perfil_pronto: dict | None = None) -> dict:
+    """Tira cards já avaliados e ordena os novos pelo gosto estatístico do usuário."""
     if not usuario:
         return resultado
-    vistos, p = ja_vistos(usuario), perfil(usuario)
+    vistos = ja_vistos(usuario)
+    p = perfil(usuario) if perfil_pronto is None else perfil_pronto
     for parada in resultado["paradas"]:
         parada["cards"] = pontuar([c for c in parada["cards"] if c["id"] not in vistos], p)
     return resultado
