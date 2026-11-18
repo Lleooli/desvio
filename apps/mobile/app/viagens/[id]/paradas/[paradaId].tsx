@@ -1,9 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
 import { TelaProvisoria } from "@/componentes/TelaProvisoria";
+import { useMarcarViagemAtiva } from "@/viagemAtiva";
 
 // O swipe: SwipeCard + SwipeActions (design system Desvio), gestos com Gesture Handler e Reanimated.
 export default function Swipe() {
   const { id, paradaId } = useLocalSearchParams<{ id: string; paradaId: string }>();
+  useMarcarViagemAtiva(id);
   return (
     <TelaProvisoria
       titulo="Swipe da parada"
