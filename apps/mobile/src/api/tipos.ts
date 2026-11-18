@@ -1,0 +1,132 @@
+// Formatos das respostas do coletor (services/coletor/README.md, seção Endpoints).
+// Os nomes dos campos seguem a API, em snake_case, para não traduzir no meio do caminho.
+
+export type Veiculo = "carro" | "moto" | "bicicleta";
+export type CategoriaLugar = "turismo" | "restaurante" | "posto" | "natureza" | "hospedagem";
+export type StatusViagem = "buscando" | "pronta" | "falhou";
+export type StatusJob = "pendente" | "rodando" | "pronto" | "falhou";
+export type TipoParada = "parada" | "destino" | "estadia";
+
+/** Card de um lugar como o coletor devolve. Só o id é garantido; o resto depende da fonte. */
+export type Card = {
+  id: string;
+  fonte?: string;
+  nome?: string;
+  categoria?: CategoriaLugar;
+  tipo?: string | null;
+  descricao?: string | null;
+  cidade?: string;
+  uf?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  foto?: string | null;
+  fotos?: string[];
+  nota?: number | null;
+  avaliacoes?: number | null;
+  faixa_preco?: string | null;
+  instagram?: string | null;
+  /** `site` é confiável; `busca` foi achado na web e aparece como "provável". */
+  instagram_origem?: "site" | "busca" | null;
+  km_na_rota?: number | null;
+  horas_desde_saida?: number | null;
+  link_maps?: string | null;
+};
+
+export type Parada = {
+  ordem: number;
+  nome: string;
+  uf: string | null;
+  tipo: TipoParada;
+  km_na_rota: number | null;
+  horas_desde_saida?: number | null;
+  cards: Card[];
+};
+
+export type NovaViagem = {
+  origem: string;
+  destino: string;
+  veiculo?: Veiculo;
+  intervalo_km: number;
+  categorias?: CategoriaLugar[];
+  por_categoria?: number;
+  usar_google_maps?: boolean;
+  buscar_instagram?: boolean;
+};
+
+export type ViagemCriada = { job_id: string; viagem_id: string; status: StatusJob };
+
+export type ResumoViagem = {
+  id: string;
+  origem: string;
+  destino: string;
+  veiculo: Veiculo;
+  intervalo_km: number;
+  categorias: CategoriaLugar[];
+  status: StatusViagem;
+  job_id: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  /** Cards da viagem já avaliados pela pessoa. */
+  progresso: { decididos: number; total: number };
+};
+
+export type Viagem = ResumoViagem & {
+  /** Pares [lat, lon] da rota. */
+  polilinha: [number, number][] | null;
+  paradas: Parada[];
+};
+
+export type Cidade = { nome: string; uf: string; rotulo: string; lat: number; lon: number; codigo_ibge: string };
+
+export type EtapaBusca = "rota" | "cidades" | "lugares" | "instagram";
+
+export type ResultadoBusca = { paradas: Parada[] };
+
+export type Job = {
+  id: string;
+  tipo: string;
+  status: StatusJob;
+  resultado: ResultadoBusca | null;
+  erro: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  progresso: { etapa: EtapaBusca; titulo: string; detalhe: string; percentual: number } | null;
+  /** Paradas só com cards do OpenStreetMap, antes do Google chegar. */
+  parcial: ResultadoBusca | null;
+};
+
+type TaxaAceite = Record<string, { aceitos: number; vistos: number; taxa: number }>;
+
+export type PerfilGosto = {
+  total_swipes: number;
+  aceitos: number;
+  nota_media_aceitos: number | null;
+  categoria: TaxaAceite;
+  tipo: TaxaAceite;
+  faixa_preco: TaxaAceite;
+};
+
+export type RespostaTriagem = { pergunta: string; resposta: string };
+
+export type PassoTriagem = {
+  pergunta: string | null;
+  opcoes: string[];
+  fim: boolean;
+  resumo: string | null;
+  fonte: "ia" | "fixa";
+};
+
+export type PedidoRoteiro = {
+  cards: Card[];
+  usar_ia?: boolean;
+  contexto?: Record<string, unknown>;
+};
+
+export type Roteiro = {
+  itens: Card[];
+  /** Por id do card, quando a IA ajustou o roteiro. */
+  explicacoes: Record<string, string>;
+  fonte: "ia" | "geometria";
+};
+
+export type ContaApagada = { dados: "apagados"; conta: "apagada" | "pendente" };
