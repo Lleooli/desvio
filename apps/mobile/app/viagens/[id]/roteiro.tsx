@@ -1,8 +1,10 @@
 import { useLocalSearchParams } from "expo-router";
 import { TelaProvisoria } from "@/componentes/TelaProvisoria";
+import { useMarcarViagemAtiva } from "@/viagemAtiva";
 
 export default function Roteiro() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  useMarcarViagemAtiva(id);
   return (
     <TelaProvisoria
       titulo="Seu roteiro está pronto"
