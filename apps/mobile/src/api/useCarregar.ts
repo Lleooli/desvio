@@ -3,12 +3,14 @@
  * de tentar de novo.
  */
 import { useCallback, useEffect, useState } from "react";
-import { mensagemDeErro } from "./cliente";
+import { ErroApi, mensagemDeErro, type TipoErro } from "./cliente";
 
 export type Carregamento<T> = {
   dados: T | null;
   /** Mensagem curta que diz o que fazer; null sem erro. */
   erro: string | null;
+  /** O tipo do erro, para a tela escolher a ação; null sem erro. */
+  tipoErro: TipoErro | null;
   carregando: boolean;
   tentarDeNovo: () => void;
 };
@@ -23,6 +25,7 @@ export type Carregamento<T> = {
 export function useCarregar<T>(chave: string | null, carregar: (chave: string) => Promise<T>): Carregamento<T> {
   const [dados, setDados] = useState<T | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tipoErro, setTipoErro] = useState<TipoErro | null>(null);
   const [carregando, setCarregando] = useState(chave !== null);
   const [tentativa, setTentativa] = useState(0);
 
@@ -31,9 +34,11 @@ export function useCarregar<T>(chave: string | null, carregar: (chave: string) =
     let valendo = true; // resposta de uma chave antiga não sobrescreve a atual
     setCarregando(true);
     setErro(null);
+    setTipoErro(null);
     carregar(chave).then(
       (novo) => valendo && (setDados(novo), setCarregando(false)),
-      (e: unknown) => valendo && (setErro(mensagemDeErro(e)), setCarregando(false)),
+      (e: unknown) =>
+        valendo && (setErro(mensagemDeErro(e)), setTipoErro(e instanceof ErroApi ? e.tipo : "servidor"), setCarregando(false)),
     );
     return () => {
       valendo = false;
@@ -42,5 +47,5 @@ export function useCarregar<T>(chave: string | null, carregar: (chave: string) =
   }, [chave, tentativa]);
 
   const tentarDeNovo = useCallback(() => setTentativa((t) => t + 1), []);
-  return { dados, erro, carregando, tentarDeNovo };
+  return { dados, erro, tipoErro, carregando, tentarDeNovo };
 }

@@ -31,6 +31,12 @@ export function definirViagemAtiva(id: string): void {
   AsyncStorage.setItem(CHAVE, id).catch(() => {}); // sem gravar, vale até fechar o app
 }
 
+/** Esquece a viagem ativa, na memória e no aparelho (viagem que sumiu ou de outra conta). */
+export function esquecerViagemAtiva(): void {
+  mudar({ id: null, carregou: true });
+  AsyncStorage.removeItem(CHAVE).catch(() => {});
+}
+
 /** A viagem ativa; `carregou` é false enquanto o aparelho ainda não respondeu. */
 export function useViagemAtiva(): Estado {
   return useSyncExternalStore(
