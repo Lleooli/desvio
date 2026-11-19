@@ -119,16 +119,26 @@ def obter(usuario: str, viagem: str) -> dict | None:
             return None
         paradas = con.execute("select ordem, cidade, uf, km, horas_desde_saida, dados from parada "
                               "where viagem = %s order by ordem", (viagem,)).fetchall()
-        cards = con.execute("select pl.parada, pl.km_na_rota, pl.horas_desde_saida, l.dados from parada_lugar pl "
-                            "join lugar l on l.id = pl.lugar where pl.viagem = %s order by pl.parada, pl.posicao",
-                            (viagem,)).fetchall()
+        cards = con.execute("select pl.parada, pl.km_na_rota, pl.horas_desde_saida, l.dados, d.tipo as decisao "
+                            "from parada_lugar pl join lugar l on l.id = pl.lugar "
+                            "left join decisao d on d.lugar = pl.lugar and d.usuario = %s "
+                            "where pl.viagem = %s order by pl.parada, pl.posicao",
+                            (usuario, viagem)).fetchall()
     por_parada: dict[int, list[dict]] = {}
+    # O contador da tela Paradas ("3 de 12"): Bora ou Favorito sobre todos os cards da parada,
+    # contado antes de `personalizar` tirar os já avaliados.
+    progresso: dict[int, dict] = {}
     for c in cards:
         por_parada.setdefault(c["parada"], []).append(
             {**c["dados"], "km_na_rota": c["km_na_rota"], "horas_desde_saida": c["horas_desde_saida"]})
+        contagem = progresso.setdefault(c["parada"], {"aceitos": 0, "total": 0})
+        contagem["total"] += 1
+        contagem["aceitos"] += c["decisao"] in ("bora", "favorito")
     resultado = {"paradas": [{**p["dados"], "ordem": p["ordem"], "nome": p["cidade"], "uf": p["uf"],
                               "km_na_rota": p["km"], "horas_desde_saida": p["horas_desde_saida"],
-                              "cards": por_parada.get(p["ordem"], [])} for p in paradas]}
+                              "cards": por_parada.get(p["ordem"], []),
+                              "progresso": progresso.get(p["ordem"], {"aceitos": 0, "total": 0})}
+                             for p in paradas]}
     preferencias.personalizar(resultado, usuario)  # tira os já avaliados e ordena pelo gosto
     return {**_resumo(v), "polilinha": json.loads(v["polilinha"]) if v["polilinha"] else None,
             "paradas": resultado["paradas"]}
