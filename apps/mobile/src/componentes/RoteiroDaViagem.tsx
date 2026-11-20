@@ -1,8 +1,9 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { montarRoteiroDaViagem, type Card, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
+import { LIMITE_PARADAS_GOOGLE, linkWaze, trechosGoogleMaps } from "@/mapas";
 import { espaco, estiloTexto, fontes, medida, raio, useCores } from "@/tema";
 import { Aviso } from "./Aviso";
 import { Button } from "./Button";
@@ -41,11 +42,12 @@ type Props = { viagem: Viagem };
 /**
  * O roteiro da viagem (canvas Roteiro): a Estrada com origem, cidades e destino no
  * cabeçalho, os lugares de Bora na ordem do km, cada um com a hora estimada a partir da
- * hora de saída escolhida aqui, e Editar, que volta às paradas.
+ * hora de saída escolhida aqui, Editar, que volta às paradas, e Abrir no mapa (HU14).
  */
 export function RoteiroDaViagem({ viagem }: Props) {
   const { c } = useCores();
   const [saida, setSaida] = useState(SAIDA_PADRAO);
+  const [mapaAberto, setMapaAberto] = useState(false);
   const { dados, erro, tentarDeNovo } = useCarregar(viagem.id, montarRoteiroDaViagem);
 
   // Ao voltar das paradas (Editar), as decisões podem ter mudado: monta de novo.
@@ -123,11 +125,75 @@ export function RoteiroDaViagem({ viagem }: Props) {
       )}
 
       <View style={s.rodape}>
-        <Button block variant="secondary" onPress={editar}>
-          Editar
+        <View style={s.editar}>
+          <Button block variant="secondary" onPress={editar}>
+            Editar
+          </Button>
+        </View>
+        <View style={s.abrirNoMapa}>
+          <Button block icon="route" disabled={itens.length === 0} onPress={() => setMapaAberto(true)}>
+            Abrir no mapa
+          </Button>
+        </View>
+      </View>
+
+      <AbrirNoMapa viagem={viagem} itens={itens} visivel={mapaAberto} onFechar={() => setMapaAberto(false)} />
+    </View>
+  );
+}
+
+type PropsMapa = { viagem: Viagem; itens: Card[]; visivel: boolean; onFechar: () => void };
+
+/**
+ * Painel de Abrir no mapa: o Google Maps com os lugares como pontos de passagem, em
+ * trechos numerados quando passam do limite do app, e o Waze, que só aceita um destino
+ * e por isso abre a próxima parada; cada vez que abre, a próxima avança.
+ */
+function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
+  const { c } = useCores();
+  const [proxima, setProxima] = useState(0);
+  if (itens.length === 0) return null;
+
+  const trechos = trechosGoogleMaps(viagem.origem, viagem.destino, itens, viagem.veiculo);
+  const indiceWaze = Math.min(proxima, itens.length - 1);
+  const lugarWaze = itens[indiceWaze];
+  const abrirWaze = () => {
+    Linking.openURL(linkWaze(lugarWaze));
+    setProxima(indiceWaze + 1);
+  };
+
+  return (
+    <Modal visible={visivel} transparent animationType="slide" onRequestClose={onFechar}>
+      <Pressable accessibilityLabel="Fechar" style={[s.veu, { backgroundColor: c.scrim }]} onPress={onFechar} />
+      <View style={[s.painel, { backgroundColor: c["surface-100"] }]}>
+        <Text accessibilityRole="header" style={[estiloTexto("title"), { color: c.ink }]}>
+          Abrir no mapa
+        </Text>
+        <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Google Maps</Text>
+        {trechos.length > 1 ? (
+          <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+            O Google Maps aceita até {LIMITE_PARADAS_GOOGLE} paradas por rota. Sua viagem foi dividida em {trechos.length} trechos.
+          </Text>
+        ) : null}
+        {trechos.map((trecho) => (
+          <Button key={trecho.numero} block variant="secondary" onPress={() => Linking.openURL(trecho.url)}>
+            {trechos.length > 1
+              ? `Trecho ${trecho.numero}: ${trecho.de.split(",")[0]} → ${trecho.ate.split(",")[0]}`
+              : "Abrir a rota"}
+          </Button>
+        ))}
+        <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Waze</Text>
+        <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+          O Waze abre uma parada por vez.
+        </Text>
+        <Button block variant="secondary" onPress={abrirWaze}>
+          {`Próxima: ${indiceWaze + 1}. ${lugarWaze.nome ?? "Lugar"}`}
+        </Button>
+        <Button block variant="ghost" onPress={onFechar}>
+          Fechar
         </Button>
       </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -216,5 +282,20 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   info: { flex: 1, minWidth: 0 },
-  rodape: { paddingHorizontal: espaco["space-4"], paddingVertical: espaco["space-4"] },
+  rodape: {
+    flexDirection: "row",
+    gap: espaco["space-3"],
+    paddingHorizontal: espaco["space-4"],
+    paddingVertical: espaco["space-4"],
+  },
+  editar: { flex: 1 },
+  abrirNoMapa: { flex: 2 },
+  veu: { flex: 1 },
+  painel: {
+    gap: espaco["space-3"],
+    padding: espaco["space-4"],
+    paddingBottom: espaco["space-6"],
+    borderTopLeftRadius: raio["radius-lg"],
+    borderTopRightRadius: raio["radius-lg"],
+  },
 });
