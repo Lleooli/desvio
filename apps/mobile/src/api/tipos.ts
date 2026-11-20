@@ -145,7 +145,8 @@ export type Roteiro = {
   itens: Card[];
   /** Por id do card, quando a IA ajustou o roteiro. */
   explicacoes: Record<string, string>;
-  fonte: "ia" | "geometria";
+  /** "pessoa" depois que ela reordena ou tira lugares: a ordem dela, sem IA. */
+  fonte: "ia" | "geometria" | "pessoa";
 };
 
 export type ContaApagada = { dados: "apagados"; conta: "apagada" | "pendente" };

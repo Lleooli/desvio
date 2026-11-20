@@ -60,7 +60,7 @@ export function mensagemDeErro(erro: unknown): string {
  */
 export async function chamar<T>(
   caminho: string,
-  opcoes: { metodo?: "GET" | "POST" | "DELETE"; corpo?: unknown } = {},
+  opcoes: { metodo?: "GET" | "POST" | "PUT" | "DELETE"; corpo?: unknown } = {},
 ): Promise<T> {
   const token = await fonteToken();
   const cabecalhos: Record<string, string> = { Accept: "application/json" };
