@@ -7,6 +7,7 @@ Fluxo pensado para o front (estilo Tinder):
    GET  /viagens/{id}                       → paradas e cards ainda não avaliados, pelo gosto
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
+   POST /viagens/{id}/roteiro               → o roteiro da viagem, pelo km, guardado no banco
 4. GET  /perfil                            → resumo do gosto, para a IA
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
@@ -175,6 +176,15 @@ async def roteiro_da_viagem(req: Roteiro, eu: Usuario = Depends(usuario_atual)):
         return {"itens": roteiro.ordenar_na_rota(_dicts(req.cards)), "explicacoes": {}, "fonte": "geometria"}
     async with httpx.AsyncClient() as client:
         return await ia.ajustar_roteiro(client, _dicts(req.cards), req.contexto)
+
+
+@app.post("/viagens/{viagem_id}/roteiro")
+def roteiro_guardado(viagem_id: str, eu: Usuario = Depends(usuario_atual)):
+    """Monta o roteiro com os lugares de Bora ou Favorito da viagem, pelo km, e guarda."""
+    r = viagens.montar_roteiro(eu.id, viagem_id)  # viagem de outra pessoa: 404, como se não existisse
+    if r is None:
+        raise HTTPException(404, "Viagem não encontrada")
+    return r
 
 
 @app.post("/triagem")

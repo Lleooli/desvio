@@ -70,6 +70,11 @@ export const medida = {
   cardCarimboLinha: 38,
   cardHorasTexto: 13,
   cardHorasLinha: 16,
+  // Roteiro: a faixa da Estrada no cabeçalho e o número de cada item (canvas Roteiro)
+  roteiroEstradaAltura: 104,
+  roteiroEstradaRecorte: 40,
+  roteiroEstradaLargura: 40,
+  roteiroNumero: 32,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */

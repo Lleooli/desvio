@@ -107,6 +107,7 @@ O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa respo
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
 | GET | `/fotos/{nome}?l=&ass=` | sem token: foto da Places API por URL assinada pelo coletor → `302` para a imagem no Google; assinatura errada ou foto vencida: `404` |
 | POST | `/roteiro` | `{itens, explicacoes, fonte}`: os aceitos pelo km da estrada; com `usar_ia: true` e `contexto`, a IA ajusta ao horário e explica cada parada |
+| POST | `/viagens/{id}/roteiro` | `{itens, explicacoes, fonte: "geometria"}`: os lugares da viagem com Bora ou Favorito, pelo km da estrada, cada um com `km_na_rota` e `horas_desde_saida`; guarda na tabela `roteiro` (montar de novo troca o anterior). Viagem de outra pessoa: 404 |
 
 Em `/viagem`, os cards que a pessoa do token já avaliou somem e os novos vêm
 ordenados pelo gosto aprendido nos swipes anteriores.
