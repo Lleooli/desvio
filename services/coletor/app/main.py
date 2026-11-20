@@ -8,6 +8,7 @@ Fluxo pensado para o front (estilo Tinder):
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
    POST /viagens/{id}/roteiro               → o roteiro da viagem, pelo km ou pela IA, guardado no banco
+   PUT  /viagens/{id}/roteiro               → a pessoa reordena ou remove lugares; o Bora continua
 4. GET  /perfil                            → resumo do gosto, para a IA
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
@@ -101,6 +102,10 @@ class ContextoRoteiro(BaseModel):
 class RoteiroDaViagem(BaseModel):
     usar_ia: bool = False
     contexto: ContextoRoteiro = ContextoRoteiro()
+
+
+class EdicaoDoRoteiro(BaseModel):
+    itens: list[str] = Field(max_length=500, description="Ids dos lugares, na ordem de visita; quem falta sai do roteiro")
 
 
 class Triagem(BaseModel):
@@ -199,17 +204,28 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
 
     Pelo km; com `usar_ia`, ajustado pela IA à hora de saída e aos dias do `contexto`,
     com uma explicação por lugar. Se a IA falhar, volta a ordem pelo km (`fonte` "geometria").
+    Depois que a pessoa edita (PUT), fica a ordem dela, sem os lugares que ela tirou.
     """
     req = req or RoteiroDaViagem()
-    aceitos = await run_in_threadpool(viagens.lugares_aceitos, eu.id, viagem_id)
-    if aceitos is None:  # viagem de outra pessoa: 404, como se não existisse
+    r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
+    if r is None:  # viagem de outra pessoa: 404, como se não existisse
         raise HTTPException(404, "Viagem não encontrada")
-    if req.usar_ia:
+    if req.usar_ia and r["fonte"] != "pessoa":  # a ordem que a pessoa escolheu não volta para a IA
         async with httpx.AsyncClient() as client:
-            r = await ia.ajustar_roteiro(client, aceitos, req.contexto.model_dump(exclude_none=True))
-    else:
-        r = {"itens": aceitos, "explicacoes": {}, "fonte": "geometria"}
+            r = await ia.ajustar_roteiro(client, r["itens"], req.contexto.model_dump(exclude_none=True))
     await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r)
+    return r
+
+
+@app.put("/viagens/{viagem_id}/roteiro")
+def roteiro_editado(viagem_id: str, req: EdicaoDoRoteiro, eu: Usuario = Depends(usuario_atual)):
+    """Guarda o roteiro na ordem da pessoa: reordenar e remover, sem apagar a decisão Bora."""
+    try:
+        r = viagens.editar_roteiro(eu.id, viagem_id, req.itens)
+    except ValueError:
+        raise HTTPException(422, "Esse lugar não está no roteiro desta viagem.")
+    if r is None:  # viagem de outra pessoa: 404, como se não existisse
+        raise HTTPException(404, "Viagem não encontrada")
     return r
 
 
