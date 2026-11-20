@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import type { ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { obterViagem, type Viagem } from "@/api";
@@ -45,6 +45,10 @@ export function NaViagemAtiva({ id, children }: Props) {
         <ActivityIndicator color={c.placa} accessibilityLabel="Carregando a viagem" />
       </View>
     );
+  }
+  // Busca ainda rodando: as paradas não existem; a tela certa é a que acompanha a busca.
+  if (dados.status === "buscando") {
+    return <Redirect href={{ pathname: "/viagens/[id]/carregando", params: { id: dados.id } }} />;
   }
   return children(dados, tentarDeNovo);
 }
