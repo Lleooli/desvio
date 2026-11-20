@@ -1,5 +1,5 @@
-import { Redirect, router } from "expo-router";
-import type { ReactNode } from "react";
+import { Redirect, router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { obterViagem, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
@@ -48,9 +48,28 @@ export function NaViagemAtiva({ id, children }: Props) {
   }
   // Busca ainda rodando: as paradas não existem; a tela certa é a que acompanha a busca.
   if (dados.status === "buscando") {
+    if (!id) return <AcompanharBusca viagemId={dados.id} recarregar={tentarDeNovo} />;
     return <Redirect href={{ pathname: "/viagens/[id]/carregando", params: { id: dados.id } }} />;
   }
   return children(dados, tentarDeNovo);
+}
+
+/**
+ * Numa aba, abre a tela Carregando por cima das abas (push), e não no lugar delas: o
+ * `<Redirect>` trocaria a rota `(abas)` inteira, e o voltar do Android fecharia o app.
+ * Ao voltar para a aba, busca a viagem de novo, para mostrar as paradas se a busca acabou.
+ */
+function AcompanharBusca({ viagemId, recarregar }: { viagemId: string; recarregar: () => void }) {
+  const acompanhar = useCallback(() => router.push({ pathname: "/viagens/[id]/carregando", params: { id: viagemId } }), [viagemId]);
+  useEffect(acompanhar, [acompanhar]);
+  const voltou = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (voltou.current) recarregar();
+      voltou.current = true;
+    }, [recarregar]),
+  );
+  return <Aviso mensagem="A busca das paradas ainda está rodando." acao="Acompanhar" onAcao={acompanhar} />;
 }
 
 const s = StyleSheet.create({ centro: { flex: 1, justifyContent: "center", alignItems: "center" } });
