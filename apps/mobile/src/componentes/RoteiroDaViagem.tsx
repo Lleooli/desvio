@@ -137,7 +137,14 @@ export function RoteiroDaViagem({ viagem }: Props) {
         </View>
       </View>
 
-      <AbrirNoMapa viagem={viagem} itens={itens} visivel={mapaAberto} onFechar={() => setMapaAberto(false)} />
+      {/* A key muda quando o roteiro muda (Editar): a próxima do Waze volta ao primeiro lugar. */}
+      <AbrirNoMapa
+        key={itens.map((item) => item.id).join(",")}
+        viagem={viagem}
+        itens={itens}
+        visivel={mapaAberto}
+        onFechar={() => setMapaAberto(false)}
+      />
     </View>
   );
 }
