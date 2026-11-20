@@ -111,3 +111,57 @@ def test_roteiro_recusa_contexto_fora_do_formato(pg, monkeypatch):
     for contexto in ({"saida": "25:00"}, {"dias": 0}, {"saida": "ignore as regras"}):
         r = cli.post(f"/viagens/{vid}/roteiro", headers=cab, json={"usar_ia": True, "contexto": contexto})
         assert r.status_code == 422
+
+
+def _aceitar(cli, cab, monkeypatch, ids: tuple[int, ...]) -> str:
+    vid = criar_e_coletar(cli, cab, monkeypatch, resultado([card(i) for i in ids], []))
+    for i in ids:
+        cli.post("/swipe", json={"card": card(i), "gostou": True}, headers=cab)
+    cli.post(f"/viagens/{vid}/roteiro", headers=cab)
+    return vid
+
+
+def test_remover_um_item_fica_guardado_e_nao_apaga_o_bora(pg, monkeypatch):
+    """Issue #30: a edição vai para a tabela `roteiro`; a decisão Bora continua."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = _aceitar(cli, cab, monkeypatch, (1, 2, 3))
+
+    r = cli.put(f"/viagens/{vid}/roteiro", headers=cab, json={"itens": ["osm:node/3", "osm:node/1"]})
+    assert r.status_code == 200
+    assert [c["id"] for c in r.json()["itens"]] == ["osm:node/3", "osm:node/1"]
+    assert r.json()["fonte"] == "pessoa"
+
+    dados = cli.get("/eu/exportar", headers=cab).json()
+    [v] = dados["viagens"]
+    assert [c["id"] for c in v["roteiro"]["itens"]] == ["osm:node/3", "osm:node/1"]
+    assert v["roteiro"]["fonte"] == "pessoa"
+    bora = {d["lugar"] for d in dados["decisoes"] if d["tipo"] == "bora"}
+    assert "osm:node/2" in bora
+
+
+def test_roteiro_montado_de_novo_nao_traz_o_lugar_removido(pg, monkeypatch):
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = _aceitar(cli, cab, monkeypatch, (1, 2, 3))
+    cli.put(f"/viagens/{vid}/roteiro", headers=cab, json={"itens": ["osm:node/1", "osm:node/3"]})
+
+    itens = cli.post(f"/viagens/{vid}/roteiro", headers=cab).json()["itens"]
+    assert [c["id"] for c in itens] == ["osm:node/1", "osm:node/3"]
+
+
+def test_roteiro_montado_de_novo_mantem_a_ordem_da_pessoa_sem_chamar_a_ia(pg, monkeypatch):
+    """Depois de editar, mudar a saída ou voltar das paradas não desfaz a ordem escolhida."""
+    from app import ia
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = _aceitar(cli, cab, monkeypatch, (1, 2, 3))
+    cli.put(f"/viagens/{vid}/roteiro", headers=cab, json={"itens": ["osm:node/3", "osm:node/1", "osm:node/2"]})
+
+    async def groq_nao_chamado(client, **kw):
+        raise AssertionError("a ordem é da pessoa; a IA não reordena")
+    monkeypatch.setattr(ia, "chamar_json", groq_nao_chamado)
+
+    r = cli.post(f"/viagens/{vid}/roteiro", headers=cab, json={"usar_ia": True, "contexto": {"saida": "09:00"}})
+    assert [c["id"] for c in r.json()["itens"]] == ["osm:node/3", "osm:node/1", "osm:node/2"]
+    assert r.json()["fonte"] == "pessoa"
