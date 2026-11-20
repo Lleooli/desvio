@@ -42,6 +42,12 @@ export type Parada = {
   cards: Card[];
 };
 
+/** Parada de `GET /viagens/{id}`: os cards já avaliados não vêm, mas o progresso conta todos. */
+export type ParadaDaViagem = Parada & {
+  /** Bora ou Favorito sobre todos os cards da parada: o "3 de 12". */
+  progresso: { aceitos: number; total: number };
+};
+
 export type NovaViagem = {
   origem: string;
   destino: string;
@@ -73,7 +79,7 @@ export type ResumoViagem = {
 export type Viagem = ResumoViagem & {
   /** Pares [lat, lon] da rota. */
   polilinha: [number, number][] | null;
-  paradas: Parada[];
+  paradas: ParadaDaViagem[];
 };
 
 export type Cidade = { nome: string; uf: string; rotulo: string; lat: number; lon: number; codigo_ibge: string };
