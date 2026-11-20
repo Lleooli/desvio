@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { montarRoteiroDaViagem, type Card, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
@@ -15,6 +15,8 @@ import { numero } from "./Rating";
 const MINUTOS_NO_DIA = 24 * 60;
 const PASSO_SAIDA = 30;
 const SAIDA_PADRAO = 7 * 60;
+/** Espera a pessoa parar de mexer na saída antes de pedir à IA um roteiro novo. */
+const ESPERA_SAIDA_MS = 800;
 
 /** "7h", "13h30": a hora do dia no formato brasileiro. */
 function hora(minutos: number): string {
@@ -37,18 +39,50 @@ function horaEstimada(saida: number, horasDeEstrada: number): string {
   return dia > 0 ? `${texto} do dia ${dia + 1}` : texto;
 }
 
+/** "07:00": a hora de saída no formato que o coletor recebe. */
+function horaHHMM(minutos: number): string {
+  return `${String(Math.floor(minutos / 60)).padStart(2, "0")}:${String(minutos % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Quantos dias a viagem ocupa, saindo à hora escolhida: o mesmo relógio de `horaEstimada`.
+ *
+ * @param saida - Hora de saída, em minutos desde a meia-noite.
+ * @param horasDeEstrada - `horas_desde_saida` do destino.
+ * @returns 1 quando chega no mesmo dia; undefined sem as horas do destino.
+ */
+function diasDeViagem(saida: number, horasDeEstrada: number | null | undefined): number | undefined {
+  if (horasDeEstrada == null) return undefined;
+  return Math.floor((saida + Math.round(horasDeEstrada * 60)) / MINUTOS_NO_DIA) + 1;
+}
+
 type Props = { viagem: Viagem };
 
 /**
  * O roteiro da viagem (canvas Roteiro): a Estrada com origem, cidades e destino no
- * cabeçalho, os lugares de Bora na ordem do km, cada um com a hora estimada a partir da
- * hora de saída escolhida aqui, Editar, que volta às paradas, e Abrir no mapa (HU14).
+ * cabeçalho, os lugares de Bora na ordem que a IA ajustou à hora de saída escolhida aqui
+ * (ou na do km, quando a IA não responde), cada um com a hora estimada e o porquê,
+ * Editar, que volta às paradas, e Abrir no mapa (HU13, HU14).
  */
 export function RoteiroDaViagem({ viagem }: Props) {
   const { c } = useCores();
   const [saida, setSaida] = useState(SAIDA_PADRAO);
+  const [saidaPedida, setSaidaPedida] = useState(SAIDA_PADRAO);
   const [mapaAberto, setMapaAberto] = useState(false);
-  const { dados, erro, tentarDeNovo } = useCarregar(viagem.id, montarRoteiroDaViagem);
+  const destino = viagem.paradas.find((p) => p.tipo === "destino");
+
+  // Cada toque no seletor mudaria a saída; a IA só é chamada quando a pessoa para.
+  useEffect(() => {
+    const relogio = setTimeout(() => setSaidaPedida(saida), ESPERA_SAIDA_MS);
+    return () => clearTimeout(relogio);
+  }, [saida]);
+
+  const { dados, erro, tentarDeNovo } = useCarregar(`${viagem.id}@${saidaPedida}`, () =>
+    montarRoteiroDaViagem(viagem.id, {
+      usar_ia: true,
+      contexto: { saida: horaHHMM(saidaPedida), dias: diasDeViagem(saidaPedida, destino?.horas_desde_saida) },
+    }),
+  );
 
   // Ao voltar das paradas (Editar), as decisões podem ter mudado: monta de novo.
   const primeiroFoco = useRef(true);
@@ -62,7 +96,6 @@ export function RoteiroDaViagem({ viagem }: Props) {
   if (erro) return <Aviso mensagem={erro} acao="Tentar de novo" onAcao={tentarDeNovo} />;
 
   const itens = dados?.itens ?? [];
-  const destino = viagem.paradas.find((p) => p.tipo === "destino");
   const totalKm = destino?.km_na_rota ?? null;
   const cidades = [viagem.origem, ...viagem.paradas.map((p) => p.nome)].map((cidade) => cidade.split(",")[0]);
   const resumo = [
@@ -118,8 +151,19 @@ export function RoteiroDaViagem({ viagem }: Props) {
         </View>
       ) : (
         <ScrollView contentContainerStyle={s.lista}>
+          {dados.fonte === "geometria" ? (
+            <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+              Por agora, a ordem segue o km da estrada.
+            </Text>
+          ) : null}
           {itens.map((item, i) => (
-            <ItemRoteiro key={item.id} item={item} posicao={i + 1} saida={saida} />
+            <ItemRoteiro
+              key={item.id}
+              item={item}
+              posicao={i + 1}
+              saida={saida}
+              porque={dados.explicacoes[item.id]}
+            />
           ))}
         </ScrollView>
       )}
@@ -221,7 +265,15 @@ function BotaoHora({ rotulo, leitura, onPress }: { rotulo: string; leitura: stri
   );
 }
 
-function ItemRoteiro({ item, posicao, saida }: { item: Card; posicao: number; saida: number }) {
+type PropsItem = {
+  item: Card;
+  posicao: number;
+  saida: number;
+  /** A linha da IA dizendo por que o lugar está nessa posição. */
+  porque?: string;
+};
+
+function ItemRoteiro({ item, posicao, saida, porque }: PropsItem) {
   const { c } = useCores();
   const quando = [item.cidade, item.horas_desde_saida != null ? horaEstimada(saida, item.horas_desde_saida) : null]
     .filter(Boolean)
@@ -230,7 +282,7 @@ function ItemRoteiro({ item, posicao, saida }: { item: Card; posicao: number; sa
   return (
     <View
       accessible
-      accessibilityLabel={[`${posicao}`, item.nome, quando, km].filter(Boolean).join(", ")}
+      accessibilityLabel={[`${posicao}`, item.nome, quando, km, porque].filter(Boolean).join(", ")}
       style={[s.item, { backgroundColor: c["surface-200"] }]}
     >
       <View style={[s.numero, { backgroundColor: c.asfalto }]}>
@@ -239,6 +291,7 @@ function ItemRoteiro({ item, posicao, saida }: { item: Card; posicao: number; sa
       <View style={s.info}>
         <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>{item.nome ?? "Lugar"}</Text>
         {quando ? <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>{quando}</Text> : null}
+        {porque ? <Text style={[estiloTexto("body-s"), { color: c.ink }]}>{porque}</Text> : null}
       </View>
       <Text style={[estiloTexto("km"), { color: c["ink-muted"] }]}>{km}</Text>
     </View>
