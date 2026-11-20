@@ -34,8 +34,7 @@ function chave(texto: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/\s*,\s*/g, ", ")
-    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ") // como o normalizar do coletor (app/cidades.py)
     .trim();
 }
 
