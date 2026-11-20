@@ -7,7 +7,7 @@ Fluxo pensado para o front (estilo Tinder):
    GET  /viagens/{id}                       → paradas e cards ainda não avaliados, pelo gosto
 2. POST /swipe (um por card deslizado)      → guarda a decisão
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
-   POST /viagens/{id}/roteiro               → o roteiro da viagem, pelo km, guardado no banco
+   POST /viagens/{id}/roteiro               → o roteiro da viagem, pelo km ou pela IA, guardado no banco
 4. GET  /perfil                            → resumo do gosto, para a IA
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
@@ -16,7 +16,7 @@ o usuário sai do token (app/auth.py), nunca do corpo. /fotos não pede token (o
 <Image> do app não manda cabeçalho), mas só aceita URLs assinadas pelo coletor.
 
 IA (Groq, com plano B sem IA): POST /triagem, POST /cards/ranquear e
-POST /roteiro com "usar_ia": true.
+POST /roteiro e POST /viagens/{id}/roteiro com "usar_ia": true.
 
 O Desvio só monta viagens por terra; o modo avião saiu do escopo.
 """
@@ -29,6 +29,7 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, RedirectResponse
 from typing import Literal
 
@@ -87,6 +88,19 @@ class Roteiro(BaseModel):
     cards: list[Card]
     usar_ia: bool = False
     contexto: dict = {}
+
+
+class ContextoRoteiro(BaseModel):
+    """O que a IA usa para ajustar o roteiro ao horário. Só campos fechados: nada de texto livre no prompt."""
+    model_config = ConfigDict(extra="forbid")
+    saida: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", examples=["07:00"],
+                              description="Hora de saída, HH:MM")
+    dias: int | None = Field(None, ge=1, le=60, examples=[1], description="Dias de viagem")
+
+
+class RoteiroDaViagem(BaseModel):
+    usar_ia: bool = False
+    contexto: ContextoRoteiro = ContextoRoteiro()
 
 
 class Triagem(BaseModel):
@@ -179,11 +193,23 @@ async def roteiro_da_viagem(req: Roteiro, eu: Usuario = Depends(usuario_atual)):
 
 
 @app.post("/viagens/{viagem_id}/roteiro")
-def roteiro_guardado(viagem_id: str, eu: Usuario = Depends(usuario_atual)):
-    """Monta o roteiro com os lugares de Bora ou Favorito da viagem, pelo km, e guarda."""
-    r = viagens.montar_roteiro(eu.id, viagem_id)  # viagem de outra pessoa: 404, como se não existisse
-    if r is None:
+async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
+                           eu: Usuario = Depends(usuario_atual)):
+    """Monta o roteiro com os lugares de Bora ou Favorito da viagem e guarda.
+
+    Pelo km; com `usar_ia`, ajustado pela IA à hora de saída e aos dias do `contexto`,
+    com uma explicação por lugar. Se a IA falhar, volta a ordem pelo km (`fonte` "geometria").
+    """
+    req = req or RoteiroDaViagem()
+    aceitos = await run_in_threadpool(viagens.lugares_aceitos, eu.id, viagem_id)
+    if aceitos is None:  # viagem de outra pessoa: 404, como se não existisse
         raise HTTPException(404, "Viagem não encontrada")
+    if req.usar_ia:
+        async with httpx.AsyncClient() as client:
+            r = await ia.ajustar_roteiro(client, aceitos, req.contexto.model_dump(exclude_none=True))
+    else:
+        r = {"itens": aceitos, "explicacoes": {}, "fonte": "geometria"}
+    await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r)
     return r
 
 
