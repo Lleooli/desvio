@@ -1,5 +1,5 @@
 import { Redirect, router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { obterViagem, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
@@ -58,16 +58,21 @@ export function NaViagemAtiva({ id, children }: Props) {
  * Numa aba, abre a tela Carregando por cima das abas (push), e não no lugar delas: o
  * `<Redirect>` trocaria a rota `(abas)` inteira, e o voltar do Android fecharia o app.
  * Ao voltar para a aba, busca a viagem de novo, para mostrar as paradas se a busca acabou.
+ * O push automático só acontece no primeiro foco: a aba escondida embaixo da pilha também
+ * ouve a viagem ativa, e empilharia uma segunda Carregando da mesma viagem.
  */
 function AcompanharBusca({ viagemId, recarregar }: { viagemId: string; recarregar: () => void }) {
   const acompanhar = useCallback(() => router.push({ pathname: "/viagens/[id]/carregando", params: { id: viagemId } }), [viagemId]);
-  useEffect(acompanhar, [acompanhar]);
-  const voltou = useRef(false);
+  const abriu = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      if (voltou.current) recarregar();
-      voltou.current = true;
-    }, [recarregar]),
+      if (abriu.current) {
+        recarregar();
+      } else {
+        abriu.current = true;
+        acompanhar();
+      }
+    }, [acompanhar, recarregar]),
   );
   return <Aviso mensagem="A busca das paradas ainda está rodando." acao="Acompanhar" onAcao={acompanhar} />;
 }
