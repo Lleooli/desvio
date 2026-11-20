@@ -60,6 +60,10 @@ export const ranquearCards = (cards: Card[], resumo: string) =>
 export const montarRoteiro = (pedido: PedidoRoteiro) =>
   chamar<Roteiro>("/roteiro", { metodo: "POST", corpo: pedido });
 
+/** O roteiro da viagem: os lugares com Bora ou Favorito, pelo km da estrada; o coletor guarda a cada chamada. */
+export const montarRoteiroDaViagem = (viagemId: string) =>
+  chamar<Roteiro>(`/viagens/${id(viagemId)}/roteiro`, { metodo: "POST" });
+
 /** LGPD: tudo o que o Desvio guarda da pessoa. */
 export const exportarMeusDados = () => chamar<Record<string, unknown>>("/eu/exportar");
 
