@@ -169,9 +169,12 @@ def montar_roteiro(usuario: str, viagem: str) -> dict | None:
                               "join decisao d on d.lugar = pl.lugar and d.usuario = %s "
                               "where pl.viagem = %s and d.tipo in ('bora', 'favorito') "
                               "order by pl.parada, pl.posicao", (usuario, viagem)).fetchall()
-        itens = roteiro.ordenar_na_rota(
-            [{**a["dados"], "km_na_rota": a["km_na_rota"], "horas_desde_saida": a["horas_desde_saida"]}
-             for a in aceitos])
+        # O mesmo lugar pode estar em duas paradas vizinhas: fica a primeira, a de menor km
+        unicos: dict[str, dict] = {}
+        for a in aceitos:
+            unicos.setdefault(a["dados"]["id"], {**a["dados"], "km_na_rota": a["km_na_rota"],
+                                                 "horas_desde_saida": a["horas_desde_saida"]})
+        itens = roteiro.ordenar_na_rota(list(unicos.values()))
         con.execute("insert into roteiro (viagem, itens, explicacao, fonte) values (%s, %s, null, 'geometria') "
                     "on conflict (viagem) do update set itens = excluded.itens, explicacao = null, "
                     "fonte = excluded.fonte, atualizado_em = now()", (viagem, Jsonb(itens)))

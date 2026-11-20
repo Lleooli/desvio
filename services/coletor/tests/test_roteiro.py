@@ -45,3 +45,14 @@ def test_roteiro_de_viagem_de_outra_pessoa_da_404(pg, monkeypatch):
     vid = criar_e_coletar(cli, cab_a, monkeypatch, resultado([card(1)], []))
     assert cli.post(f"/viagens/{vid}/roteiro", headers=cab_b).status_code == 404
     assert cli.post("/viagens/nao-e-uuid/roteiro", headers=cab_a).status_code == 404
+
+
+def test_lugar_em_duas_paradas_sai_uma_vez_so_no_roteiro(pg, monkeypatch):
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = criar_e_coletar(cli, cab, monkeypatch, resultado([card(1), card(2)], [card(2), card(3)]))
+    for i in (1, 2, 3):
+        cli.post("/swipe", json={"card": card(i), "gostou": True}, headers=cab)
+
+    itens = cli.post(f"/viagens/{vid}/roteiro", headers=cab).json()["itens"]
+    assert [c["id"] for c in itens] == ["osm:node/1", "osm:node/2", "osm:node/3"]
