@@ -1,10 +1,12 @@
-"""Viagens guardadas no banco (tabelas `viagem`, `parada`, `parada_lugar` e `lugar`).
+"""Viagens guardadas no banco (tabelas `viagem`, `parada`, `parada_lugar`, `lugar` e `roteiro`).
 
 Ciclo de vida:
 1. `POST /viagem` cria a viagem com status `buscando` junto com o job (mesma transação),
    e ela já aparece em `GET /viagens`.
 2. O worker termina a coleta e chama `gravar_resultado`: paradas, lugares e a ligação
    entre eles, e a viagem passa a `pronta`. Se a coleta quebra, `marcar_falha` (`falhou`).
+3. Depois do swipe, `montar_roteiro` ordena os lugares de Bora ou Favorito pelo km e
+   guarda em `roteiro`.
 
 `lugar` é compartilhado entre pessoas. O /swipe nunca reescreve um lugar (o card vem do
 cliente, #61), mas a coleta é dado do próprio servidor: aqui o lugar é atualizado com o
@@ -19,7 +21,7 @@ import uuid
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import banco, preferencias
+from . import banco, preferencias, roteiro
 
 # Campos do card que dependem da rota desta viagem; não entram no `lugar` compartilhado
 _DA_ROTA = ("km_na_rota", "horas_desde_saida")
@@ -142,3 +144,35 @@ def obter(usuario: str, viagem: str) -> dict | None:
     preferencias.personalizar(resultado, usuario)  # tira os já avaliados e ordena pelo gosto
     return {**_resumo(v), "polilinha": json.loads(v["polilinha"]) if v["polilinha"] else None,
             "paradas": resultado["paradas"]}
+
+
+def montar_roteiro(usuario: str, viagem: str) -> dict | None:
+    """Os lugares da viagem com Bora ou Favorito, na ordem do km, guardados em `roteiro`.
+
+    Args:
+        usuario: Dono da viagem.
+        viagem: Id da viagem.
+
+    Returns:
+        `itens`, `explicacoes` e `fonte` (`geometria`), como o `POST /roteiro`; None se a
+        viagem não existe ou é de outra pessoa.
+    """
+    try:
+        viagem = str(uuid.UUID(viagem))
+    except ValueError:
+        return None
+    with banco.conectar() as con:
+        if not con.execute("select 1 from viagem where id = %s and usuario = %s", (viagem, usuario)).fetchone():
+            return None
+        aceitos = con.execute("select pl.km_na_rota, pl.horas_desde_saida, l.dados from parada_lugar pl "
+                              "join lugar l on l.id = pl.lugar "
+                              "join decisao d on d.lugar = pl.lugar and d.usuario = %s "
+                              "where pl.viagem = %s and d.tipo in ('bora', 'favorito') "
+                              "order by pl.parada, pl.posicao", (usuario, viagem)).fetchall()
+        itens = roteiro.ordenar_na_rota(
+            [{**a["dados"], "km_na_rota": a["km_na_rota"], "horas_desde_saida": a["horas_desde_saida"]}
+             for a in aceitos])
+        con.execute("insert into roteiro (viagem, itens, explicacao, fonte) values (%s, %s, null, 'geometria') "
+                    "on conflict (viagem) do update set itens = excluded.itens, explicacao = null, "
+                    "fonte = excluded.fonte, atualizado_em = now()", (viagem, Jsonb(itens)))
+    return {"itens": itens, "explicacoes": {}, "fonte": "geometria"}
