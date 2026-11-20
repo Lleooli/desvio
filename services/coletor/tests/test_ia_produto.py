@@ -92,6 +92,25 @@ def test_roteiro_ia_e_fallback():
     assert [c["id"] for c in r2["itens"]] == ["c0", "c1", "c2"] and r2["fonte"] == "geometria"
 
 
+def test_roteiro_manda_a_hora_de_chegada_de_cada_lugar_para_a_ia():
+    """Issue #27: com a saída no contexto, a IA recebe a hora de chegada, para pôr o almoço entre 11h e 14h."""
+    itens = [{**CARDS[0], "horas_desde_saida": 4.5}, {**CARDS[1], "horas_desde_saida": 18.25}]
+    _, enviados = rodar(lambda c: ia.ajustar_roteiro(c, itens, {"saida": "07:00", "dias": 2}), {"ordem": []})
+    lugares = json.loads(enviados[0]["messages"][1]["content"])["lugares"]
+    assert [(l["horas_desde_saida"], l["chegada"], l["dia"]) for l in lugares] == [(4.5, "11:30", 1), (18.25, "01:15", 2)]
+    assert "chegada" in enviados[0]["messages"][0]["content"]
+
+
+def test_roteiro_sem_saida_nao_inventa_chegada():
+    _, enviados = rodar(lambda c: ia.ajustar_roteiro(c, [{**CARDS[0], "horas_desde_saida": 1.0}], {}), {"ordem": []})
+    [lugar] = json.loads(enviados[0]["messages"][1]["content"])["lugares"]
+    assert "chegada" not in lugar and lugar["horas_desde_saida"] == 1.0
+    for saida in (7, "7h", "24:00"):
+        _, enviados = rodar(lambda c: ia.ajustar_roteiro(c, [{**CARDS[0], "horas_desde_saida": 1.0}],
+                                                         {"saida": saida}), {"ordem": []})
+        assert "chegada" not in json.loads(enviados[0]["messages"][1]["content"])["lugares"][0]
+
+
 def test_endpoints_sem_chave_funcionam(monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import app
