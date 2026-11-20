@@ -6,7 +6,7 @@ import { RoteiroDaViagem } from "@/componentes/RoteiroDaViagem";
 import { useCores } from "@/tema";
 import { useMarcarViagemAtiva } from "@/viagemAtiva";
 
-/** O roteiro da viagem de carro, com os lugares de Bora na ordem do km (HU13). */
+/** O roteiro da viagem, com os lugares de Bora na ordem ajustada pela IA ao horário (HU13). */
 export default function Roteiro() {
   const { id } = useLocalSearchParams<{ id: string }>();
   useMarcarViagemAtiva(id);
