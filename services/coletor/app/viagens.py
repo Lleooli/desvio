@@ -177,13 +177,23 @@ def lugares_aceitos(usuario: str, viagem: str) -> list[dict] | None:
     return roteiro.ordenar_na_rota(list(unicos.values()))
 
 
-def guardar_roteiro(viagem: str, r: dict) -> None:
-    """Guarda em `roteiro` o que `POST /viagens/{id}/roteiro` devolveu (`itens`, `explicacoes`, `fonte`)."""
+def guardar_roteiro(viagem: str, r: dict) -> bool:
+    """Guarda em `roteiro` o que `POST /viagens/{id}/roteiro` devolveu (`itens`, `explicacoes`, `fonte`).
+
+    Só a própria pessoa (`fonte` "pessoa") sobrescreve a ordem que ela escolheu: a IA
+    que responde depois de uma edição não a desfaz.
+
+    Returns:
+        False se o roteiro guardado é da pessoa e `r` não é; True se guardou.
+    """
     with banco.conectar() as con:
-        con.execute("insert into roteiro (viagem, itens, explicacao, fonte) values (%s, %s, %s, %s) "
-                    "on conflict (viagem) do update set itens = excluded.itens, explicacao = excluded.explicacao, "
-                    "fonte = excluded.fonte, atualizado_em = now()",
-                    (viagem, Jsonb(r["itens"]), Jsonb(r["explicacoes"]) if r["explicacoes"] else None, r["fonte"]))
+        return con.execute(
+            "insert into roteiro (viagem, itens, explicacao, fonte) values (%s, %s, %s, %s) "
+            "on conflict (viagem) do update set itens = excluded.itens, explicacao = excluded.explicacao, "
+            "fonte = excluded.fonte, atualizado_em = now() "
+            "where excluded.fonte = 'pessoa' or roteiro.fonte <> 'pessoa' returning viagem",
+            (viagem, Jsonb(r["itens"]), Jsonb(r["explicacoes"]) if r["explicacoes"] else None, r["fonte"]),
+        ).fetchone() is not None
 
 
 def editar_roteiro(usuario: str, viagem: str, ids: list[str]) -> dict | None:
