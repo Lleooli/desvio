@@ -165,3 +165,23 @@ def test_roteiro_montado_de_novo_mantem_a_ordem_da_pessoa_sem_chamar_a_ia(pg, mo
     r = cli.post(f"/viagens/{vid}/roteiro", headers=cab, json={"usar_ia": True, "contexto": {"saida": "09:00"}})
     assert [c["id"] for c in r.json()["itens"]] == ["osm:node/3", "osm:node/1", "osm:node/2"]
     assert r.json()["fonte"] == "pessoa"
+
+
+def test_ia_que_responde_depois_da_edicao_nao_sobrescreve_a_ordem_da_pessoa(pg, monkeypatch):
+    """A pessoa edita (PUT) enquanto a IA responde a um POST: a ordem dela fica guardada."""
+    from app import ia, viagens
+    eu, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = _aceitar(cli, cab, monkeypatch, (1, 2, 3))
+
+    async def groq_lento(client, **kw):
+        viagens.editar_roteiro(eu, vid, ["osm:node/3", "osm:node/1"])  # o PUT chega antes da IA
+        return {"ordem": [{"id": f"osm:node/{i}", "porque": "IA"} for i in (2, 1, 3)]}
+    monkeypatch.setattr(ia, "chamar_json", groq_lento)
+
+    r = cli.post(f"/viagens/{vid}/roteiro", headers=cab, json={"usar_ia": True, "contexto": {"saida": "09:00"}})
+    assert r.json()["fonte"] == "pessoa"
+    assert [c["id"] for c in r.json()["itens"]] == ["osm:node/3", "osm:node/1"]
+    [v] = cli.get("/eu/exportar", headers=cab).json()["viagens"]
+    assert v["roteiro"]["fonte"] == "pessoa"
+    assert [c["id"] for c in v["roteiro"]["itens"]] == ["osm:node/3", "osm:node/1"]

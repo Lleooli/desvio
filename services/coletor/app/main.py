@@ -213,7 +213,9 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
     if req.usar_ia and r["fonte"] != "pessoa":  # a ordem que a pessoa escolheu não volta para a IA
         async with httpx.AsyncClient() as client:
             r = await ia.ajustar_roteiro(client, r["itens"], req.contexto.model_dump(exclude_none=True))
-    await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r)
+    if not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
+        # a pessoa editou enquanto a IA respondia: vale a ordem dela
+        r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
     return r
 
 
