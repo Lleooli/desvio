@@ -185,3 +185,24 @@ def test_ia_que_responde_depois_da_edicao_nao_sobrescreve_a_ordem_da_pessoa(pg, 
     [v] = cli.get("/eu/exportar", headers=cab).json()["viagens"]
     assert v["roteiro"]["fonte"] == "pessoa"
     assert [c["id"] for c in v["roteiro"]["itens"]] == ["osm:node/3", "osm:node/1"]
+
+
+def test_post_com_a_ordem_da_pessoa_nao_sobrescreve_uma_edicao_que_chega_no_meio(pg, monkeypatch):
+    """O POST lê a ordem da pessoa; um PUT chega antes de ele responder: fica a do PUT."""
+    from app import viagens
+    eu, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = _aceitar(cli, cab, monkeypatch, (1, 2, 3))
+    cli.put(f"/viagens/{vid}/roteiro", headers=cab, json={"itens": ["osm:node/3", "osm:node/1", "osm:node/2"]})
+
+    ler = viagens.lugares_do_roteiro
+
+    def ler_e_editar_no_meio(usuario, viagem):
+        r = ler(usuario, viagem)
+        viagens.editar_roteiro(eu, vid, ["osm:node/2", "osm:node/3"])  # o PUT chega depois da leitura
+        return r
+    monkeypatch.setattr(viagens, "lugares_do_roteiro", ler_e_editar_no_meio)
+
+    cli.post(f"/viagens/{vid}/roteiro", headers=cab)
+    [v] = cli.get("/eu/exportar", headers=cab).json()["viagens"]
+    assert [c["id"] for c in v["roteiro"]["itens"]] == ["osm:node/2", "osm:node/3"]

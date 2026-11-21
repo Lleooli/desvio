@@ -210,7 +210,11 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
     r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
     if r is None:  # viagem de outra pessoa: 404, como se não existisse
         raise HTTPException(404, "Viagem não encontrada")
-    if req.usar_ia and r["fonte"] != "pessoa":  # a ordem que a pessoa escolheu não volta para a IA
+    if r["fonte"] == "pessoa":
+        # a ordem que a pessoa escolheu não volta para a IA, nem é regravada: só o PUT a
+        # grava, e regravar aqui desfaria um PUT que chegasse entre a leitura e a escrita
+        return r
+    if req.usar_ia:
         async with httpx.AsyncClient() as client:
             r = await ia.ajustar_roteiro(client, r["itens"], req.contexto.model_dump(exclude_none=True))
     if not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
