@@ -68,6 +68,15 @@ export const montarRoteiro = (pedido: PedidoRoteiro) =>
 export const montarRoteiroDaViagem = (viagemId: string, pedido: PedidoRoteiroDaViagem = {}) =>
   chamar<Roteiro>(`/viagens/${id(viagemId)}/roteiro`, { metodo: "POST", corpo: pedido });
 
+/**
+ * Guarda o roteiro na ordem da pessoa; quem fica de fora sai do roteiro, mas o Bora
+ * continua. Daí em diante o roteiro volta nessa ordem, sem IA.
+ *
+ * @param ids - Os ids dos lugares, na ordem de visita.
+ */
+export const editarRoteiroDaViagem = (viagemId: string, ids: string[]) =>
+  chamar<Roteiro>(`/viagens/${id(viagemId)}/roteiro`, { metodo: "PUT", corpo: { itens: ids } });
+
 /** LGPD: tudo o que o Desvio guarda da pessoa. */
 export const exportarMeusDados = () => chamar<Record<string, unknown>>("/eu/exportar");
 

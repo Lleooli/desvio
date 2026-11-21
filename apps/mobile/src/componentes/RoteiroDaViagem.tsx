@@ -1,7 +1,16 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { montarRoteiroDaViagem, type Card, type Viagem } from "@/api";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import {
+  editarRoteiroDaViagem,
+  mensagemDeErro,
+  montarRoteiroDaViagem,
+  type Card,
+  type Roteiro,
+  type Viagem,
+} from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { LIMITE_PARADAS_GOOGLE, linkWaze, trechosGoogleMaps } from "@/mapas";
 import { espaco, estiloTexto, fontes, medida, raio, useCores } from "@/tema";
@@ -11,12 +20,17 @@ import { Ceu } from "./Ceu";
 import { Destaque } from "./Destaque";
 import { Estrada } from "./Estrada";
 import { numero } from "./Rating";
+import { Toast } from "./Toast";
 
 const MINUTOS_NO_DIA = 24 * 60;
 const PASSO_SAIDA = 30;
 const SAIDA_PADRAO = 7 * 60;
 /** Espera a pessoa parar de mexer na saída antes de pedir à IA um roteiro novo. */
 const ESPERA_SAIDA_MS = 800;
+/** Quanto tempo o Desfazer fica na tela depois de tirar um lugar. */
+const DURACAO_DESFAZER_MS = 4000;
+/** Segurar o item antes de arrastar, para não brigar com a rolagem da lista. */
+const SEGURAR_PARA_ARRASTAR_MS = 300;
 
 /** "7h", "13h30": a hora do dia no formato brasileiro. */
 function hora(minutos: number): string {
@@ -37,6 +51,16 @@ function horaEstimada(saida: number, horasDeEstrada: number): string {
   const dia = Math.floor(total / MINUTOS_NO_DIA);
   const texto = `~${hora(total % MINUTOS_NO_DIA)}`;
   return dia > 0 ? `${texto} do dia ${dia + 1}` : texto;
+}
+
+/** A lista com o item de `de` levado `passos` posições para baixo (negativo: para cima). */
+function mover<T>(lista: T[], de: number, passos: number): T[] {
+  const para = Math.max(0, Math.min(lista.length - 1, de + passos));
+  if (para === de) return lista;
+  const nova = [...lista];
+  const [item] = nova.splice(de, 1);
+  nova.splice(para, 0, item);
+  return nova;
 }
 
 /** "07:00": a hora de saída no formato que o coletor recebe. */
@@ -62,7 +86,8 @@ type Props = { viagem: Viagem };
  * O roteiro da viagem (canvas Roteiro): a Estrada com origem, cidades e destino no
  * cabeçalho, os lugares de Bora na ordem que a IA ajustou à hora de saída escolhida aqui
  * (ou na do km, quando a IA não responde), cada um com a hora estimada e o porquê,
- * Editar, que volta às paradas, e Abrir no mapa (HU13, HU14).
+ * Editar, que volta às paradas, e Abrir no mapa (HU13, HU14). A pessoa reordena (botões
+ * ou segurar e arrastar) e tira lugares; a ordem dela fica guardada e o Bora continua (HU15).
  */
 export function RoteiroDaViagem({ viagem }: Props) {
   const { c } = useCores();
@@ -84,6 +109,19 @@ export function RoteiroDaViagem({ viagem }: Props) {
     }),
   );
 
+  // A edição aparece na hora; o coletor guarda em segundo plano.
+  const [editado, setEditado] = useState<Roteiro | null>(null);
+  const [erroEdicao, setErroEdicao] = useState<string | null>(null);
+  const [tirado, setTirado] = useState<{ nome: string; antes: Roteiro } | null>(null);
+  const filaDeEdicoes = useRef<Promise<void>>(Promise.resolve());
+  const ultimoPedido = useRef(0);
+  useEffect(() => setEditado(null), [dados]);
+  useEffect(() => {
+    if (!tirado) return;
+    const relogio = setTimeout(() => setTirado(null), DURACAO_DESFAZER_MS);
+    return () => clearTimeout(relogio);
+  }, [tirado]);
+
   // Ao voltar das paradas (Editar), as decisões podem ter mudado: monta de novo.
   const primeiroFoco = useRef(true);
   useFocusEffect(
@@ -95,7 +133,8 @@ export function RoteiroDaViagem({ viagem }: Props) {
 
   if (erro) return <Aviso mensagem={erro} acao="Tentar de novo" onAcao={tentarDeNovo} />;
 
-  const itens = dados?.itens ?? [];
+  const roteiro = editado ?? dados;
+  const itens = roteiro?.itens ?? [];
   const totalKm = destino?.km_na_rota ?? null;
   const cidades = [viagem.origem, ...viagem.paradas.map((p) => p.nome)].map((cidade) => cidade.split(",")[0]);
   const resumo = [
@@ -106,6 +145,48 @@ export function RoteiroDaViagem({ viagem }: Props) {
     .join(" · ");
   const editar = () => router.push({ pathname: "/viagens/[id]/paradas", params: { id: viagem.id } });
   const mudarSaida = (delta: number) => setSaida((s) => (s + delta + MINUTOS_NO_DIA) % MINUTOS_NO_DIA);
+
+  /**
+   * Mostra a ordem nova na hora e guarda; se o coletor recusar, volta à de antes.
+   * Os PUTs saem um de cada vez, na ordem dos toques, e a falha de um que já foi
+   * superado por outro é ignorada: a tela mostra o que o último guardou.
+   */
+  const guardar = (novos: Card[]) => {
+    if (!roteiro) return;
+    const antes = roteiro;
+    const pedido = ++ultimoPedido.current;
+    setEditado({ itens: novos, explicacoes: {}, fonte: "pessoa" });
+    setErroEdicao(null);
+    filaDeEdicoes.current = filaDeEdicoes.current
+      .then(() =>
+        editarRoteiroDaViagem(
+          viagem.id,
+          novos.map((item) => item.id),
+        ),
+      )
+      .then(
+        () => undefined,
+        (e: unknown) => {
+          if (pedido !== ultimoPedido.current) return;
+          setEditado(antes);
+          setErroEdicao(mensagemDeErro(e));
+        },
+      );
+  };
+  const moverItem = (de: number, passos: number) => {
+    const novos = mover(itens, de, passos);
+    if (novos !== itens) guardar(novos);
+  };
+  const tirarItem = (de: number) => {
+    if (!roteiro) return;
+    setTirado({ nome: itens[de].nome ?? "Lugar", antes: roteiro });
+    guardar(itens.filter((_, i) => i !== de));
+  };
+  const desfazer = () => {
+    if (!tirado) return;
+    guardar(tirado.antes.itens);
+    setTirado(null);
+  };
 
   return (
     <View style={s.tela}>
@@ -139,7 +220,7 @@ export function RoteiroDaViagem({ viagem }: Props) {
         </View>
       </View>
 
-      {!dados ? (
+      {!roteiro ? (
         <View style={s.centro}>
           <ActivityIndicator color={c.placa} accessibilityLabel="Montando o roteiro" />
         </View>
@@ -151,9 +232,14 @@ export function RoteiroDaViagem({ viagem }: Props) {
         </View>
       ) : (
         <ScrollView contentContainerStyle={s.lista}>
-          {dados.fonte === "geometria" ? (
+          {roteiro.fonte === "geometria" ? (
             <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
               Por agora, a ordem segue o km da estrada.
+            </Text>
+          ) : null}
+          {erroEdicao ? (
+            <Text accessibilityLiveRegion="polite" style={[estiloTexto("body-s"), { color: c.ink }]}>
+              {erroEdicao}
             </Text>
           ) : null}
           {itens.map((item, i) => (
@@ -161,12 +247,21 @@ export function RoteiroDaViagem({ viagem }: Props) {
               key={item.id}
               item={item}
               posicao={i + 1}
+              total={itens.length}
               saida={saida}
-              porque={dados.explicacoes[item.id]}
+              porque={roteiro.explicacoes[item.id]}
+              onMover={(passos) => moverItem(i, passos)}
+              onTirar={() => tirarItem(i)}
             />
           ))}
         </ScrollView>
       )}
+
+      {tirado ? (
+        <Toast icon="x" acao="Desfazer" onAcao={desfazer}>
+          {`${tirado.nome} saiu do roteiro`}
+        </Toast>
+      ) : null}
 
       <View style={s.rodape}>
         <View style={s.editar}>
@@ -248,16 +343,27 @@ function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
   );
 }
 
-function BotaoHora({ rotulo, leitura, onPress }: { rotulo: string; leitura: string; onPress: () => void }) {
+type PropsBotao = {
+  rotulo: string;
+  leitura: string;
+  onPress: () => void;
+  disabled?: boolean;
+  /** Sobre o item do roteiro (surface-200), o botão usa a superfície mais clara. */
+  fundo?: "surface-100" | "surface-200";
+};
+
+function BotaoHora({ rotulo, leitura, onPress, disabled = false, fundo = "surface-200" }: PropsBotao) {
   const { c } = useCores();
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={leitura}
+      accessibilityState={{ disabled }}
       style={({ pressed }) => [
         s.botaoHora,
-        { backgroundColor: pressed ? c["surface-300"] : c["surface-200"] },
+        { backgroundColor: pressed ? c["surface-300"] : c[fundo], opacity: disabled ? medida.desabilitado : 1 },
       ]}
     >
       <Text style={[estiloTexto("title"), { color: c.ink }]}>{rotulo}</Text>
@@ -268,33 +374,95 @@ function BotaoHora({ rotulo, leitura, onPress }: { rotulo: string; leitura: stri
 type PropsItem = {
   item: Card;
   posicao: number;
+  /** Quantos lugares o roteiro tem, para saber se o item pode descer. */
+  total: number;
   saida: number;
   /** A linha da IA dizendo por que o lugar está nessa posição. */
   porque?: string;
+  /** Leva o item `passos` posições para baixo (negativo: para cima). */
+  onMover: (passos: number) => void;
+  onTirar: () => void;
 };
 
-function ItemRoteiro({ item, posicao, saida, porque }: PropsItem) {
-  const { c } = useCores();
+function ItemRoteiro({ item, posicao, total, saida, porque, onMover, onTirar }: PropsItem) {
+  const { c, sombra } = useCores();
+  const deslocamento = useSharedValue(0);
+  const arrastando = useSharedValue(false);
+  const altura = useSharedValue(0);
+  const nome = item.nome ?? "Lugar";
   const quando = [item.cidade, item.horas_desde_saida != null ? horaEstimada(saida, item.horas_desde_saida) : null]
     .filter(Boolean)
     .join(" · ");
   const km = item.km_na_rota != null ? `KM ${numero(item.km_na_rota)}` : "";
+
+  // Segurar e arrastar: cada altura de item, mais o espaço entre eles, é uma posição.
+  const espacoEntreItens = espaco["space-2"];
+  const gesto = Gesture.Pan()
+    .activateAfterLongPress(SEGURAR_PARA_ARRASTAR_MS)
+    .onStart(() => {
+      arrastando.value = true;
+    })
+    .onUpdate((e) => {
+      deslocamento.value = e.translationY;
+    })
+    .onEnd((e) => {
+      const passo = altura.value + espacoEntreItens;
+      const passos = passo > 0 ? Math.round(e.translationY / passo) : 0;
+      if (passos !== 0) runOnJS(onMover)(passos);
+    })
+    .onFinalize(() => {
+      arrastando.value = false;
+      deslocamento.value = 0;
+    });
+  const sombraArrasto = sombra["shadow-2"];
+  const movimento = useAnimatedStyle(() => ({
+    transform: [{ translateY: deslocamento.value }],
+    zIndex: arrastando.value ? 1 : 0,
+    boxShadow: arrastando.value ? sombraArrasto : "none",
+  }));
+
   return (
-    <View
-      accessible
-      accessibilityLabel={[`${posicao}`, item.nome, quando, km, porque].filter(Boolean).join(", ")}
-      style={[s.item, { backgroundColor: c["surface-200"] }]}
-    >
-      <View style={[s.numero, { backgroundColor: c.asfalto }]}>
-        <Text style={[estiloTexto("km"), { color: c["on-asfalto"], fontFamily: fontes.placaForte }]}>{posicao}</Text>
-      </View>
-      <View style={s.info}>
-        <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>{item.nome ?? "Lugar"}</Text>
-        {quando ? <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>{quando}</Text> : null}
-        {porque ? <Text style={[estiloTexto("body-s"), { color: c.ink }]}>{porque}</Text> : null}
-      </View>
-      <Text style={[estiloTexto("km"), { color: c["ink-muted"] }]}>{km}</Text>
-    </View>
+    <GestureDetector gesture={gesto}>
+      <Animated.View
+        onLayout={(e) => {
+          altura.value = e.nativeEvent.layout.height;
+        }}
+        style={[s.item, { backgroundColor: c["surface-200"] }, movimento]}
+      >
+        <View
+          accessible
+          accessibilityLabel={[`${posicao}`, nome, quando, km, porque].filter(Boolean).join(", ")}
+          style={s.linhaItem}
+        >
+          <View style={[s.numero, { backgroundColor: c.asfalto }]}>
+            <Text style={[estiloTexto("km"), { color: c["on-asfalto"], fontFamily: fontes.placaForte }]}>{posicao}</Text>
+          </View>
+          <View style={s.info}>
+            <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>{nome}</Text>
+            {quando ? <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>{quando}</Text> : null}
+            {porque ? <Text style={[estiloTexto("body-s"), { color: c.ink }]}>{porque}</Text> : null}
+          </View>
+          <Text style={[estiloTexto("km"), { color: c["ink-muted"] }]}>{km}</Text>
+        </View>
+        <View style={s.acoesItem}>
+          <BotaoHora
+            rotulo="↑"
+            leitura={`Subir ${nome}`}
+            fundo="surface-100"
+            disabled={posicao === 1}
+            onPress={() => onMover(-1)}
+          />
+          <BotaoHora
+            rotulo="↓"
+            leitura={`Descer ${nome}`}
+            fundo="surface-100"
+            disabled={posicao === total}
+            onPress={() => onMover(1)}
+          />
+          <BotaoHora rotulo="×" leitura={`Tirar ${nome} do roteiro`} fundo="surface-100" onPress={onTirar} />
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -328,12 +496,12 @@ const s = StyleSheet.create({
   vazio: { textAlign: "center" },
   lista: { gap: espaco["space-2"], paddingHorizontal: espaco["space-4"], paddingBottom: espaco["space-4"] },
   item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: espaco["space-3"],
+    gap: espaco["space-2"],
     padding: espaco["space-3"],
     borderRadius: raio["radius-md"],
   },
+  linhaItem: { flexDirection: "row", alignItems: "center", gap: espaco["space-3"] },
+  acoesItem: { flexDirection: "row", justifyContent: "flex-end", gap: espaco["space-2"] },
   numero: {
     width: medida.roteiroNumero,
     height: medida.roteiroNumero,
