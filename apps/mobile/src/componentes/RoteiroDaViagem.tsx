@@ -113,6 +113,8 @@ export function RoteiroDaViagem({ viagem }: Props) {
   const [editado, setEditado] = useState<Roteiro | null>(null);
   const [erroEdicao, setErroEdicao] = useState<string | null>(null);
   const [tirado, setTirado] = useState<{ nome: string; antes: Roteiro } | null>(null);
+  const filaDeEdicoes = useRef<Promise<void>>(Promise.resolve());
+  const ultimoPedido = useRef(0);
   useEffect(() => setEditado(null), [dados]);
   useEffect(() => {
     if (!tirado) return;
@@ -144,19 +146,32 @@ export function RoteiroDaViagem({ viagem }: Props) {
   const editar = () => router.push({ pathname: "/viagens/[id]/paradas", params: { id: viagem.id } });
   const mudarSaida = (delta: number) => setSaida((s) => (s + delta + MINUTOS_NO_DIA) % MINUTOS_NO_DIA);
 
-  /** Mostra a ordem nova na hora e guarda; se o coletor recusar, volta à de antes. */
+  /**
+   * Mostra a ordem nova na hora e guarda; se o coletor recusar, volta à de antes.
+   * Os PUTs saem um de cada vez, na ordem dos toques, e a falha de um que já foi
+   * superado por outro é ignorada: a tela mostra o que o último guardou.
+   */
   const guardar = (novos: Card[]) => {
     if (!roteiro) return;
     const antes = roteiro;
+    const pedido = ++ultimoPedido.current;
     setEditado({ itens: novos, explicacoes: {}, fonte: "pessoa" });
     setErroEdicao(null);
-    editarRoteiroDaViagem(
-      viagem.id,
-      novos.map((item) => item.id),
-    ).catch((e: unknown) => {
-      setEditado(antes);
-      setErroEdicao(mensagemDeErro(e));
-    });
+    filaDeEdicoes.current = filaDeEdicoes.current
+      .then(() =>
+        editarRoteiroDaViagem(
+          viagem.id,
+          novos.map((item) => item.id),
+        ),
+      )
+      .then(
+        () => undefined,
+        (e: unknown) => {
+          if (pedido !== ultimoPedido.current) return;
+          setEditado(antes);
+          setErroEdicao(mensagemDeErro(e));
+        },
+      );
   };
   const moverItem = (de: number, passos: number) => {
     const novos = mover(itens, de, passos);
