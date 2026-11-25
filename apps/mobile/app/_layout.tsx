@@ -4,11 +4,12 @@ import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesq
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useCores } from "@/tema";
+import { useCores, useEscolhaTema } from "@/tema";
 import "@/sessao"; // liga o token da sessão às chamadas à API antes de qualquer tela
 
 export default function RaizLayout() {
   const { tema, c } = useCores();
+  const { carregou: carregouTema } = useEscolhaTema();
   const [carregou] = useFonts({
     Barlow_400Regular,
     Barlow_600SemiBold,
@@ -16,7 +17,7 @@ export default function RaizLayout() {
     BarlowCondensed_700Bold,
     BricolageGrotesque_700Bold,
   });
-  if (!carregou) return null;
+  if (!carregou || !carregouTema) return null; // sem piscar no tema errado ao abrir
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

@@ -11,6 +11,7 @@ Fluxo pensado para o front (estilo Tinder):
    POST /viagens/{id}/roteiro               → o roteiro da viagem, pelo km ou pela IA, guardado no banco
    PUT  /viagens/{id}/roteiro               → a pessoa reordena ou remove lugares; o Bora continua
 4. GET  /perfil                            → resumo do gosto, para a IA
+   PATCH /perfil                           → tema, intervalo padrão e resumo da triagem
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
 
 Toda rota, menos /docs e /fotos, exige o token do Supabase (Authorization: Bearer);
@@ -126,6 +127,15 @@ class Triagem(BaseModel):
     pular: bool = False
 
 
+class AjustePerfil(BaseModel):
+    """O que a pessoa muda no perfil; só as chaves enviadas são gravadas."""
+    model_config = ConfigDict(extra="forbid")
+    # Os padrões não são gravados (exclude_unset); só não aceitam null, que a coluna não guarda
+    tema: Literal["claro", "escuro", "sistema"] = "sistema"
+    intervalo_km: float = Field(200, ge=10, le=600, description="Distância padrão entre paradas, como na viagem")
+    resumo: str = Field("", max_length=preferencias.MAX_TEXTO, description="Resumo da triagem corrigido; vazio apaga")
+
+
 class Ranquear(BaseModel):
     cards: list[Card]
     resumo: str = ""
@@ -219,6 +229,13 @@ def desfazer_swipe(lugar_id: str, eu: Usuario = Depends(usuario_atual)):
 
 @app.get("/perfil")
 def perfil(eu: Usuario = Depends(usuario_atual)):
+    return preferencias.perfil(eu.id)
+
+
+@app.patch("/perfil")
+def ajustar_perfil(req: AjustePerfil, eu: Usuario = Depends(usuario_atual)):
+    """Tema, intervalo padrão entre paradas e resumo da triagem; devolve o perfil inteiro."""
+    preferencias.ajustar(eu.id, eu.email, req.model_dump(exclude_unset=True))
     return preferencias.perfil(eu.id)
 
 

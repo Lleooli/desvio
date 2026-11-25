@@ -1,4 +1,5 @@
 import { Image, Linking, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector, type GestureType } from "react-native-gesture-handler";
 import { medida, espaco, estiloTexto, fontes, raio, tamanhoIcone, useCores } from "@/tema";
 import { FundoCeu } from "./Ceu";
 import { categorias, Chip, type Categoria } from "./Chip";
@@ -34,6 +35,8 @@ type Props = {
   stamp?: Decisao | null;
   /** Card de trás da pilha: sem `shadow-card`, que é só do topo. */
   atras?: boolean;
+  /** Gesto de toque de quem envolve o card: um toque no @ do Instagram abre só o link, sem disparar este. */
+  toqueDeFora?: GestureType;
 };
 
 /** Extrai o @ de uma URL do Instagram ou de um "@handle"; outra coisa (um site qualquer) vira null. */
@@ -54,10 +57,19 @@ export function textoKm(km: number, horas?: number | null) {
 }
 
 /** O card de um lugar na tela de swipe. Não arrasta sozinho: quem move é a PilhaSwipe. */
-export function SwipeCard({ card, stamp, atras = false }: Props) {
+export function SwipeCard({ card, stamp, atras = false, toqueDeFora }: Props) {
   const { c, sombra } = useCores();
   const handle = handleInstagram(card.instagram);
   const km = card.km != null ? textoKm(card.km, card.horas) : null;
+  // Sem app nem navegador para abrir o link, o toque não faz nada em vez de rejeitar a promise.
+  const abrirInstagram = () => Linking.openURL(`https://instagram.com/${handle}`).catch(() => {});
+  // O toque no link é um gesto, não onPress: assim ele bloqueia o toque de fora (o que abre a folha do lugar).
+  const toqueNoLink = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd((_e, terminou) => {
+      if (terminou) abrirInstagram();
+    });
+  if (toqueDeFora) toqueNoLink.blocksExternalGesture(toqueDeFora);
 
   return (
     <View
@@ -114,16 +126,21 @@ export function SwipeCard({ card, stamp, atras = false }: Props) {
             </Text>
           ) : null}
           {handle ? (
-            <Text
-              accessibilityRole="link"
-              accessibilityLabel={`Instagram ${handle}${card.instagramProvavel ? ", provável" : ""}`}
-              // Sem app nem navegador para abrir o link, o toque não faz nada em vez de rejeitar a promise.
-              onPress={() => Linking.openURL(`https://instagram.com/${handle}`).catch(() => {})}
-              style={[estiloTexto("body-s"), s.instagram, { color: c["on-scrim"] }]}
-            >
-              @{handle}
-              {card.instagramProvavel ? <Text style={s.provavel}> · provável</Text> : null}
-            </Text>
+            <GestureDetector gesture={toqueNoLink}>
+              <Text
+                accessibilityRole="link"
+                accessibilityLabel={`Instagram ${handle}${card.instagramProvavel ? ", provável" : ""}`}
+                // Leitor de tela: o toque duplo chega como "activate", não pelo gesto.
+                accessibilityActions={[{ name: "activate" }]}
+                onAccessibilityAction={(e) => {
+                  if (e.nativeEvent.actionName === "activate") abrirInstagram();
+                }}
+                style={[estiloTexto("body-s"), s.instagram, { color: c["on-scrim"] }]}
+              >
+                @{handle}
+                {card.instagramProvavel ? <Text style={s.provavel}> · provável</Text> : null}
+              </Text>
+            </GestureDetector>
           ) : null}
         </View>
       </View>

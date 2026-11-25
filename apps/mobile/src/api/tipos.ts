@@ -6,6 +6,7 @@ export type CategoriaLugar = "turismo" | "restaurante" | "posto" | "natureza" | 
 export type StatusViagem = "buscando" | "pronta" | "falhou";
 export type StatusJob = "pendente" | "rodando" | "pronto" | "falhou";
 export type TipoParada = "parada" | "destino" | "estadia";
+export type TipoDecisao = "bora" | "passo" | "favorito";
 
 /** Card de um lugar como o coletor devolve. Só o id é garantido; o resto depende da fonte. */
 export type Card = {
@@ -30,6 +31,14 @@ export type Card = {
   km_na_rota?: number | null;
   horas_desde_saida?: number | null;
   link_maps?: string | null;
+  endereco?: string | null;
+  /** Opções do lugar no Google ("Aceita pets", "Entrada acessível"…). */
+  sobre?: string[];
+  /**
+   * Faixas de hoje no fuso do lugar, "HH:MM–HH:MM"; [] quando fecha hoje e null quando
+   * o horário de hoje não é conhecido. Só vem em `GET /viagens/{id}`.
+   */
+  horario_hoje?: string[] | null;
 };
 
 export type Parada = {
@@ -110,13 +119,30 @@ export type PerfilGosto = {
   categoria: TaxaAceite;
   tipo: TaxaAceite;
   faixa_preco: TaxaAceite;
+  /** O que a IA entendeu da triagem, ou o que a pessoa corrigiu; null sem triagem concluída. */
+  resumo: string | null;
+  respostas: RespostaTriagem[];
+  pulou: boolean;
+  tema: EscolhaTema;
+  /** Distância padrão entre paradas; null enquanto a pessoa não escolheu. */
+  intervalo_km: number | null;
 };
+
+/** O tema que a pessoa escolhe no perfil; "sistema" segue o aparelho. */
+export type EscolhaTema = "claro" | "escuro" | "sistema";
+
+/** O que o PATCH /perfil grava; só as chaves enviadas mudam. Resumo vazio apaga. */
+export type AjustePerfil = Partial<{ tema: EscolhaTema; intervalo_km: number; resumo: string }>;
 
 export type RespostaTriagem = { pergunta: string; resposta: string };
 
 export type PassoTriagem = {
   pergunta: string | null;
   opcoes: string[];
+  /** A pessoa pode marcar mais de uma opção; sem ele, um toque responde. */
+  multi: boolean;
+  /** A última pergunta: a pessoa escreve a resposta, e as opções são sugestões. */
+  livre: boolean;
   fim: boolean;
   resumo: string | null;
   fonte: "ia" | "fixa";

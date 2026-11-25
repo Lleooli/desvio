@@ -1,20 +1,20 @@
 import { useLocalSearchParams } from "expo-router";
-import { TelaProvisoria } from "@/componentes/TelaProvisoria";
+import { View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NaViagemAtiva } from "@/componentes/NaViagemAtiva";
+import { SwipeDaParada } from "@/componentes/SwipeDaParada";
+import { useCores } from "@/tema";
 import { useMarcarViagemAtiva } from "@/viagemAtiva";
 
-// O swipe: SwipeCard + SwipeActions (design system Desvio), gestos com Gesture Handler e Reanimated.
+/** O swipe de uma parada (HU09, HU10). Fica fora das abas, então a BottomNav não aparece. */
 export default function Swipe() {
   const { id, paradaId } = useLocalSearchParams<{ id: string; paradaId: string }>();
   useMarcarViagemAtiva(id);
+  const { c } = useCores();
+  const margens = useSafeAreaInsets();
   return (
-    <TelaProvisoria
-      titulo="Swipe da parada"
-      rota={`/viagens/${id}/paradas/${paradaId}`}
-      historias={["HU09", "HU10", "HU12", "HU18"]}
-      proximas={[
-        { rotulo: "Ver detalhes do lugar", href: { pathname: "/lugares/[lugarId]", params: { lugarId: "osm:node-1" } } },
-        { rotulo: "Pronto", href: { pathname: "/viagens/[id]/paradas", params: { id } } },
-      ]}
-    />
+    <View style={{ flex: 1, paddingTop: margens.top, paddingBottom: margens.bottom, backgroundColor: c["surface-100"] }}>
+      <NaViagemAtiva id={id}>{(viagem) => <SwipeDaParada viagem={viagem} ordem={Number(paradaId)} />}</NaViagemAtiva>
+    </View>
   );
 }
