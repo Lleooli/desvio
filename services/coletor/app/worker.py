@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, preferencias, viagens
+from . import cache, coletor, conta, fila, geo, preferencias, push, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -66,6 +66,9 @@ async def rodar_uma_vez() -> bool:
                 viagens.marcar_falha(viagem)
             except Exception:
                 log.exception("não consegui marcar a viagem %s como falhou", viagem)
+        return True
+    # o job já está pronto; o aviso é por fora, e falhar aqui não desfaz a busca
+    await push.avisar_busca_pronta(job)
     return True
 
 

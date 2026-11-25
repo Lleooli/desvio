@@ -24,6 +24,8 @@ def _isolado(monkeypatch):
     monkeypatch.setattr(conta, "SUPABASE_URL", "")
     monkeypatch.setattr(conta, "SERVICE_ROLE_KEY", "")
     monkeypatch.setattr(conta, "_transporte", None)
+    from app import push
+    monkeypatch.setattr(push, "_transporte", None)
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
     # Fonte do Google previsível: gosom (o mock dos testes), a menos que o teste mude
