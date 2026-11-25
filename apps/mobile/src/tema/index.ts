@@ -90,6 +90,10 @@ export const medida = {
   gostoRotulo: 120,
   gostoBarra: 10,
   gostoPorcentagem: 44,
+  // Folha do lugar: altura do topo com a foto e a alça da folha (canvas Lugar)
+  lugarTopo: 300,
+  alcaLargura: 40,
+  alcaAltura: 4,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */

@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import banco, ia, preferencias, roteiro
+from . import banco, horarios, ia, preferencias, roteiro
 
 # Campos do card que dependem da rota desta viagem; não entram no `lugar` compartilhado
 _DA_ROTA = ("km_na_rota", "horas_desde_saida")
@@ -127,12 +128,14 @@ def obter(usuario: str, viagem: str) -> dict | None:
                             "where pl.viagem = %s order by pl.parada, pl.posicao",
                             (usuario, viagem)).fetchall()
     por_parada: dict[int, list[dict]] = {}
+    agora = datetime.now(timezone.utc)
     # O contador da tela Paradas ("3 de 12"): Bora ou Favorito sobre todos os cards da parada,
     # contado antes de `personalizar` tirar os já avaliados.
     progresso: dict[int, dict] = {}
     for c in cards:
         por_parada.setdefault(c["parada"], []).append(
-            {**c["dados"], "km_na_rota": c["km_na_rota"], "horas_desde_saida": c["horas_desde_saida"]})
+            {**c["dados"], "km_na_rota": c["km_na_rota"], "horas_desde_saida": c["horas_desde_saida"],
+             "horario_hoje": horarios.de_hoje(c["dados"].get("horarios"), c["dados"].get("uf"), agora)})
         contagem = progresso.setdefault(c["parada"], {"aceitos": 0, "total": 0})
         contagem["total"] += 1
         contagem["aceitos"] += c["decisao"] in ("bora", "favorito")

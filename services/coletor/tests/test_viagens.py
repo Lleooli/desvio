@@ -122,6 +122,18 @@ def test_cards_vem_ordenados_pelo_gosto(pg, monkeypatch):
     assert [c["categoria"] for c in d["paradas"][0]["cards"]] == ["turismo", "posto"]
 
 
+def test_cada_card_traz_o_horario_de_hoje(pg, monkeypatch):
+    """Issue #28 (HU11): a folha do lugar mostra o horário de hoje, no fuso do lugar."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    todo_dia = {dia: ["11:30 – 23:00"] for dia in ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira",
+                                                    "sexta-feira", "sábado", "domingo")}
+    vid = criar_e_coletar(cli, cab, monkeypatch,
+                          resultado([card(1, uf="RS", horarios=todo_dia), card(2, uf="RS")], []))
+    d = cli.get(f"/viagens/{vid}", headers=cab).json()
+    assert [c["horario_hoje"] for c in d["paradas"][0]["cards"]] == [["11:30–23:00"], None]
+
+
 def test_viagem_de_outra_pessoa_da_404(pg, monkeypatch):
     _, cab_a = criar_pessoa(pg)
     _, cab_b = criar_pessoa(pg)

@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Card, ParadaDaViagem, Viagem } from "@/api";
+import { abrirFolhaDoLugar } from "@/folhaDoLugar";
 import { desfazerRegistro, lugaresDecididosNaFila, registrarDecisao } from "@/filaDecisoes";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, tipografia, useCores } from "@/tema";
 import { Aviso } from "./Aviso";
@@ -107,6 +108,12 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
     setUltima(null);
   };
 
+  // A folha decide pelo mesmo caminho do swipe: o card sai da pilha e o toast aparece.
+  const abrirDetalhe = (lugar: CardLugar) => {
+    const card = cards?.find((outro) => outro.id === lugar.id);
+    if (card) abrirFolhaDoLugar(card, (decisao) => decidir(lugar, decisao));
+  };
+
   const naEstrada = naOrdemDaEstrada(viagem.paradas);
   const proxima = naEstrada.slice(naEstrada.indexOf(parada) + 1).find((p) => p.cards.length > 0);
   const irParaProxima = () =>
@@ -146,7 +153,7 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
         {cards === null ? (
           <ActivityIndicator color={c.placa} accessibilityLabel="Carregando os lugares" />
         ) : topo ? (
-          <PilhaSwipe cards={cards.map(paraCardLugar)} onDecisao={decidir} />
+          <PilhaSwipe cards={cards.map(paraCardLugar)} onDecisao={decidir} onAbrir={abrirDetalhe} />
         ) : (
           <View style={s.fim}>
             <Text style={[estiloTexto("body"), s.textoFim, { color: c.ink }]}>
@@ -178,7 +185,7 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
           <Button
             variant="ghost"
             size="sm"
-            onPress={() => router.push({ pathname: "/lugares/[lugarId]", params: { lugarId: topo.id } })}
+            onPress={() => abrirDetalhe(paraCardLugar(topo))}
           >
             Ver detalhes do lugar
           </Button>
