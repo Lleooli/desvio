@@ -1,13 +1,16 @@
-import { TelaProvisoria } from "@/componentes/TelaProvisoria";
+import { View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NaViagemAtiva } from "@/componentes/NaViagemAtiva";
+import { RoteiroDaViagem } from "@/componentes/RoteiroDaViagem";
+import { useCores } from "@/tema";
 
 // Aba Roteiro: o roteiro da viagem ativa (mesmo conteúdo de /viagens/:id/roteiro).
 export default function AbaRoteiro() {
+  const { c } = useCores();
+  const margens = useSafeAreaInsets();
   return (
-    <TelaProvisoria
-      titulo="Seu roteiro está pronto"
-      rota="aba Roteiro → /viagens/:id/roteiro"
-      historias={["HU13", "HU14", "HU15"]}
-      proximas={[{ rotulo: "Editar paradas", href: "/viagens/demo/paradas" }]}
-    />
+    <View style={{ flex: 1, paddingTop: margens.top, backgroundColor: c["surface-100"] }}>
+      <NaViagemAtiva>{(viagem, recarregar) => <RoteiroDaViagem viagem={viagem} recarregar={recarregar} />}</NaViagemAtiva>
+    </View>
   );
 }

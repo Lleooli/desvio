@@ -350,17 +350,32 @@ _SCHEMA_ROTEIRO = {
 }
 _SISTEMA_ROTEIRO = (
     "Você ajusta a ordem das paradas de uma viagem por terra (carro, moto ou bicicleta; o veículo vem no contexto). Recebe os lugares já em ordem de km "
-    "e o contexto (hora de saída, dias). Ajuste ao horário: almoço entre 11h e 14h, mirante no fim "
-    "da tarde, pernoite. Não volte na estrada mais de 30 km. Para cada lugar, uma linha curta "
-    "dizendo por quê, em português do Brasil.")
+    "e o contexto (hora de saída, dias). Quando houver, `chegada` (HH:MM) e `dia` dizem quando a "
+    "pessoa passa por cada lugar. Ajuste ao horário: se houver restaurante, o almoço é um com "
+    "chegada entre 11h e 14h; mirante no fim da tarde, pernoite. Não volte na estrada mais de 30 km. "
+    "Para cada lugar, uma linha curta dizendo por quê, em português do Brasil.")
+
+
+def _chegada(saida: str | None, horas: float | None) -> dict:
+    """`chegada` (HH:MM) e `dia` (1 é o dia da saída) de um lugar; vazio sem saída ou sem horas."""
+    # o POST /roteiro aceita contexto livre: saída fora de HH:MM só fica sem chegada
+    hora = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", saida) if isinstance(saida, str) else None
+    if not hora or not isinstance(horas, (int, float)):
+        return {}
+    total = int(hora[1]) * 60 + int(hora[2]) + round(horas * 60)
+    dia, minutos = divmod(total, 24 * 60)
+    return {"chegada": f"{minutos // 60:02d}:{minutos % 60:02d}", "dia": dia + 1}
 
 
 async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto: dict) -> dict:
     base = roteiro.ordenar_na_rota(itens)
+    saida = contexto.get("saida")
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_ROTEIRO,
                               dados={"contexto": contexto,
                                      "lugares": [{**_card_enxuto(c), "km_na_rota": c.get("km_na_rota"),
+                                                  "horas_desde_saida": c.get("horas_desde_saida"),
+                                                  **_chegada(saida, c.get("horas_desde_saida")),
                                                   "horarios": c.get("horarios")} for c in base]},
                               schema=_SCHEMA_ROTEIRO, nome="roteiro", max_tokens=1200)
     except IAIndisponivel:

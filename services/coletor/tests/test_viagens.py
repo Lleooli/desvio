@@ -95,6 +95,21 @@ def test_cards_nao_trazem_lugares_ja_avaliados(pg, monkeypatch):
     assert v["progresso"] == {"decididos": 2, "total": 3}
 
 
+def test_cada_parada_traz_aceitos_e_total(pg, monkeypatch):
+    """Issue #19: o contador "3 de 12" da tela Paradas conta Bora sobre todos os cards da parada."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = criar_e_coletar(cli, cab, monkeypatch, resultado([card(1), card(2), card(3)], [card(4)]))
+    d = cli.get(f"/viagens/{vid}", headers=cab).json()
+    assert [p["progresso"] for p in d["paradas"]] == [{"aceitos": 0, "total": 3}, {"aceitos": 0, "total": 1}]
+
+    cli.post("/swipe", json={"card": card(1), "gostou": True}, headers=cab)
+    cli.post("/swipe", json={"card": card(2), "gostou": False}, headers=cab)
+    cli.post("/swipe", json={"card": card(4), "gostou": True}, headers=cab)
+    d = cli.get(f"/viagens/{vid}", headers=cab).json()
+    assert [p["progresso"] for p in d["paradas"]] == [{"aceitos": 1, "total": 3}, {"aceitos": 1, "total": 1}]
+
+
 def test_cards_vem_ordenados_pelo_gosto(pg, monkeypatch):
     _, cab = criar_pessoa(pg)
     cli = TestClient(app)
