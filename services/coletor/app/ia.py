@@ -241,17 +241,23 @@ def _reordenar(cards: list[dict], ids: list[str]) -> list[dict]:
     return saida + [c for c in cards if c["id"] not in vistos]
 
 
-async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict]:
+async def _ranquear_pela_ia(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict] | None:
+    """Os cards ordenados pelo Groq, ou None quando a IA não respondeu (plano B de quem chama)."""
     topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
     if not resumo or len(topo) < 2:
-        return cards
+        return None
     try:
         r = await chamar_json(client, modelo=MODELO_RAPIDO, sistema=_SISTEMA_RANQUEAR,
                               dados={"gosto": resumo, "cards": [_card_enxuto(c) for c in topo]},
                               schema=_SCHEMA_RANQUEAR, nome="ranqueamento", max_tokens=600)
     except IAIndisponivel:
-        return cards
+        return None
     return _reordenar(topo, r["ids"]) + resto
+
+
+async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict]:
+    """Os cards ordenados pelo gosto; sem IA, na ordem em que vieram."""
+    return await _ranquear_pela_ia(client, cards, resumo) or cards
 
 
 def _norm_cidade(s: str) -> str:
@@ -270,16 +276,25 @@ def _categorias_do_topo(cards: list[dict]) -> list[str]:
     return list(dict.fromkeys(c.get("categoria") or "" for c in cards))
 
 
-def _ordem_em_cache(parada: dict, resumo: str) -> list | None:
-    """A ordem já ranqueada destes mesmos cards, ou None se a cidade/categoria/resumo não bate."""
+def _ordem_em_cache(parada: dict, resumo: str, exata: bool = True) -> list | None:
+    """A ordem já ranqueada para esta cidade/categoria/resumo, ou None.
+
+    Com `exata`, só vale se o cache tem exatamente estes cards (o worker: card novo vai ao
+    Groq). Sem `exata`, vale como prioridade (GET da viagem): depois de um swipe o topo
+    muda, e os cards que o cache não conhece vão para o fim, sem perder o ranqueamento.
+    """
     topo = (parada.get("cards") or [])[:MAX_RANQUEAR]
     if len(topo) < 2 or not resumo:
         return None
-    ids = [c["id"] for c in topo]
+    ids = {c["id"] for c in topo}
     cidade = parada.get("nome") or ""
     for cat in _categorias_do_topo(topo):
         guardado = cache.obter(chave_ranque(cidade, cat, resumo))
-        if isinstance(guardado, list) and len(guardado) == len(ids) and set(guardado) == set(ids):
+        if not isinstance(guardado, list):
+            continue
+        if exata and len(guardado) == len(ids) and set(guardado) == ids:
+            return guardado
+        if not exata and len(ids & set(guardado)) >= 2:
             return guardado
     return None
 
@@ -289,7 +304,7 @@ def reaplicar_cache(paradas: list[dict], resumo: str | None) -> None:
     if not resumo:
         return
     for parada in paradas:
-        ordem = _ordem_em_cache(parada, resumo)
+        ordem = _ordem_em_cache(parada, resumo, exata=False)
         if not ordem:
             continue
         topo, resto = parada["cards"][:MAX_RANQUEAR], parada["cards"][MAX_RANQUEAR:]
@@ -315,7 +330,9 @@ async def ranquear_paradas(paradas: list[dict], resumo: str | None) -> None:
             if ordem:
                 parada["cards"] = _reordenar(topo, ordem) + resto
                 continue
-            ordenados = await ranquear(client, topo, resumo)
+            ordenados = await _ranquear_pela_ia(client, topo, resumo)
+            if ordenados is None:
+                continue  # plano B: fica a ordem estatística, e nada vai ao cache como se fosse da IA
             ordem = [c["id"] for c in ordenados]
             cidade = parada.get("nome") or ""
             for cat in _categorias_do_topo(topo):

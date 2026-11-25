@@ -70,7 +70,7 @@ def test_job_sem_resumo_fica_na_estatistica_e_nao_chama_a_ia(pg, monkeypatch):
     def nao_chama(*a, **k):
         raise AssertionError("sem resumo não chama o ranqueamento")
 
-    monkeypatch.setattr(ia, "ranquear", nao_chama)
+    monkeypatch.setattr(ia, "_ranquear_pela_ia", nao_chama)
     corpo = _rodar(cli, cab, monkeypatch, [card(1, "posto", nota=5), card(2, "turismo", nota=1)])
     ids = [c["id"] for c in cli.get(f"/jobs/{corpo['job_id']}", headers=cab).json()["resultado"]["paradas"][0]["cards"]]
     assert ids == ["osm:node/2", "osm:node/1"]
@@ -88,7 +88,7 @@ def test_job_com_resumo_ranqueia_os_30_e_a_segunda_viagem_usa_o_cache(pg, monkey
         assert len(cards) == ia.MAX_RANQUEAR
         return list(reversed(cards))
 
-    monkeypatch.setattr(ia, "ranquear", inverte)
+    monkeypatch.setattr(ia, "_ranquear_pela_ia", inverte)
     cards = [card(i, "turismo", nota=100 - i) for i in range(32)]
     corpo = _rodar(cli, cab, monkeypatch, cards)
     ordem = [f"osm:node/{i}" for i in range(29, -1, -1)] + ["osm:node/30", "osm:node/31"]
@@ -109,3 +109,41 @@ def test_job_com_resumo_ranqueia_os_30_e_a_segunda_viagem_usa_o_cache(pg, monkey
     preferencias.guardar_triagem(uid, None, _respostas(1), "Outro resumo.", pulou=False)
     _rodar(cli, cab, monkeypatch, cards)
     assert chamadas == [resumo, "Outro resumo."]
+
+
+def test_plano_b_do_ranqueamento_nao_vai_para_o_cache(pg, monkeypatch):
+    uid, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    resumo = "Gosta de natureza."
+    preferencias.guardar_triagem(uid, None, _respostas(1), resumo, pulou=False)
+    chamadas = []
+
+    async def sem_ia(client, cards, texto):
+        chamadas.append(texto)
+        return None  # Groq fora do ar, 429 ou tempo esgotado
+
+    monkeypatch.setattr(ia, "_ranquear_pela_ia", sem_ia)
+    cards = [card(i, "turismo", nota=100 - i) for i in range(5)]
+    _rodar(cli, cab, monkeypatch, cards)
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from cache where chave like 'ranque|%'").fetchone()[0] == 0
+    _rodar(cli, cab, monkeypatch, cards)
+    assert chamadas == [resumo, resumo]  # a segunda viagem tenta a IA de novo
+
+
+def test_ranqueamento_continua_depois_do_primeiro_swipe(pg, monkeypatch):
+    uid, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    preferencias.guardar_triagem(uid, None, _respostas(1), "Gosta de natureza.", pulou=False)
+
+    async def inverte(client, cards, texto):
+        return list(reversed(cards))
+
+    monkeypatch.setattr(ia, "_ranquear_pela_ia", inverte)
+    cards = [card(i, "turismo", nota=100 - i) for i in range(32)]
+    corpo = _rodar(cli, cab, monkeypatch, cards)
+    primeiro = cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()["paradas"][0]["cards"][0]
+    assert primeiro["id"] == "osm:node/29"
+    assert cli.post("/swipe", json={"card": primeiro, "tipo": "passo"}, headers=cab).status_code == 200
+    ids = [c["id"] for c in cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()["paradas"][0]["cards"]]
+    assert ids == [f"osm:node/{i}" for i in range(28, -1, -1)] + ["osm:node/30", "osm:node/31"]
