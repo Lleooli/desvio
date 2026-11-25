@@ -16,6 +16,7 @@ import type {
   RespostaTriagem,
   ResumoViagem,
   Roteiro,
+  TipoDecisao,
   Viagem,
   ViagemCriada,
 } from "./tipos";
@@ -42,9 +43,20 @@ export const buscarCidades = (texto: string) => chamar<Cidade[]>(`/cidades?q=${i
 /** O andamento da busca de uma viagem. */
 export const obterJob = (jobId: string) => chamar<Job>(`/jobs/${id(jobId)}`);
 
-/** Grava a decisão sobre um card: Bora ou Favorito é `gostou: true`, Passo é `false`. */
-export const decidir = (card: Card, gostou: boolean) =>
-  chamar<{ ok: true }>("/swipe", { metodo: "POST", corpo: { card, gostou } });
+/**
+ * Grava a decisão sobre um card. Com a viagem e a parada, o card sai da pilha da parada
+ * em `GET /viagens/{id}` e conta no progresso dela.
+ *
+ * @param card - O card como veio da API.
+ * @param tipo - Bora, Passo ou Favorito.
+ * @param onde - A viagem e a ordem da parada onde a decisão foi tomada.
+ */
+export const decidir = (card: Card, tipo: TipoDecisao, onde: { viagem?: string; parada?: number } = {}) =>
+  chamar<{ ok: true }>("/swipe", { metodo: "POST", corpo: { card, tipo, ...onde } });
+
+/** Desfaz a decisão sobre o lugar; o card volta para a pilha da parada. */
+export const desfazerDecisao = (lugarId: string) =>
+  chamar<{ ok: true }>(`/swipe/${id(lugarId)}`, { metodo: "DELETE" });
 
 /** Taxas de aceite por categoria, tipo e faixa de preço. */
 export const obterPerfilGosto = () => chamar<PerfilGosto>("/perfil");

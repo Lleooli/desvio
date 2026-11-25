@@ -6,6 +6,7 @@ export type CategoriaLugar = "turismo" | "restaurante" | "posto" | "natureza" | 
 export type StatusViagem = "buscando" | "pronta" | "falhou";
 export type StatusJob = "pendente" | "rodando" | "pronto" | "falhou";
 export type TipoParada = "parada" | "destino" | "estadia";
+export type TipoDecisao = "bora" | "passo" | "favorito";
 
 /** Card de um lugar como o coletor devolve. Só o id é garantido; o resto depende da fonte. */
 export type Card = {
