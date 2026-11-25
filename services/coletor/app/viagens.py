@@ -81,6 +81,16 @@ def marcar_falha(viagem: str) -> None:
         con.execute("update viagem set status = 'falhou', atualizado_em = now() where id = %s", (viagem,))
 
 
+def veiculo(viagem: str) -> str | None:
+    """O veículo da viagem (carro, moto ou bicicleta); None se ela não existe.
+
+    Quem chama já conferiu que a viagem é da pessoa.
+    """
+    with banco.conectar() as con:
+        l = con.execute("select veiculo from viagem where id = %s", (viagem,)).fetchone()
+    return l["veiculo"] if l else None
+
+
 def _resumo(l: dict) -> dict:
     return {"id": str(l["id"]), "origem": l["origem"], "destino": l["destino"], "veiculo": l["veiculo"],
             "intervalo_km": l["intervalo_km"], "categorias": l["categorias"], "status": l["status"],
