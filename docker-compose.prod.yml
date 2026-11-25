@@ -1,0 +1,75 @@
+# API, worker e gosom em produção (issue #10).
+#
+#   cp .env.prod.example .env     # na VPS; o .env não vai para o Git
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# O gosom sobe com COMPOSE_PROFILES=gosom. Sem essa linha e com PV_GOOGLE_PLACES_KEY,
+# sobem só o Caddy, a API e o worker (Places API oficial).
+# A API não abre porta no host: só o Caddy, em 80 e 443.
+# https://<PV_DOMINIO>/docs
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PV_DOMINIO: ${PV_DOMINIO:-api.exemplo.invalid}
+      PV_ACME_EMAIL: ${PV_ACME_EMAIL:-contato@exemplo.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    mem_limit: 128m
+    depends_on:
+      coletor:
+        condition: service_started
+
+  gosom:
+    image: gosom/google-maps-scraper
+    profiles: ["gosom"]
+    restart: unless-stopped
+    command: ["-data-folder", "/gmapsdata", "-c", "2"]
+    environment:
+      - DISABLE_TELEMETRY=1
+    volumes:
+      - gmapsdata:/gmapsdata
+      - gmaps-playwright-cache:/opt
+    # teto para caber na VPS de 4 GB junto com a API e o worker (docs/adr/0002-vps-da-api.md)
+    mem_limit: 2g
+
+  coletor:
+    build: ./services/coletor
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PV_GOSOM_URL=http://gosom:8080
+    mem_limit: 512m
+    depends_on:
+      gosom:
+        condition: service_started
+        required: false
+
+  worker:
+    build: ./services/coletor
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      - PV_GOSOM_URL=http://gosom:8080
+    mem_limit: 512m
+    depends_on:
+      coletor:
+        condition: service_started
+      gosom:
+        condition: service_started
+        required: false
+
+volumes:
+  caddy-data:
+  caddy-config:
+  gmapsdata:
+  gmaps-playwright-cache:

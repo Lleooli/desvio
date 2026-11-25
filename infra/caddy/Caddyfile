@@ -1,0 +1,8 @@
+{
+	email {$PV_ACME_EMAIL}
+}
+
+{$PV_DOMINIO} {
+	encode gzip
+	reverse_proxy coletor:8000
+}

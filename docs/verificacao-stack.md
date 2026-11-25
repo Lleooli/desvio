@@ -29,7 +29,7 @@ Continua aberto:
 - Fila e banco no Postgres do Supabase (hoje é SQLite, com a mesma interface)
 - Cache de 30 dias por cidade
 - Push pelo Expo, com development build
-- VPS para o gosom
+- VPS para o gosom: decisão e compose de produção em [docs/adr/0002-vps-da-api.md](adr/0002-vps-da-api.md) e [docs/deploy.md](deploy.md) (#10); falta contratar a máquina e apontar o DNS
 - VPS para OSRM, Nominatim e Overpass próprios: configuração, scripts e dimensionamento estimado prontos em [infra/osm/README.md](../infra/osm/README.md) (#37); falta subir e medir
 - Cache das respostas da IA por (cidade, categoria, perfil)
 
