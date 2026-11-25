@@ -151,7 +151,7 @@ def test_fim_da_ia_sem_resumo_ganha_resumo_simples():
 
     def h(req):
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(
-            {"pergunta": None, "opcoes": [], "fim": True, "resumo": None})}}]})
+            {"pergunta": None, "opcoes": [], "multi": False, "fim": True, "resumo": None})}}]})
 
     async def go():
         async with httpx.AsyncClient(transport=httpx.MockTransport(h)) as c:
