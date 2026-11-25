@@ -172,7 +172,7 @@ function Acompanhar({ viagem }: { viagem: Viagem }) {
       </View>
 
       <Text style={[estiloTexto("body-s"), s.aviso, { color: c["ink-muted"] }]}>
-        Pode fechar o app. A gente avisa quando ficar pronto.
+        Pode fechar o app. A busca continua, e a viagem fica em Minhas viagens.
       </Text>
     </View>
   );
