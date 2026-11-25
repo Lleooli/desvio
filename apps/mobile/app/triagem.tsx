@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -59,10 +59,14 @@ function Balao({ ia, texto }: { ia: boolean; texto: string }) {
   );
 }
 
-/** Triagem em conversa (canvas Triagem): até 5 perguntas, e a resposta vira o perfil de gosto. */
+/**
+ * Triagem em conversa (canvas Triagem): até 5 perguntas, e a resposta vira o perfil de gosto.
+ * Aberta pelo perfil (`refazer=1`, HU03), as respostas novas substituem as antigas e a tela volta ao perfil.
+ */
 export default function Triagem() {
   const { c, sombra } = useCores();
   const router = useRouter();
+  const refazendo = useLocalSearchParams<{ refazer?: string }>().refazer === "1";
   const margens = useSafeAreaInsets();
   const rolagem = useRef<ScrollView>(null);
   const [respostas, setRespostas] = useState<RespostaTriagem[]>([]);
@@ -106,13 +110,19 @@ export default function Triagem() {
   }
 
   async function pular() {
+    // Ao refazer, pular antes da primeira resposta não tem o que substituir: o gosto antigo fica.
+    if (refazendo && respostas.length === 0) {
+      router.back();
+      return;
+    }
     try {
       await pularTriagem(respostas);
     } catch {
       // Sem rede, as respostas não são guardadas, mas a pessoa não fica presa na triagem:
       // ela pode refazer as perguntas pelo perfil.
     }
-    router.replace("/viagens");
+    if (refazendo) router.back();
+    else router.replace("/viagens");
   }
 
   const fim = !!passo?.fim;
@@ -135,7 +145,11 @@ export default function Triagem() {
               onPress={pular}
               accessibilityRole="button"
               accessibilityLabel="Pular"
-              accessibilityHint="Guarda o que você já respondeu e vai para suas viagens"
+              accessibilityHint={
+                refazendo
+                  ? "Guarda o que você já respondeu e volta ao perfil"
+                  : "Guarda o que você já respondeu e vai para suas viagens"
+              }
               style={s.pular}
             >
               <Text style={[estiloTexto("body-strong"), { color: c.placa }]}>Pular</Text>
@@ -231,7 +245,12 @@ export default function Triagem() {
           </>
         ) : null}
 
-        {fim ? (
+        {fim && refazendo ? (
+          <Button block onPress={() => router.back()}>
+            Voltar ao perfil
+          </Button>
+        ) : null}
+        {fim && !refazendo ? (
           <Button block onPress={() => router.replace("/viagens/nova")}>
             Planejar minha primeira viagem
           </Button>
