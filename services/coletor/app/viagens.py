@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import banco, horarios, ia, preferencias, roteiro
+from . import banco, horarios, ia, pernoite, preferencias, roteiro
 
 # Campos do card que dependem da rota desta viagem; não entram no `lugar` compartilhado
 _DA_ROTA = ("km_na_rota", "horas_desde_saida")
@@ -35,10 +35,10 @@ _PARADA_COLUNAS = ("nome", "uf", "km_na_rota", "horas_desde_saida", "cards")
 def criar(con: psycopg.Connection, usuario: str, entrada: dict) -> str:
     """Linha da viagem com status `buscando`, na transação de quem chamou."""
     l = con.execute(
-        "insert into viagem (usuario, veiculo, origem, destino, intervalo_km, categorias) "
-        "values (%s, %s, %s, %s, %s, %s) returning id",
+        "insert into viagem (usuario, veiculo, origem, destino, intervalo_km, categorias, saida, data) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s) returning id",
         (usuario, entrada["veiculo"], entrada["origem"], entrada["destino"], entrada["intervalo_km"],
-         list(entrada.get("categorias") or []))).fetchone()
+         list(entrada.get("categorias") or []), entrada.get("saida"), entrada.get("data"))).fetchone()
     return str(l["id"])
 
 
@@ -118,9 +118,29 @@ def veiculo(viagem: str) -> str | None:
     return l["veiculo"] if l else None
 
 
+def planejamento(viagem: str) -> dict | None:
+    """Veículo, saída, data e as estadias (paradas de pernoite) da viagem; None se ela não existe.
+
+    As estadias vêm como `roteiro.agendar` e `roteiro.noites` esperam: `ordem`, `nome`,
+    `uf`, `dia` e `horas_desde_saida`. Quem chama já conferiu que a viagem é da pessoa.
+    """
+    with banco.conectar() as con:
+        v = con.execute("select veiculo, saida, data from viagem where id = %s", (viagem,)).fetchone()
+        if not v:
+            return None
+        ps = con.execute("select ordem, cidade, uf, horas_desde_saida, dados ->> 'dia' as dia from parada "
+                         "where viagem = %s and dados ->> 'tipo' = 'estadia' order by ordem", (viagem,)).fetchall()
+    estadias = [{"ordem": p["ordem"], "nome": p["cidade"], "uf": p["uf"], "dia": int(p["dia"]),
+                 "horas_desde_saida": p["horas_desde_saida"]}
+                for p in ps if p["dia"] and str(p["dia"]).isdigit()]
+    return {"veiculo": v["veiculo"], "saida": v["saida"],
+            "data": v["data"].isoformat() if v["data"] else None, "estadias": estadias}
+
+
 def _resumo(l: dict) -> dict:
     return {"id": str(l["id"]), "origem": l["origem"], "destino": l["destino"], "veiculo": l["veiculo"],
             "intervalo_km": l["intervalo_km"], "categorias": l["categorias"], "status": l["status"],
+            "saida": l["saida"], "data": l["data"].isoformat() if l["data"] else None,
             "job_id": l["job"], "criado_em": l["criado_em"].isoformat(),
             "atualizado_em": l["atualizado_em"].isoformat(),
             "progresso": {"decididos": l["decididos"], "total": l["total"]}}
@@ -183,6 +203,7 @@ def obter(usuario: str, viagem: str) -> dict | None:
                              for p in paradas]}
     preferencias.personalizar(resultado, usuario)  # tira os já avaliados e ordena pelo gosto
     ia.reaplicar_cache(resultado["paradas"], preferencias.perfil(usuario).get("resumo"))
+    pernoite.hoteis_primeiro(resultado["paradas"])  # na estadia, onde dormir vem antes do gosto
     return {**_resumo(v), "polilinha": json.loads(v["polilinha"]) if v["polilinha"] else None,
             "paradas": resultado["paradas"]}
 

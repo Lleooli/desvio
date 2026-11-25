@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, ia, preferencias, viagens
+from . import cache, coletor, conta, fila, geo, ia, pernoite, preferencias, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -51,6 +51,7 @@ async def processar(job: dict) -> dict:
     if resumo:
         async with cache.sessao():  # segunda viagem na mesma cidade reusa o cache e não chama o Groq
             await ia.ranquear_paradas(r["paradas"], resumo)
+        pernoite.hoteis_primeiro(r["paradas"])  # o ranque da IA não tira os hotéis do topo da estadia
     return r
 
 

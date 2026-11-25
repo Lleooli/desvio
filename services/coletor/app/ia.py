@@ -502,7 +502,7 @@ def _plano_b(base: list[dict]) -> dict:
 
 
 async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto: dict,
-                          veiculo: str | None = None) -> dict:
+                          veiculo: str | None = None, estadias: list[dict] | None = None) -> dict:
     """A ordem de visita com dias, chegada e pernoite; a IA ajusta a ordem e explica cada lugar.
 
     A agenda (roteiro.agendar) é sem IA: dias com limite de horas ao volante, pernoite e
@@ -510,10 +510,11 @@ async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto
     30 km na estrada vira a ordem do km; explicação que não bate com a chegada ou com o
     horário de funcionamento (jantar de manhã, refeição em lugar fechado, madrugada) é
     trocada pela da agenda. Sem IA, fica a ordem do km com a agenda (`fonte` "geometria").
+    Com `estadias` (issue #104), os dias acabam nas cidades de pernoite que a coleta planejou.
     """
     veiculo = veiculo or contexto.get("veiculo") or "carro"
     saida, data = contexto.get("saida"), contexto.get("data")
-    base = roteiro.agendar(roteiro.ordenar_na_rota(itens), saida, veiculo, data)
+    base = roteiro.agendar(roteiro.ordenar_na_rota(itens, estadias), saida, veiculo, data, estadias)
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_ROTEIRO,
                               dados={"contexto": contexto,
@@ -528,7 +529,7 @@ async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto
         return _plano_b(base)
     validos = {c["id"] for c in base}
     ordem = [o for o in r["ordem"] if isinstance(o, dict) and o.get("id") in validos]
-    itens_ia = roteiro.agendar(_reordenar(base, [o["id"] for o in ordem]), saida, veiculo, data)
+    itens_ia = roteiro.agendar(_reordenar(base, [o["id"] for o in ordem]), saida, veiculo, data, estadias)
     if _volta_na_estrada(itens_ia):
         itens_ia = base  # a IA mandou voltar na estrada: vale a ordem do km
     por_id = {c["id"]: c for c in itens_ia}

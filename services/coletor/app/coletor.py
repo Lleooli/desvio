@@ -22,7 +22,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import cache, fronteira, geo, gmaps, instagram, osm
+from . import cache, fronteira, geo, gmaps, instagram, osm, pernoite
 
 log = logging.getLogger("desvio.coletor")
 
@@ -228,7 +228,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     faltam_google: dict[str, str] = {}
     if usar_google_maps:
         for i, p in enumerate(paradas):
-            for cat in categorias:
+            for cat in pernoite.categorias_da_parada(p, categorias):
                 if cat not in CONSULTA_GOOGLE:
                     continue
                 texto = _consulta_cidade(cat, p)
@@ -247,7 +247,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     for i, p in enumerate(paradas):
         _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
                 35 + 40 * i // len(paradas))
-        brutos.append(await _pois_com_cache(client, p, categorias))
+        brutos.append(await _pois_com_cache(client, p, pernoite.categorias_da_parada(p, categorias)))
 
     # 2) Google Maps (gmaps.py: Places API ou gosom). No gosom é um job só para a viagem
     #    inteira e leva minutos, então antes entrega um parcial só com OpenStreetMap,
@@ -256,7 +256,8 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     enviados: list[list[dict]] = []  # cards do parcial, por parada
     if faltam_google:
         if ao_ter_parcial:
-            enviados = [_escolher(i, p, brutos[i], {}, categorias, por_categoria, nota_minima)
+            enviados = [_escolher(i, p, brutos[i], {}, pernoite.categorias_da_parada(p, categorias),
+                                  por_categoria, nota_minima)
                         for i, p in enumerate(paradas)]
             await _completar_wikipedia(client, [c for cs in enviados for c in cs])
             ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
@@ -279,7 +280,8 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
 
     # 3) Junta, prioriza e corta por categoria; o que já foi no parcial continua, com o mesmo id
     for i, p in enumerate(paradas):
-        cards = _escolher(i, p, brutos[i], google, categorias, por_categoria, nota_minima)
+        cards = _escolher(i, p, brutos[i], google, pernoite.categorias_da_parada(p, categorias),
+                          por_categoria, nota_minima)
         p["cards"] = _manter_enviados(cards, enviados[i]) if enviados else cards
 
     todos = [c for p in paradas for c in p["cards"]]
@@ -301,15 +303,51 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     return paradas
 
 
+async def _cidade_no_ponto(client: httpx.AsyncClient, ponto: tuple[float, float], so_brasil: bool,
+                           raio_km: float) -> dict | None:
+    """A cidade da rota perto do ponto, com UF; None fora do Brasil numa viagem só no Brasil."""
+    cidade = await _cidade_proxima_com_cache(client, ponto)
+    if not cidade or (so_brasil and not fronteira.no_brasil((cidade["lat"], cidade["lon"]))):
+        return None
+    _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
+    if so_brasil and pais not in (None, "br"):
+        return None
+    return {**cidade, "uf": uf, "raio_km": raio_km}
+
+
+async def _planejar_pernoites(client: httpx.AsyncClient, paradas: list[dict], rota: dict, pontos: list,
+                              acc: list[float], veiculo: str, saida: str | None, intervalo_km: float,
+                              so_brasil: bool, raio_km: float, vistas: set[str]) -> None:
+    """Uma parada de estadia onde cada dia de estrada acaba (issue #104); muda `paradas`."""
+    noites = pernoite.pontos(rota["duracao_h"], acc[-1], veiculo, saida)
+    if not noites:
+        return
+    for p in paradas:
+        p["km_na_rota"] = geo.km_na_rota(pontos, acc, (p["lat"], p["lon"]))
+
+    async def achar(ponto: tuple[float, float]) -> dict | None:
+        return await _cidade_no_ponto(client, ponto, so_brasil, raio_km)
+
+    # a origem e o destino não viram estadia; as paradas já escolhidas podem virar
+    excluir = vistas - {_norm(p["nome"]) for p in paradas}
+    await pernoite.planejar(paradas, noites, intervalo_km=intervalo_km,
+                            ponto_do_km=lambda km: pernoite.ponto_no_km(pontos, acc, km),
+                            km_do_ponto=lambda pt: geo.km_na_rota(pontos, acc, pt),
+                            achar_cidade=achar, excluir=excluir)
+    vistas.update(_norm(p["nome"]) for p in paradas)
+
+
 async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           categorias: list[str] | None = None, por_categoria: int = 5,
                           usar_google_maps: bool = False, buscar_instagram: bool = True,
-                          veiculo: str = "carro",
+                          veiculo: str = "carro", saida: str | None = None, data: str | None = None,
                           raio_parada_km: float = 8, raio_destino_km: float = 15,
                           progresso: Progresso | None = None,
                           parcial: Callable[[dict], None] | None = None) -> dict:
     """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
 
+    `saida` (HH:MM, 07:00 sem ela) decide onde cada dia acaba: lá a viagem tem uma parada
+    de estadia, com hotéis (pernoite.py, issue #104). `data` vem da viagem e não muda a coleta.
     `progresso` recebe as etapas na ordem: rota, cidades, lugares, instagram.
     `parcial` recebe, com o Google ligado, o resultado só com OpenStreetMap antes do
     gosom (minutos); o resultado final contém todos os cards do parcial, com os mesmos ids.
@@ -346,6 +384,8 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
             if so_brasil and pais not in (None, "br"):
                 continue
             paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km})
+        await _planejar_pernoites(client, paradas, rota, pontos, acc, veiculo, saida, intervalo_km,
+                                  so_brasil, raio_parada_km, vistas)
         paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
                         "tipo": "destino", "raio_km": raio_destino_km})
         _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
