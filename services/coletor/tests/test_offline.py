@@ -349,6 +349,7 @@ def test_lugares_com_mais_de_30_dias_sao_coletados_de_novo(mock_http, monkeypatc
     with psycopg.connect(pg) as con:
         con.execute("update cache set guardado_em = now() - interval '31 days' "
                     "where chave like 'gmaps|%%' or chave like 'osm|%%'")
+        con.execute("update parada_cidade set atualizado_em = now() - interval '31 days'")  # #93
     for k in cont:
         cont[k] = 0
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
@@ -481,6 +482,8 @@ def test_busca_do_google_vazia_vale_so_um_dia(mock_http, monkeypatch, pg):
                              "and valor = '[]'::jsonb").fetchone()[0]
         assert vazias > 0 and cheias == 0  # vazio nunca entra na chave de 30 dias
         con.execute("update cache set guardado_em = now() - interval '2 days' where chave like 'gmaps-vazio|%'")
+        # a cidade com busca vazia fica incompleta em parada_cidade (#93) e também vence em 1 dia
+        con.execute("update parada_cidade set atualizado_em = now() - interval '2 days' where not completa")
     geo._cache.clear()
     cont = _contar_chamadas(monkeypatch)
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))

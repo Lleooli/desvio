@@ -83,23 +83,38 @@ def ponto_no_km(pontos_rota: list[tuple[float, float]], acc: list[float], km: fl
     return a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f
 
 
-def marcar(paradas: list[dict], noites: list[dict], folga: float) -> list[dict]:
-    """A parada comum mais perto de cada noite, dentro da folga, vira estadia.
+def marcar(paradas: list[dict], noites: list[dict], folga: float,
+           com_hotel: list[dict] | tuple = ()) -> list[dict]:
+    """Escolhe, dentro da folga, a cidade de cada noite entre as paradas e as cidades com hotel.
 
     `paradas` precisam de `km_na_rota`; o destino nunca vira estadia (é chegada).
+    `com_hotel` são cidades (nome, uf, lat, lon, km, raio_km) que já têm hospedagem
+    guardada (parada_cidade, #93): elas ganham das outras, e depois vale a mais perto.
+    A parada escolhida vira estadia; a cidade com hotel que ainda não é parada entra nova.
 
     Returns:
-        As noites que ficaram sem parada perto, para `planejar` achar uma cidade.
+        As noites que ficaram sem cidade perto, para `planejar` achar uma.
     """
+    hoteis = {_norm(c["nome"]) for c in com_hotel}
     faltam = []
     for n in noites:
-        perto = [(abs(p["km_na_rota"] - n["km"]), i) for i, p in enumerate(paradas)
+        nomes = {_norm(p["nome"]) for p in paradas}
+        perto = [(_norm(p["nome"]) not in hoteis, abs(p["km_na_rota"] - n["km"]), 0, i)
+                 for i, p in enumerate(paradas)
                  if p.get("tipo") == "parada" and abs(p["km_na_rota"] - n["km"]) <= folga]
-        if perto:
-            p = paradas[min(perto)[1]]
-            p["tipo"], p["dia"] = "estadia", n["dia"]
-        else:
+        perto += [(False, abs(c["km"] - n["km"]), 1, i) for i, c in enumerate(com_hotel)
+                  if _norm(c["nome"]) not in nomes and abs(c["km"] - n["km"]) <= folga]
+        if not perto:
             faltam.append(n)
+            continue
+        _, _, nova, i = min(perto)
+        if nova:
+            c = com_hotel[i]
+            inserir(paradas, {"nome": c["nome"], "uf": c.get("uf"), "lat": c["lat"], "lon": c["lon"],
+                              "raio_km": c.get("raio_km"), "tipo": "estadia", "dia": n["dia"],
+                              "km_na_rota": c["km"]})
+        else:
+            paradas[i]["tipo"], paradas[i]["dia"] = "estadia", n["dia"]
     return faltam
 
 
@@ -116,7 +131,8 @@ AcharCidade = Callable[[tuple[float, float]], Awaitable[dict | None]]
 async def planejar(paradas: list[dict], noites: list[dict], *, intervalo_km: float,
                    ponto_do_km: Callable[[float], tuple[float, float]],
                    km_do_ponto: Callable[[tuple[float, float]], float],
-                   achar_cidade: AcharCidade, excluir: set[str] = frozenset()) -> None:
+                   achar_cidade: AcharCidade, excluir: set[str] = frozenset(),
+                   com_hotel: list[dict] | tuple = ()) -> None:
     """Marca ou insere em `paradas` uma estadia por noite. Muda a lista no lugar.
 
     Args:
@@ -127,8 +143,10 @@ async def planejar(paradas: list[dict], noites: list[dict], *, intervalo_km: flo
         km_do_ponto: Km da rota mais perto de um (lat, lon).
         achar_cidade: A cidade (nome, uf, lat, lon, raio_km) perto de um ponto, ou None.
         excluir: Nomes (normalizados por `_norm`) que não podem ser estadia, como a origem.
+        com_hotel: Cidades que já têm hospedagem guardada, com `km`; ganham dentro da folga.
     """
-    for n in marcar(paradas, noites, folga_km(intervalo_km)):
+    com_hotel = [c for c in com_hotel if _norm(c["nome"]) not in excluir]
+    for n in marcar(paradas, noites, folga_km(intervalo_km), com_hotel):
         for recuo in RECUOS:
             km = n["km"] - recuo * intervalo_km
             if km <= 0:

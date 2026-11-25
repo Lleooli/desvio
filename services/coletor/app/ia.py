@@ -338,6 +338,18 @@ async def _ranquear_lote_pela_ia(client: httpx.AsyncClient, topos: list[list[dic
     return saida
 
 
+# Ordem genérica das cidades (#93): sem o gosto de ninguém, para valer para todas as pessoas
+GOSTO_GENERICO = ("Viajante comum na estrada: primeiro os lugares mais bem avaliados e que valem "
+                  "a parada; varie as categorias no topo.")
+
+
+async def ranquear_cidades(client: httpx.AsyncClient, por_cidade: list[list[dict]]) -> list[list[dict] | None]:
+    """Os cards de cada cidade na ordem genérica da IA, em lotes; None na cidade sem resposta (plano B)."""
+    topos = [cards[:MAX_RANQUEAR] for cards in por_cidade]
+    ordenados = await _ranquear_lote_pela_ia(client, topos, GOSTO_GENERICO)
+    return [o + cards[MAX_RANQUEAR:] if o is not None else None for o, cards in zip(ordenados, por_cidade)]
+
+
 async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict]:
     """Os cards ordenados pelo gosto; sem IA, na ordem em que vieram."""
     return await _ranquear_pela_ia(client, cards, resumo) or cards
@@ -475,6 +487,19 @@ def _coerente(porque: str, item: dict) -> bool:
     return not (item.get("aberto_na_chegada") is False and "fechad" not in texto)
 
 
+def chave_roteiro(base: list[dict], contexto: dict) -> str:
+    """Cache do roteiro (#93): `roteiro|hash dos ids na ordem do km|saída|veículo|hash do resto`.
+
+    No hash dos ids entram as horas desde a saída de cada lugar: o mesmo lugar em outra
+    rota chega em outra hora, e a IA monta outro roteiro. O resto do contexto (dias, data,
+    ou o que vier no POST /roteiro) também muda a resposta, então entra num hash à parte.
+    """
+    ids = hashlib.sha256("|".join(f'{c.get("id")}@{c.get("horas_desde_saida")}' for c in base).encode()).hexdigest()
+    resto = {k: v for k, v in contexto.items() if k not in ("saida", "veiculo")}
+    extra = hashlib.sha256(json.dumps(resto, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:16]
+    return f'roteiro|{ids}|{contexto.get("saida") or ""}|{contexto.get("veiculo") or ""}|{extra}'
+
+
 def _porque_da_agenda(item: dict) -> str | None:
     """Explicação sem IA, só com o que a agenda sabe; None quando não há nada a dizer."""
     partes = []
@@ -515,6 +540,15 @@ async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto
     veiculo = veiculo or contexto.get("veiculo") or "carro"
     saida, data = contexto.get("saida"), contexto.get("data")
     base = roteiro.agendar(roteiro.ordenar_na_rota(itens, estadias), saida, veiculo, data, estadias)
+    # Cache (#93): as mesmas escolhas, com a mesma saída e o mesmo veículo, não vão ao Groq de novo;
+    # as estadias (#104) mudam os dias, então entram na chave
+    chave = chave_roteiro(base, {**contexto, "veiculo": veiculo,
+                                 **({"estadias": [(e.get("dia"), e.get("nome"), e.get("horas_desde_saida"))
+                                                  for e in estadias]} if estadias else {})})
+    guardado = await asyncio.to_thread(cache.obter, chave)
+    if isinstance(guardado, dict) and isinstance(guardado.get("ordem"), list):
+        return {"itens": roteiro.agendar(_reordenar(base, guardado["ordem"]), saida, veiculo, data, estadias),
+                "explicacoes": guardado.get("explicacoes") or {}, "fonte": "ia"}
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_ROTEIRO,
                               dados={"contexto": contexto,
@@ -543,4 +577,5 @@ async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto
     for c in itens_ia:  # o que a IA não explicou e a agenda tem a dizer (fechado, pernoite)
         if c["id"] not in explic and (p := _porque_da_agenda(c)):
             explic[c["id"]] = p
+    await asyncio.to_thread(cache.guardar, chave, {"ordem": [c["id"] for c in itens_ia], "explicacoes": explic})
     return {"itens": itens_ia, "explicacoes": explic, "fonte": "ia"}
