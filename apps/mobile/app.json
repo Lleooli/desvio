@@ -14,7 +14,13 @@
     "android": {
       "package": "app.desvio"
     },
-    "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-apple-authentication"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      "@sentry/react-native"
+    ],
     "experiments": {
       "typedRoutes": true
     },

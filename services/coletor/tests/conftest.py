@@ -8,6 +8,7 @@ import pytest
 
 # Os testes não leem o .env de quem roda: resultado igual em qualquer máquina.
 os.environ["PV_ENV_FILE"] = ""
+os.environ.pop("SENTRY_DSN", None)
 
 # Postgres de teste (sem internet): `docker compose --profile teste up -d banco-teste` e
 # PV_TEST_DATABASE_URL=postgresql://postgres:teste@localhost:54329/desvio_teste
@@ -27,11 +28,13 @@ def _isolado(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
     # Fonte do Google previsível: gosom (o mock dos testes), a menos que o teste mude
-    for var in ("PV_GOOGLE_FONTE", "PV_GOOGLE_PLACES_KEY", "PV_API_URL_PUBLICA"):
+    for var in ("PV_GOOGLE_FONTE", "PV_GOOGLE_PLACES_KEY", "PV_API_URL_PUBLICA", "SENTRY_DSN"):
         monkeypatch.delenv(var, raising=False)
     yield
     cache._fechar()  # a conexão do cache não passa de um teste para o outro
     cache._desligado = False
+    from app import observabilidade
+    observabilidade.desligar()
 
 
 @pytest.fixture(scope="session")

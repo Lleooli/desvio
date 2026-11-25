@@ -1,13 +1,17 @@
 import { Barlow_400Regular, Barlow_600SemiBold, useFonts } from "@expo-google-fonts/barlow";
 import { BarlowCondensed_600SemiBold, BarlowCondensed_700Bold } from "@expo-google-fonts/barlow-condensed";
 import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque";
+import * as Sentry from "@sentry/react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { iniciarObservabilidade } from "@/observabilidade";
 import { useCores, useEscolhaTema } from "@/tema";
 import "@/sessao"; // liga o token da sessão às chamadas à API antes de qualquer tela
 
-export default function RaizLayout() {
+iniciarObservabilidade();
+
+function RaizLayout() {
   const { tema, c } = useCores();
   const { carregou: carregouTema } = useEscolhaTema();
   const [carregou] = useFonts({
@@ -29,3 +33,5 @@ export default function RaizLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RaizLayout);

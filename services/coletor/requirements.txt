@@ -5,3 +5,6 @@ pydantic>=2.6
 ddgs>=9.0
 psycopg[binary]>=3.2
 pyjwt[crypto]>=2.9
+# Issue #42: SDK oficial do Sentry (before_send, release, environment, send_default_pii).
+# A série 2.x é a que expõe send_default_pii. Sem SENTRY_DSN, não envia nada.
+sentry-sdk>=2.20,<3
