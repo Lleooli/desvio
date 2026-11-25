@@ -74,6 +74,7 @@ export function ParadasDaViagem({ viagem, recarregar }: Props) {
                 km={p.km_na_rota ?? undefined}
                 horas={p.horas_desde_saida ?? undefined}
                 tipo={p.tipo === "destino" ? "destino" : "parada"}
+                noite={p.tipo === "estadia" ? (p.dia ?? 0) : undefined}
                 ativo={p === atual}
                 aceitos={p.progresso.aceitos}
                 total={p.progresso.total}

@@ -15,19 +15,22 @@ type Props = {
   /** Cards aceitos sobre os mostrados: "3 de 12". */
   aceitos?: number;
   total?: number;
+  /** Na cidade de estadia: o dia em que a pessoa dorme ali (0 quando não se sabe o dia). */
+  noite?: number;
 };
 
 /**
  * Uma linha da linha do tempo da viagem. Empilhe vários em sequência: o trilho se
  * conecta sozinho. Quem usa decide o que o toque abre (o swipe daquela parada).
  */
-export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false, aceitos = 0, total }: Props) {
+export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false, aceitos = 0, total, noite }: Props) {
   const { c } = useCores();
 
   const nome = uf ? `${cidade}, ${uf}` : cidade;
   const rotuloKm = km != null ? `KM ${numero(km)}` : "";
   const detalhes: string[] = [];
   if (horas != null) detalhes.push(horas === 0 ? "Saída" : `~${numero(horas, horas % 1 ? 1 : 0)}h de estrada`);
+  if (noite != null) detalhes.push(noite ? `Pernoite do dia ${noite}` : "Pernoite");
   const contagem = total != null ? `${aceitos} de ${total}` : null;
 
   const pontaDaViagem = tipo === "origem" || tipo === "destino";
