@@ -11,7 +11,8 @@ const CHAVE = "desvio:fila-decisoes";
 const ESPERA_MS = 15_000;
 
 type Pendente =
-  | { op: "decidir"; card: Card; tipo: TipoDecisao; viagem: string; parada: number }
+  // `tentado`: já saiu para o coletor uma vez; um envio que estourou o tempo pode ter gravado.
+  | { op: "decidir"; card: Card; tipo: TipoDecisao; viagem: string; parada: number; tentado?: true }
   | { op: "desfazer"; lugarId: string };
 
 let fila: Pendente[] = [];
@@ -55,6 +56,10 @@ async function enviar(): Promise<void> {
   while (fila.length > 0) {
     const item = fila[0];
     enviando = item;
+    if (item.op === "decidir" && !item.tentado) {
+      item.tentado = true;
+      guardar();
+    }
     try {
       await enviarUm(item);
     } catch (erro) {
@@ -89,13 +94,14 @@ export function registrarDecisao(card: Card, tipo: TipoDecisao, onde: { viagem: 
 }
 
 /**
- * Desfaz a decisão sobre o lugar. Se ela ainda não saiu do aparelho, só sai da fila;
- * se já chegou ao coletor, o desfazer entra na fila.
+ * Desfaz a decisão sobre o lugar. Se ela nunca saiu do aparelho, só sai da fila;
+ * se já saiu alguma vez (pode ter chegado ao coletor), o desfazer entra na fila.
  */
 export function desfazerRegistro(lugarId: string): void {
   const naFila = fila.findLast((item) => lugarDe(item) === lugarId);
   if (naFila?.op === "decidir" && naFila !== enviando) {
     fila = fila.filter((item) => item !== naFila);
+    if (naFila.tentado) fila.push({ op: "desfazer", lugarId });
   } else {
     fila.push({ op: "desfazer", lugarId });
   }
