@@ -8,6 +8,10 @@ Ordem de tentativa:
 
 O resultado do passo 3 vem marcado como "busca", porque pode errar quando há
 restaurantes com nome parecido. Vale mostrar no card como "provável".
+
+O resultado fica no cache por id do lugar (30 dias, #93): a mesma viagem feita de
+novo não refaz as buscas, que eram a maior parte do tempo de uma viagem já em cache.
+"Sem Instagram" vale só 7 dias, como o "gmaps-vazio" do Google: o lugar pode criar um.
 """
 from __future__ import annotations
 
@@ -18,6 +22,10 @@ import unicodedata
 
 import httpx
 
+from . import cache
+
+# "não achamos Instagram" vale menos que um achado: o lugar pode criar um perfil
+VAZIO_DIAS = 7
 IG = re.compile(r"instagram\.com/([A-Za-z0-9_.]{2,30})", re.I)
 NAO_PERFIL = {"p", "reel", "reels", "explore", "stories", "accounts", "tv", "share",
               "instagram", "about", "legal", "developer", "direct", "web"}
@@ -97,10 +105,20 @@ async def por_busca(nome: str, cidade: str) -> str | None:
 
 async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bool = True,
                     categorias: tuple[str, ...] = ("restaurante",)) -> None:
-    """Preenche card["instagram"] in-place."""
+    """Preenche card["instagram"] in-place, lendo e gravando o cache por id do lugar."""
     for c in cards:
         if c.get("categoria") not in categorias or c.get("instagram"):
             continue
+        lugar = c.get("id")
+        if lugar:
+            guardado = cache.obter("instagram|" + lugar)
+            if guardado is None:
+                guardado = cache.obter("instagram-vazio|" + lugar, dias=VAZIO_DIAS)
+            if isinstance(guardado, dict):
+                if guardado.get("handle"):
+                    c["instagram"] = f'https://instagram.com/{guardado["handle"]}'
+                    c["instagram_origem"] = guardado.get("origem")
+                continue
         h, origem = None, None
         if c.get("site"):
             h, origem = await do_site(client, c["site"]), "site"
@@ -110,3 +128,7 @@ async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bo
         if h:
             c["instagram"] = f"https://instagram.com/{h}"
             c["instagram_origem"] = origem
+            if lugar:
+                cache.guardar("instagram|" + lugar, {"handle": h, "origem": origem})
+        elif lugar and usar_busca:  # sem a busca, "não achou" ainda não é resposta
+            cache.guardar("instagram-vazio|" + lugar, {})
