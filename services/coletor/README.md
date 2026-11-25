@@ -102,7 +102,8 @@ O usuário sai do token, nunca do corpo; o job ou a viagem de outra pessoa respo
 | GET | `/eu/exportar` | LGPD: JSON com `usuario` (email, provedor, perfil_gosto, tema, criado_em), `perfil`, `viagens` (com paradas, cards e roteiro) e `decisoes`; só os dados de quem pede |
 | DELETE | `/eu` | LGPD: corpo `{"confirmar": "APAGAR"}` (sem isso, 422). Apaga na hora a linha em `usuario` (e em cascata viagens, paradas, decisões e roteiros) e os jobs, e pede ao Supabase Auth que apague a conta. Responde `{dados: "apagados", conta: "apagada" ou "pendente"}`; pendente é quando o Supabase falhou, e o worker tenta de novo (até 15 dias, veja [docs/privacidade.md](../../docs/privacidade.md)) |
 | POST | `/swipe` | grava `{card, gostou}` em `lugar` e `decisao` |
-| GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço |
+| GET | `/perfil` | taxa de aceite por categoria, tipo e faixa de preço; resumo da triagem, tema e intervalo padrão |
+| PATCH | `/perfil` | grava `tema`, `intervalo_km` (10 a 600) e `resumo` da triagem; só as chaves enviadas mudam |
 | POST | `/triagem` | `{respostas: [{pergunta, resposta}]}` → próxima pergunta (com `multi` quando aceita várias opções e `livre` na última, de texto livre) ou `fim` com o resumo do gosto; `pular: true` guarda as respostas e encerra |
 | POST | `/cards/ranquear` | `{cards, resumo}` → os mesmos cards, os 30 primeiros reordenados pela IA |
 | GET | `/fotos/{nome}?l=&ass=` | sem token: foto da Places API por URL assinada pelo coletor → `302` para a imagem no Google; assinatura errada ou foto vencida: `404` |
