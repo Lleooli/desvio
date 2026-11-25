@@ -15,8 +15,9 @@ Fluxo pensado para o front (estilo Tinder):
 4. GET  /perfil                            → resumo do gosto, para a IA
    PATCH /perfil                           → tema, intervalo padrão e resumo da triagem
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
+   POST /eu/exportar/link                  → link de download de uso único (10 min) para o app
 
-Toda rota, menos /docs e /fotos, exige o token do Supabase (Authorization: Bearer);
+Toda rota, menos /docs, /fotos e /eu/exportar/arquivo, exige o token do Supabase (Authorization: Bearer);
 o usuário sai do token (app/auth.py), nunca do corpo. /fotos não pede token (o
 <Image> do app não manda cabeçalho), mas só aceita URLs assinadas pelo coletor.
 
@@ -39,6 +40,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, RedirectResponse
 from typing import Literal
 
+from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import banco, cidades, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
@@ -197,6 +199,37 @@ def exportar_meus_dados(eu: Usuario = Depends(usuario_atual)):
     """LGPD: tudo o que o Desvio guarda da pessoa, em JSON."""
     banco.garantir_usuario(eu.id, eu.email)  # conta apagada ou com exclusão pendente: 401
     return JSONResponse(jsonable_encoder(conta.exportar(eu.id)),
+                        headers={"Content-Disposition": 'attachment; filename="desvio-meus-dados.json"'})
+
+
+LINK_EXPORTAR_MIN = 10
+
+
+@app.post("/eu/exportar/link")
+def link_para_exportar(eu: Usuario = Depends(usuario_atual)):
+    """Um link de download dos dados, de uso único e válido por 10 minutos.
+
+    O app abre o link no navegador, que baixa o arquivo: o JSON inteiro passa de 1 MB numa
+    viagem longa, e o compartilhar do Android recusa texto desse tamanho. O link não leva o
+    token de login, só um código aleatório guardado em `cache`.
+    """
+    banco.garantir_usuario(eu.id, eu.email)
+    codigo = secrets.token_urlsafe(24)
+    with banco.conectar() as con:
+        con.execute("insert into cache (chave, valor) values (%s, %s)",
+                    (f"exportar|{codigo}", Jsonb({"usuario": eu.id})))
+    return {"caminho": f"/eu/exportar/arquivo/{codigo}", "valido_min": LINK_EXPORTAR_MIN}
+
+
+@app.get("/eu/exportar/arquivo/{codigo}")
+def baixar_exportacao(codigo: str):
+    """Baixa os dados pelo link de `POST /eu/exportar/link`; usado uma vez, o link para de valer."""
+    with banco.conectar() as con:
+        l = con.execute("delete from cache where chave = %s and guardado_em > now() - make_interval(mins => %s) "
+                        "returning valor", (f"exportar|{codigo}", LINK_EXPORTAR_MIN)).fetchone()
+    if not l:
+        raise HTTPException(404, "Link vencido ou já usado. Peça a exportação de novo no app.")
+    return JSONResponse(jsonable_encoder(conta.exportar(l["valor"]["usuario"])),
                         headers={"Content-Disposition": 'attachment; filename="desvio-meus-dados.json"'})
 
 

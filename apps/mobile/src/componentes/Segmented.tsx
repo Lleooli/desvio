@@ -43,9 +43,12 @@ export function Segmented<T extends string | number>({ opcoes, valor, padrao, on
 }
 
 function OpcaoSegmented<T>({ opcao, ativa, onPress }: { opcao: Opcao<T>; ativa: boolean; onPress: () => void }) {
-  const { c, sombra } = useCores();
+  const { c, sombra, tema } = useCores();
   const foco = useFoco();
   const cor = ativa ? c.ink : c["ink-muted"];
+  // No escuro o surface-200 é mais escuro que o trilho (surface-300) e a sombra some no fundo:
+  // sem o contorno, a opção escolhida quase não aparece.
+  const contorno = ativa && tema === "dark" ? { borderWidth: 1, borderColor: c["ink-muted"] } : null;
   return (
     <Pressable
       onPress={onPress}
@@ -55,7 +58,7 @@ function OpcaoSegmented<T>({ opcao, ativa, onPress }: { opcao: Opcao<T>; ativa: 
       accessibilityRole="radio"
       accessibilityLabel={opcao.label}
       aria-checked={ativa}
-      style={[s.opcao, ativa && { backgroundColor: c["surface-200"], boxShadow: sombra["shadow-1"] }, foco.estilo]}
+      style={[s.opcao, ativa && { backgroundColor: c["surface-200"], boxShadow: sombra["shadow-1"] }, contorno, foco.estilo]}
     >
       {opcao.icon ? <Icon name={opcao.icon} size={tamanhoIcone.padrao} color={cor} /> : null}
       <Text style={[estiloTexto("button"), { color: cor }]}>{opcao.label}</Text>

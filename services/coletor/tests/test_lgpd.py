@@ -212,3 +212,19 @@ def test_job_rodando_de_conta_apagada_nao_quebra_o_worker(pg, monkeypatch, admin
     cli.post("/viagem", json={"origem": "A, RS", "destino": "B, RS", "intervalo_km": 100}, headers=cab)
     assert apagar(cli, cab).status_code == 200
     assert asyncio.run(worker.rodar_uma_vez()) is False  # o job foi junto com a conta
+
+
+def test_link_de_exportar_baixa_uma_vez_sem_o_token(pg, monkeypatch):
+    _, cab, _ = pessoa_com_dados(pg, monkeypatch)
+    cli = TestClient(app)
+    r = cli.post("/eu/exportar/link", headers=cab)
+    assert r.status_code == 200 and r.json()["valido_min"] == 10
+    caminho = r.json()["caminho"]
+    arquivo = cli.get(caminho)  # sem Authorization: o navegador não tem o token
+    assert arquivo.status_code == 200
+    assert "attachment" in arquivo.headers["content-disposition"]
+    sem_hora = lambda d: {k: v for k, v in d.items() if k != "exportado_em"}  # noqa: E731
+    assert sem_hora(arquivo.json()) == sem_hora(cli.get("/eu/exportar", headers=cab).json())
+    assert cli.get(caminho).status_code == 404  # uso único
+    assert cli.get("/eu/exportar/arquivo/inventado").status_code == 404
+    assert cli.post("/eu/exportar/link").status_code == 401
