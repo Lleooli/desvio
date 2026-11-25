@@ -70,7 +70,7 @@ def test_exportacao_contem_viagens_decisoes_e_perfil(pg, monkeypatch):
     assert "attachment" in r.headers["content-disposition"]
     d = r.json()
     assert d["usuario"]["email"] == f"{uid[:8]}@teste.dev"
-    assert {"email", "provedor", "perfil_gosto", "tema", "criado_em"} <= d["usuario"].keys()
+    assert {"email", "provedor", "perfil_gosto", "tema", "intervalo_km", "criado_em"} <= d["usuario"].keys()
     assert d["perfil"]["total_swipes"] == 2 and d["perfil"]["aceitos"] == 1
     [v] = d["viagens"]
     assert v["id"] == vid and v["status"] == "pronta" and v["origem"] == "Alegrete, RS"
@@ -81,6 +81,30 @@ def test_exportacao_contem_viagens_decisoes_e_perfil(pg, monkeypatch):
                                                                      ("osm:node/2", "passo")]
     [busca] = d["buscas"]  # o job com origem e destino digitados também é dado da pessoa
     assert busca["entrada"]["origem"] == "Alegrete, RS" and busca["status"] == "pronto"
+
+
+def test_exportacao_traz_tema_intervalo_e_resumo_do_perfil(pg, monkeypatch):
+    _, cab, _ = pessoa_com_dados(pg, monkeypatch)
+    cli = TestClient(app)
+    r = cli.patch("/perfil", json={"tema": "escuro", "intervalo_km": 300, "resumo": "Gosto de mirantes"},
+                  headers=cab)
+    assert r.status_code == 200
+    d = cli.get("/eu/exportar", headers=cab).json()
+    assert d["usuario"]["tema"] == "escuro" and d["usuario"]["intervalo_km"] == 300
+    assert d["perfil"]["tema"] == "escuro" and d["perfil"]["intervalo_km"] == 300
+    assert d["perfil"]["resumo"] == "Gosto de mirantes"
+    assert d["usuario"]["perfil_gosto"]["resumo"] == "Gosto de mirantes"
+
+
+def test_depois_de_apagar_o_login_nao_traz_tema_nem_resumo_antigos(pg, monkeypatch, admin):
+    _, cab, _ = pessoa_com_dados(pg, monkeypatch)
+    cli = TestClient(app)
+    cli.patch("/perfil", json={"tema": "escuro", "intervalo_km": 300, "resumo": "Gosto de mirantes"}, headers=cab)
+    assert apagar(cli, cab).status_code == 200
+    _, cab_novo = criar_pessoa(pg)
+    p = cli.get("/perfil", headers=cab_novo).json()
+    assert p["tema"] == "sistema" and p["resumo"] is None and p["respostas"] == []
+    assert p["intervalo_km"] in (None, 200)
 
 
 def test_exportacao_so_traz_os_dados_de_quem_pede(pg, monkeypatch):
