@@ -128,11 +128,25 @@ export type PedidoRoteiro = {
   contexto?: Record<string, unknown>;
 };
 
+/** O que a IA usa para ajustar o roteiro da viagem ao horário. */
+export type ContextoRoteiro = {
+  /** Hora de saída, "HH:MM". */
+  saida?: string;
+  /** Dias de viagem, de 1 em diante. */
+  dias?: number;
+};
+
+export type PedidoRoteiroDaViagem = {
+  usar_ia?: boolean;
+  contexto?: ContextoRoteiro;
+};
+
 export type Roteiro = {
   itens: Card[];
   /** Por id do card, quando a IA ajustou o roteiro. */
   explicacoes: Record<string, string>;
-  fonte: "ia" | "geometria";
+  /** "pessoa" depois que ela reordena ou tira lugares: a ordem dela, sem IA. */
+  fonte: "ia" | "geometria" | "pessoa";
 };
 
 export type ContaApagada = { dados: "apagados"; conta: "apagada" | "pendente" };

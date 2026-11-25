@@ -1,10 +1,12 @@
-"""Viagens guardadas no banco (tabelas `viagem`, `parada`, `parada_lugar` e `lugar`).
+"""Viagens guardadas no banco (tabelas `viagem`, `parada`, `parada_lugar`, `lugar` e `roteiro`).
 
 Ciclo de vida:
 1. `POST /viagem` cria a viagem com status `buscando` junto com o job (mesma transação),
    e ela já aparece em `GET /viagens`.
 2. O worker termina a coleta e chama `gravar_resultado`: paradas, lugares e a ligação
    entre eles, e a viagem passa a `pronta`. Se a coleta quebra, `marcar_falha` (`falhou`).
+3. Depois do swipe, `lugares_aceitos` traz os lugares de Bora ou Favorito pelo km; a API
+   ordena (pelo km ou pela IA) e `guardar_roteiro` guarda em `roteiro`.
 
 `lugar` é compartilhado entre pessoas. O /swipe nunca reescreve um lugar (o card vem do
 cliente, #61), mas a coleta é dado do próprio servidor: aqui o lugar é atualizado com o
@@ -19,7 +21,7 @@ import uuid
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import banco, preferencias
+from . import banco, preferencias, roteiro
 
 # Campos do card que dependem da rota desta viagem; não entram no `lugar` compartilhado
 _DA_ROTA = ("km_na_rota", "horas_desde_saida")
@@ -142,3 +144,113 @@ def obter(usuario: str, viagem: str) -> dict | None:
     preferencias.personalizar(resultado, usuario)  # tira os já avaliados e ordena pelo gosto
     return {**_resumo(v), "polilinha": json.loads(v["polilinha"]) if v["polilinha"] else None,
             "paradas": resultado["paradas"]}
+
+
+def lugares_aceitos(usuario: str, viagem: str) -> list[dict] | None:
+    """Os lugares da viagem com Bora ou Favorito, cada um uma vez só, na ordem do km.
+
+    Args:
+        usuario: Dono da viagem.
+        viagem: Id da viagem.
+
+    Returns:
+        Os cards com `km_na_rota` e `horas_desde_saida` desta rota; None se a viagem não
+        existe ou é de outra pessoa.
+    """
+    try:
+        viagem = str(uuid.UUID(viagem))
+    except ValueError:
+        return None
+    with banco.conectar() as con:
+        if not con.execute("select 1 from viagem where id = %s and usuario = %s", (viagem, usuario)).fetchone():
+            return None
+        aceitos = con.execute("select pl.km_na_rota, pl.horas_desde_saida, l.dados from parada_lugar pl "
+                              "join lugar l on l.id = pl.lugar "
+                              "join decisao d on d.lugar = pl.lugar and d.usuario = %s "
+                              "where pl.viagem = %s and d.tipo in ('bora', 'favorito') "
+                              "order by pl.parada, pl.posicao", (usuario, viagem)).fetchall()
+    # O mesmo lugar pode estar em duas paradas vizinhas: fica a primeira, a de menor km
+    unicos: dict[str, dict] = {}
+    for a in aceitos:
+        unicos.setdefault(a["dados"]["id"], {**a["dados"], "km_na_rota": a["km_na_rota"],
+                                             "horas_desde_saida": a["horas_desde_saida"]})
+    return roteiro.ordenar_na_rota(list(unicos.values()))
+
+
+def guardar_roteiro(viagem: str, r: dict) -> bool:
+    """Guarda em `roteiro` o que `POST /viagens/{id}/roteiro` devolveu (`itens`, `explicacoes`, `fonte`).
+
+    Só a própria pessoa (`fonte` "pessoa") sobrescreve a ordem que ela escolheu: a IA
+    que responde depois de uma edição não a desfaz.
+
+    Returns:
+        False se o roteiro guardado é da pessoa e `r` não é; True se guardou.
+    """
+    with banco.conectar() as con:
+        return con.execute(
+            "insert into roteiro (viagem, itens, explicacao, fonte) values (%s, %s, %s, %s) "
+            "on conflict (viagem) do update set itens = excluded.itens, explicacao = excluded.explicacao, "
+            "fonte = excluded.fonte, atualizado_em = now() "
+            "where excluded.fonte = 'pessoa' or roteiro.fonte <> 'pessoa' returning viagem",
+            (viagem, Jsonb(r["itens"]), Jsonb(r["explicacoes"]) if r["explicacoes"] else None, r["fonte"]),
+        ).fetchone() is not None
+
+
+def editar_roteiro(usuario: str, viagem: str, ids: list[str]) -> dict | None:
+    """Guarda em `roteiro` a ordem que a pessoa escolheu; quem ficou de fora sai do roteiro.
+
+    A decisão Bora (ou Favorito) de quem sai continua em `decisao`: só o roteiro muda.
+
+    Args:
+        usuario: Dono da viagem.
+        viagem: Id da viagem.
+        ids: Os ids dos lugares, na ordem de visita.
+
+    Returns:
+        O roteiro como o POST devolve (`itens`, `explicacoes`, `fonte` "pessoa"); None se a
+        viagem não existe ou é de outra pessoa.
+
+    Raises:
+        ValueError: Id repetido ou de lugar que não tem Bora nesta viagem.
+    """
+    aceitos = lugares_aceitos(usuario, viagem)
+    if aceitos is None:
+        return None
+    por_id = {a["id"]: a for a in aceitos}
+    if len(set(ids)) != len(ids) or not set(ids) <= por_id.keys():
+        raise ValueError("lugar fora do roteiro")
+    r = {"itens": [por_id[i] for i in ids], "explicacoes": {}, "fonte": "pessoa"}
+    guardar_roteiro(viagem, r)
+    with banco.conectar() as con:
+        con.execute("update roteiro set removidos = %s where viagem = %s",
+                    (sorted(por_id.keys() - set(ids)), viagem))
+    return r
+
+
+def lugares_do_roteiro(usuario: str, viagem: str) -> dict | None:
+    """O roteiro da viagem sem IA: os lugares aceitos, sem os que a pessoa tirou.
+
+    Se a pessoa já editou o roteiro, a ordem é a dela (`fonte` "pessoa") e um lugar
+    aceito depois entra antes do primeiro de km maior; senão, a ordem é a do km
+    (`fonte` "geometria").
+
+    Returns:
+        `itens`, `explicacoes` e `fonte`, como o POST devolve; None se a viagem não
+        existe ou é de outra pessoa.
+    """
+    aceitos = lugares_aceitos(usuario, viagem)
+    if aceitos is None:
+        return None
+    with banco.conectar() as con:
+        l = con.execute("select itens, fonte, removidos from roteiro where viagem = %s", (viagem,)).fetchone()
+    removidos = set(l["removidos"]) if l else set()
+    aceitos = [a for a in aceitos if a["id"] not in removidos]
+    if not l or l["fonte"] != "pessoa":
+        return {"itens": aceitos, "explicacoes": {}, "fonte": "geometria"}
+    por_id = {a["id"]: a for a in aceitos}
+    itens = [por_id.pop(i["id"]) for i in l["itens"] if i["id"] in por_id]
+    for novo in por_id.values():  # aceito depois da edição: entra pelo km
+        km = novo.get("km_na_rota") or 0
+        pos = next((n for n, i in enumerate(itens) if (i.get("km_na_rota") or 0) > km), len(itens))
+        itens.insert(pos, novo)
+    return {"itens": itens, "explicacoes": {}, "fonte": "pessoa"}
