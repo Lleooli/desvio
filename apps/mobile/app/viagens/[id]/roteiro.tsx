@@ -14,7 +14,7 @@ export default function Roteiro() {
   const margens = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, paddingTop: margens.top, paddingBottom: margens.bottom, backgroundColor: c["surface-100"] }}>
-      <NaViagemAtiva id={id}>{(viagem) => <RoteiroDaViagem viagem={viagem} />}</NaViagemAtiva>
+      <NaViagemAtiva id={id}>{(viagem, recarregar) => <RoteiroDaViagem viagem={viagem} recarregar={recarregar} />}</NaViagemAtiva>
     </View>
   );
 }

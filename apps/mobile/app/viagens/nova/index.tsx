@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { buscarCidades, criarViagem, mensagemDeErro, type Cidade } from "@/api";
+import { buscarCidades, criarViagem, mensagemDeErro, type Cidade, type Veiculo } from "@/api";
 import { Button } from "@/componentes/Button";
 import { Ceu } from "@/componentes/Ceu";
 import { categorias, Chip, type Categoria } from "@/componentes/Chip";
@@ -12,11 +12,11 @@ import { Segmented } from "@/componentes/Segmented";
 import { TextField } from "@/componentes/TextField";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, useCores } from "@/tema";
 
-type Modo = "carro" | "aviao";
-
-const MODOS = [
-  { valor: "carro" as const, label: "Carro", icon: "car" as const },
-  { valor: "aviao" as const, label: "Avião" },
+// Só por terra (PRD, HU06): carro, moto ou bicicleta.
+const MODOS: { valor: Veiculo; label: string; icon: "car" | "moto" | "bike" }[] = [
+  { valor: "carro", label: "Carro", icon: "car" },
+  { valor: "moto", label: "Moto", icon: "moto" },
+  { valor: "bicicleta", label: "Bicicleta", icon: "bike" },
 ];
 const INTERVALOS = [150, 200, 300].map((km) => ({ valor: km, label: `${km} km` }));
 // O perfil ainda não guarda um intervalo próprio; quando guardar, ele entra aqui no lugar do 200.
@@ -108,12 +108,12 @@ function CampoCidade({ label, campo, onChange }: { label: string; campo: Campo; 
   );
 }
 
-/** Nova viagem de carro (canvas NovaViagem): origem, destino, intervalo e categorias, e daí a busca. */
+/** Nova viagem por terra (canvas NovaViagem): origem, destino, intervalo e categorias, e daí a busca. */
 export default function NovaViagem() {
   const { c } = useCores();
   const router = useRouter();
   const margens = useSafeAreaInsets();
-  const [modo, setModo] = useState<Modo>("carro");
+  const [modo, setModo] = useState<Veiculo>("carro");
   const [origem, setOrigem] = useState<Campo>({ texto: "" });
   const [destino, setDestino] = useState<Campo>({ texto: "" });
   const [intervalo, setIntervalo] = useState(INTERVALO_PADRAO);
@@ -148,7 +148,7 @@ export default function NovaViagem() {
       const criada = await criarViagem({
         origem: rotuloOrigem,
         destino: rotuloDestino,
-        veiculo: "carro",
+        veiculo: modo,
         intervalo_km: intervalo,
         categorias: escolhidas,
       });
@@ -187,38 +187,30 @@ export default function NovaViagem() {
       <View style={s.formulario}>
         <Segmented block rotulo="Como você vai?" opcoes={MODOS} valor={modo} onChange={setModo} />
 
-        {modo === "aviao" ? (
-          <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
-            Viagem de avião, com as escalas, chega numa próxima versão. Por enquanto, vá de carro.
-          </Text>
-        ) : (
-          <>
-            <CampoCidade label="De onde você sai?" campo={origem} onChange={setOrigem} />
-            <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
-            <View style={s.secao}>
-              <Text style={rotuloSecao}>Parar a cada</Text>
-              <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={setIntervalo} />
-            </View>
-            <View style={s.secao}>
-              <Text style={rotuloSecao}>O que procurar no caminho</Text>
-              <View style={s.chips}>
-                {(Object.keys(categorias) as Categoria[]).map((categoria) => (
-                  <Chip
-                    key={categoria}
-                    categoria={categoria}
-                    selected={escolhidas.includes(categoria)}
-                    onPress={() => alternar(categoria)}
-                  />
-                ))}
-              </View>
-              {avisoCategoria ? (
-                <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
-                  Deixe pelo menos uma categoria ligada.
-                </Text>
-              ) : null}
-            </View>
-          </>
-        )}
+        <CampoCidade label="De onde você sai?" campo={origem} onChange={setOrigem} />
+        <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
+        <View style={s.secao}>
+          <Text style={rotuloSecao}>Parar a cada</Text>
+          <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={setIntervalo} />
+        </View>
+        <View style={s.secao}>
+          <Text style={rotuloSecao}>O que procurar no caminho</Text>
+          <View style={s.chips}>
+            {(Object.keys(categorias) as Categoria[]).map((categoria) => (
+              <Chip
+                key={categoria}
+                categoria={categoria}
+                selected={escolhidas.includes(categoria)}
+                onPress={() => alternar(categoria)}
+              />
+            ))}
+          </View>
+          {avisoCategoria ? (
+            <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+              Deixe pelo menos uma categoria ligada.
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       <View style={s.rodape}>
@@ -227,7 +219,7 @@ export default function NovaViagem() {
             {erro}
           </Text>
         ) : null}
-        <Button block disabled={ocupado || modo !== "carro"} onPress={buscarParadas}>
+        <Button block disabled={ocupado} onPress={buscarParadas}>
           Buscar paradas
         </Button>
       </View>

@@ -80,7 +80,11 @@ function diasDeViagem(saida: number, horasDeEstrada: number | null | undefined):
   return Math.floor((saida + Math.round(horasDeEstrada * 60)) / MINUTOS_NO_DIA) + 1;
 }
 
-type Props = { viagem: Viagem };
+type Props = {
+  viagem: Viagem;
+  /** Busca a viagem de novo (GET, sem IA), para saber se as decisões mudaram. */
+  recarregar: () => void;
+};
 
 /**
  * O roteiro da viagem (canvas Roteiro): a Estrada com origem, cidades e destino no
@@ -89,7 +93,7 @@ type Props = { viagem: Viagem };
  * Editar, que volta às paradas, e Abrir no mapa (HU13, HU14). A pessoa reordena (botões
  * ou segurar e arrastar) e tira lugares; a ordem dela fica guardada e o Bora continua (HU15).
  */
-export function RoteiroDaViagem({ viagem }: Props) {
+export function RoteiroDaViagem({ viagem, recarregar }: Props) {
   const { c } = useCores();
   const [saida, setSaida] = useState(SAIDA_PADRAO);
   const [saidaPedida, setSaidaPedida] = useState(SAIDA_PADRAO);
@@ -102,7 +106,10 @@ export function RoteiroDaViagem({ viagem }: Props) {
     return () => clearTimeout(relogio);
   }, [saida]);
 
-  const { dados, erro, tentarDeNovo } = useCarregar(`${viagem.id}@${saidaPedida}`, () =>
+  // Cada montagem chama o Groq (cota pequena, da conta toda): só monta de novo quando a
+  // saída ou as decisões mudam, e não a cada vez que a aba ganha foco.
+  const decisoes = `${viagem.progresso.decididos}/${viagem.progresso.total}`;
+  const { dados, erro, tentarDeNovo } = useCarregar(`${viagem.id}@${saidaPedida}@${decisoes}`, () =>
     montarRoteiroDaViagem(viagem.id, {
       usar_ia: true,
       contexto: { saida: horaHHMM(saidaPedida), dias: diasDeViagem(saidaPedida, destino?.horas_desde_saida) },
@@ -122,13 +129,14 @@ export function RoteiroDaViagem({ viagem }: Props) {
     return () => clearTimeout(relogio);
   }, [tirado]);
 
-  // Ao voltar das paradas (Editar), as decisões podem ter mudado: monta de novo.
+  // Ao voltar das paradas (Editar), as decisões podem ter mudado: busca a viagem de novo
+  // (sem IA). Se o progresso mudou, a chave acima muda e o roteiro é montado outra vez.
   const primeiroFoco = useRef(true);
   useFocusEffect(
     useCallback(() => {
       if (primeiroFoco.current) primeiroFoco.current = false;
-      else tentarDeNovo();
-    }, [tentarDeNovo]),
+      else recarregar();
+    }, [recarregar]),
   );
 
   if (erro) return <Aviso mensagem={erro} acao="Tentar de novo" onAcao={tentarDeNovo} />;

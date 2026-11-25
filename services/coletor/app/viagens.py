@@ -220,10 +220,15 @@ def editar_roteiro(usuario: str, viagem: str, ids: list[str]) -> dict | None:
     if len(set(ids)) != len(ids) or not set(ids) <= por_id.keys():
         raise ValueError("lugar fora do roteiro")
     r = {"itens": [por_id[i] for i in ids], "explicacoes": {}, "fonte": "pessoa"}
-    guardar_roteiro(viagem, r)
+    # Ordem e removidos num comando só: uma leitura no meio nunca vê a ordem nova com os
+    # removidos antigos (o lugar tirado voltaria).
     with banco.conectar() as con:
-        con.execute("update roteiro set removidos = %s where viagem = %s",
-                    (sorted(por_id.keys() - set(ids)), viagem))
+        con.execute(
+            "insert into roteiro (viagem, itens, explicacao, fonte, removidos) values (%s, %s, null, 'pessoa', %s) "
+            "on conflict (viagem) do update set itens = excluded.itens, explicacao = null, fonte = 'pessoa', "
+            "removidos = excluded.removidos, atualizado_em = now()",
+            (viagem, Jsonb(r["itens"]), sorted(por_id.keys() - set(ids))),
+        )
     return r
 
 

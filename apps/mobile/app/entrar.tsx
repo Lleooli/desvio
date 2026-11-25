@@ -67,6 +67,7 @@ export default function Entrar() {
   }, [link]);
 
   async function receberLink() {
+    if (ocupado) return; // o Enter do teclado não passa pelo disabled do botão
     if (!EMAIL_VALIDO.test(email.trim())) {
       setErroEmail("Confira o e-mail: falta o @ ou o domínio.");
       return;

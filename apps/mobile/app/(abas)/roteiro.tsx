@@ -10,7 +10,7 @@ export default function AbaRoteiro() {
   const margens = useSafeAreaInsets();
   return (
     <View style={{ flex: 1, paddingTop: margens.top, backgroundColor: c["surface-100"] }}>
-      <NaViagemAtiva>{(viagem) => <RoteiroDaViagem viagem={viagem} />}</NaViagemAtiva>
+      <NaViagemAtiva>{(viagem, recarregar) => <RoteiroDaViagem viagem={viagem} recarregar={recarregar} />}</NaViagemAtiva>
     </View>
   );
 }

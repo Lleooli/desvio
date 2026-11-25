@@ -78,14 +78,19 @@ export async function chamar<T>(
       signal: controle.signal,
     });
   } catch {
-    throw new ErroApi("sem-rede"); // fetch só rejeita sem rede ou no abort do tempo-limite
-  } finally {
     clearTimeout(relogio);
+    throw new ErroApi("sem-rede"); // fetch só rejeita sem rede ou no abort do tempo-limite
   }
-  if (!resposta.ok) throw new ErroApi(tipoDoStatus(resposta.status), resposta.status);
+  if (!resposta.ok) {
+    clearTimeout(relogio);
+    throw new ErroApi(tipoDoStatus(resposta.status), resposta.status);
+  }
+  // O tempo-limite vale até o corpo chegar inteiro: um corpo que trava também é abortado.
   try {
     return (await resposta.json()) as T; // o formato é o contrato da rota (tipos.ts)
   } catch {
-    throw new ErroApi("servidor", resposta.status);
+    throw new ErroApi(controle.signal.aborted ? "sem-rede" : "servidor", resposta.status);
+  } finally {
+    clearTimeout(relogio);
   }
 }
