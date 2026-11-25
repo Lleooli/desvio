@@ -73,6 +73,7 @@ function SeusDados() {
     // Os dados já sumiram no servidor; o que ficou no aparelho também sai, e a sessão junto.
     await esvaziarFilaDeDecisoes();
     esquecerViagemAtiva();
+    definirTema("sistema"); // o tema escolhido era da conta apagada
     await sair();
     setFolhaAberta(false);
     router.replace("/boas-vindas");
