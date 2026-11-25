@@ -70,6 +70,9 @@ export const medida = {
   cardCarimboLinha: 38,
   cardHorasTexto: 13,
   cardHorasLinha: 16,
+  // Tela Carregando: docs/design/telas/Carregando.dc.html
+  barraBusca: 10,
+  marcaEtapa: 28,
   // Roteiro: a faixa da Estrada no cabeçalho e o número de cada item (canvas Roteiro)
   roteiroEstradaAltura: 104,
   roteiroEstradaRecorte: 40,

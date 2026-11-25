@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import type { ReactNode } from "react";
+import { Redirect, router, useFocusEffect, useNavigation } from "expo-router";
+import { useCallback, useRef, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { obterViagem, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
@@ -32,7 +32,8 @@ export function NaViagemAtiva({ id, children }: Props) {
   if (erro && (tipoErro === "nao-encontrado" || tipoErro === "sessao")) {
     const destino = tipoErro === "sessao" ? "/entrar" : "/viagens";
     const sair = () => {
-      esquecerViagemAtiva();
+      // Sessão vencida não é motivo para perder a viagem: depois do login ela volta.
+      if (tipoErro === "nao-encontrado") esquecerViagemAtiva();
       router.navigate(destino);
     };
     return <Aviso mensagem={erro} acao={tipoErro === "sessao" ? "Entrar" : "Ver viagens"} onAcao={sair} />;
@@ -46,7 +47,43 @@ export function NaViagemAtiva({ id, children }: Props) {
       </View>
     );
   }
+  // Busca rodando ou que falhou: as paradas não existem; a tela certa é a Carregando,
+  // que acompanha a busca ou mostra a falha com Tentar de novo.
+  if (dados.status === "buscando" || dados.status === "falhou") {
+    if (!id) return <AcompanharBusca viagemId={dados.id} falhou={dados.status === "falhou"} recarregar={tentarDeNovo} />;
+    return <Redirect href={{ pathname: "/viagens/[id]/carregando", params: { id: dados.id } }} />;
+  }
   return children(dados, tentarDeNovo);
+}
+
+/**
+ * Numa aba, abre a tela Carregando por cima das abas (push), e não no lugar delas: o
+ * `<Redirect>` trocaria a rota `(abas)` inteira, e o voltar do Android fecharia o app.
+ * Ao voltar para a aba, busca a viagem de novo, para mostrar as paradas se a busca acabou.
+ * O push automático só acontece no primeiro foco: a aba escondida embaixo da pilha também
+ * ouve a viagem ativa, e empilharia uma segunda Carregando da mesma viagem.
+ */
+function AcompanharBusca({ viagemId, falhou, recarregar }: { viagemId: string; falhou: boolean; recarregar: () => void }) {
+  const acompanhar = useCallback(() => router.push({ pathname: "/viagens/[id]/carregando", params: { id: viagemId } }), [viagemId]);
+  // Montada numa aba escondida (fora de foco), não empurra a Carregando no primeiro foco:
+  // os dados podem estar velhos. Nesse caso o foco só busca a viagem de novo.
+  const navegacao = useNavigation();
+  const abriu = useRef(!navegacao.isFocused());
+  useFocusEffect(
+    useCallback(() => {
+      if (abriu.current) {
+        recarregar();
+      } else {
+        abriu.current = true;
+        acompanhar();
+      }
+    }, [acompanhar, recarregar]),
+  );
+  return falhou ? (
+    <Aviso mensagem="A busca das paradas falhou." acao="Ver a busca" onAcao={acompanhar} />
+  ) : (
+    <Aviso mensagem="A busca das paradas ainda está rodando." acao="Acompanhar" onAcao={acompanhar} />
+  );
 }
 
 const s = StyleSheet.create({ centro: { flex: 1, justifyContent: "center", alignItems: "center" } });
