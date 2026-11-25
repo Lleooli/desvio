@@ -1,11 +1,13 @@
 import { Redirect, router, useFocusEffect, useNavigation } from "expo-router";
-import { useCallback, useRef, type ReactNode } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
 import { obterViagem, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { useCores } from "@/tema";
 import { esquecerViagemAtiva, useViagemAtiva } from "@/viagemAtiva";
 import { Aviso } from "./Aviso";
+
+const INTERVALO_ATUALIZAR_MS = 10_000;
 
 type Props = {
   /** A viagem a carregar; sem ele, a viagem ativa (abas Descobrir e Roteiro). */
@@ -24,7 +26,8 @@ export function NaViagemAtiva({ id, children }: Props) {
   const { c } = useCores();
   const ativa = useViagemAtiva();
   const viagemId = id ?? ativa.id;
-  const { dados, erro, tipoErro, carregando, tentarDeNovo } = useCarregar(viagemId, obterViagem);
+  const { dados, erro, tipoErro, carregando, tentarDeNovo, atualizar } = useCarregar(viagemId, obterViagem);
+  useAtualizarEnquantoBusca(dados?.id === viagemId && dados.status === "buscando", atualizar);
 
   if (!id && ativa.carregou && !ativa.id) {
     return <Aviso mensagem="Você ainda não abriu nenhuma viagem." acao="Ver viagens" onAcao={() => router.navigate("/viagens")} />;
@@ -47,13 +50,44 @@ export function NaViagemAtiva({ id, children }: Props) {
       </View>
     );
   }
-  // Busca rodando ou que falhou: as paradas não existem; a tela certa é a Carregando,
-  // que acompanha a busca ou mostra a falha com Tentar de novo.
-  if (dados.status === "buscando" || dados.status === "falhou") {
+  // Busca rodando ou que falhou, sem cards ainda: a tela certa é a Carregando, que acompanha
+  // a busca ou mostra a falha com Tentar de novo. Com os cards do parcial (só OpenStreetMap),
+  // a busca segue, mas as paradas e o swipe já abrem; a viagem é buscada de novo a cada 10 s.
+  if ((dados.status === "buscando" && !temCards(dados)) || dados.status === "falhou") {
     if (!id) return <AcompanharBusca viagemId={dados.id} falhou={dados.status === "falhou"} recarregar={tentarDeNovo} />;
     return <Redirect href={{ pathname: "/viagens/[id]/carregando", params: { id: dados.id } }} />;
   }
   return children(dados, tentarDeNovo);
+}
+
+/** A viagem já tem cards nas paradas, mesmo os já decididos (o parcial chegou). */
+export function temCards(viagem: Viagem): boolean {
+  return viagem.paradas.some((p) => p.progresso.total > 0);
+}
+
+/**
+ * Enquanto `buscando`, chama `atualizar` a cada 10 s, só com a tela em foco e o app em
+ * primeiro plano. Os cards que o Google trouxer entram nas paradas e no swipe sem a
+ * pessoa sair da tela.
+ */
+function useAtualizarEnquantoBusca(buscando: boolean, atualizar: () => void) {
+  const [focada, setFocada] = useState(false);
+  const [ativo, setAtivo] = useState(AppState.currentState === "active");
+  useFocusEffect(
+    useCallback(() => {
+      setFocada(true);
+      return () => setFocada(false);
+    }, []),
+  );
+  useEffect(() => {
+    const assinatura = AppState.addEventListener("change", (estado) => setAtivo(estado === "active"));
+    return () => assinatura.remove();
+  }, []);
+  useEffect(() => {
+    if (!buscando || !focada || !ativo) return;
+    const relogio = setInterval(atualizar, INTERVALO_ATUALIZAR_MS);
+    return () => clearInterval(relogio);
+  }, [buscando, focada, ativo, atualizar]);
 }
 
 /**

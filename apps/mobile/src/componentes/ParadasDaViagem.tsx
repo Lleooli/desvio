@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { ParadaDaViagem, Viagem } from "@/api";
 import { espaco, estiloTexto, raio, useCores } from "@/tema";
 import { Button } from "./Button";
@@ -56,6 +56,7 @@ export function ParadasDaViagem({ viagem, recarregar }: Props) {
             Escolha suas <Destaque>paradas</Destaque>
           </Text>
           <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>Toque numa cidade para deslizar os lugares dela.</Text>
+          {viagem.status === "buscando" ? <AindaBuscando /> : null}
         </View>
         <View style={[s.linhaDoTempo, { backgroundColor: c["surface-200"] }]}>
           <StopItem tipo="origem" cidade={viagem.origem} km={0} horas={0} />
@@ -92,8 +93,26 @@ export function ParadasDaViagem({ viagem, recarregar }: Props) {
   );
 }
 
+/**
+ * A busca ainda roda: as paradas já têm os primeiros lugares (OpenStreetMap), e os outros
+ * entram sozinhos quando chegam. Também aparece no swipe.
+ */
+export function AindaBuscando() {
+  const { c } = useCores();
+  return (
+    <View style={s.buscando} accessibilityLiveRegion="polite">
+      <ActivityIndicator size="small" color={c.placa} />
+      <Text style={[estiloTexto("body-s"), s.textoBuscando, { color: c["ink-muted"] }]}>
+        Mais lugares estão chegando. Eles entram sozinhos, sem repetir os que você já viu.
+      </Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   tela: { flex: 1 },
+  buscando: { flexDirection: "row", alignItems: "center", gap: espaco["space-2"] },
+  textoBuscando: { flex: 1 },
   conteudo: { paddingBottom: espaco["space-4"] },
   cabecalho: {
     gap: espaco["space-2"],
