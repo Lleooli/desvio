@@ -9,7 +9,7 @@ import { numero } from "./Rating";
 import { StopItem } from "./StopItem";
 
 /** As paradas na ordem da estrada: por km, com o destino sempre no fim. */
-function naOrdemDaEstrada(paradas: ParadaDaViagem[]): ParadaDaViagem[] {
+export function naOrdemDaEstrada(paradas: ParadaDaViagem[]): ParadaDaViagem[] {
   const km = (p: ParadaDaViagem) => p.km_na_rota ?? Infinity;
   const fim = (p: ParadaDaViagem) => (p.tipo === "destino" ? 1 : 0);
   return [...paradas].sort((a, b) => fim(a) - fim(b) || km(a) - km(b) || a.ordem - b.ordem);
