@@ -118,6 +118,10 @@ export type RespostaTriagem = { pergunta: string; resposta: string };
 export type PassoTriagem = {
   pergunta: string | null;
   opcoes: string[];
+  /** A pessoa pode marcar mais de uma opção; sem ele, um toque responde. */
+  multi: boolean;
+  /** A última pergunta: a pessoa escreve a resposta, e as opções são sugestões. */
+  livre: boolean;
   fim: boolean;
   resumo: string | null;
   fonte: "ia" | "fixa";

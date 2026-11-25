@@ -65,6 +65,11 @@ export const obterPerfilGosto = () => chamar<PerfilGosto>("/perfil");
 export const responderTriagem = (respostas: RespostaTriagem[]) =>
   chamar<PassoTriagem>("/triagem", { metodo: "POST", corpo: { respostas } });
 
+/** Pular: guarda o que já foi respondido, sem resumo e sem chamar a IA. */
+export const pularTriagem = async (respostas: RespostaTriagem[]): Promise<void> => {
+  await chamar<unknown>("/triagem", { metodo: "POST", corpo: { respostas, pular: true } });
+};
+
 /** Os mesmos cards, os primeiros reordenados pela IA a partir do resumo da triagem. */
 export const ranquearCards = (cards: Card[], resumo: string) =>
   chamar<Card[]>("/cards/ranquear", { metodo: "POST", corpo: { cards, resumo } });

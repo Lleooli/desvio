@@ -38,7 +38,7 @@ def test_triagem_primeira_pergunta_e_fixa_sem_ia():
 
 def test_triagem_usa_ia_depois():
     resp = [{"pergunta": ia.PRIMEIRA_PERGUNTA["pergunta"], "resposta": "Natureza"}]
-    ia_diz = {"pergunta": "Viaja com pet?", "opcoes": ["Sim", "Não"], "fim": False, "resumo": None}
+    ia_diz = {"pergunta": "Viaja com pet?", "opcoes": ["Sim", "Não"], "multi": False, "fim": False, "resumo": None}
     r, enviados = rodar(lambda c: ia.triagem(c, resp), ia_diz)
     assert r["pergunta"] == "Viaja com pet?" and r["fonte"] == "ia"
     assert enviados[0]["model"] == ia.MODELO_RACIOCINIO
@@ -46,7 +46,7 @@ def test_triagem_usa_ia_depois():
 
 def test_triagem_termina_na_quinta():
     resp = [{"pergunta": f"p{i}", "resposta": "r"} for i in range(5)]
-    ia_diz = {"pergunta": "mais uma?", "opcoes": [], "fim": False, "resumo": "Gosta de natureza."}
+    ia_diz = {"pergunta": "mais uma?", "opcoes": [], "multi": False, "fim": False, "resumo": "Gosta de natureza."}
     r, _ = rodar(lambda c: ia.triagem(c, resp), ia_diz)
     assert r["fim"] is True and r["pergunta"] is None and r["resumo"] == "Gosta de natureza."
 
@@ -55,6 +55,48 @@ def test_triagem_fallback_usa_reserva():
     resp = [{"pergunta": ia.PRIMEIRA_PERGUNTA["pergunta"], "resposta": "Natureza"}]
     r, _ = rodar(lambda c: ia.triagem(c, resp), falha=True)
     assert r["pergunta"] == ia.PERGUNTAS_RESERVA[0]["pergunta"] and r["fonte"] == "fixa"
+
+
+def test_triagem_primeira_pergunta_aceita_varias_respostas():
+    r, _ = rodar(lambda c: ia.triagem(c, []))
+    assert r["multi"] is True and r["livre"] is False
+
+
+def test_triagem_reserva_diz_se_aceita_varias_respostas():
+    resp = [{"pergunta": ia.PRIMEIRA_PERGUNTA["pergunta"], "resposta": "Natureza"}]
+    r, _ = rodar(lambda c: ia.triagem(c, resp), falha=True)
+    assert r["multi"] is False  # com quem viaja: uma resposta só
+    resp.append({"pergunta": r["pergunta"], "resposta": "Casal"})
+    r, _ = rodar(lambda c: ia.triagem(c, resp), falha=True)
+    assert r["pergunta"] == "Que comida você procura na estrada?" and r["multi"] is True
+
+
+def test_triagem_ia_diz_se_aceita_varias_respostas():
+    resp = [{"pergunta": ia.PRIMEIRA_PERGUNTA["pergunta"], "resposta": "Natureza"}]
+    ia_diz = {"pergunta": "O que gosta de comer?", "opcoes": ["Caseira", "Churrasco"], "multi": True,
+              "fim": False, "resumo": None}
+    r, enviados = rodar(lambda c: ia.triagem(c, resp), ia_diz)
+    assert r["multi"] is True and r["livre"] is False
+    schema = enviados[0]["response_format"]["json_schema"]["schema"]
+    assert "multi" in schema["required"]
+
+
+def test_triagem_quinta_pergunta_e_livre_com_ou_sem_ia():
+    resp = [{"pergunta": ia.PRIMEIRA_PERGUNTA["pergunta"], "resposta": "Natureza"},
+            {"pergunta": "Com quem você costuma viajar?", "resposta": "Casal"},
+            {"pergunta": "Que comida você procura na estrada?", "resposta": "Churrasco"},
+            {"pergunta": "Quanto quer gastar por refeição?", "resposta": "R$ 50 a 100"}]
+    r, _ = rodar(lambda c: ia.triagem(c, resp), falha=True)
+    assert r["livre"] is True and not r["fim"]
+    ia_diz = {"pergunta": "O que não pode faltar?", "opcoes": [], "multi": False, "fim": False, "resumo": None}
+    r, _ = rodar(lambda c: ia.triagem(c, resp), ia_diz)
+    assert r["livre"] is True and r["pergunta"] == "O que não pode faltar?"
+
+
+def test_triagem_fim_nao_e_multi_nem_livre():
+    resp = [{"pergunta": f"p{i}", "resposta": "r"} for i in range(5)]
+    r, _ = rodar(lambda c: ia.triagem(c, resp), falha=True)
+    assert r["fim"] is True and r["multi"] is False and r["livre"] is False
 
 
 def test_ranquear_reordena_os_30_primeiros_e_mantem_o_resto():

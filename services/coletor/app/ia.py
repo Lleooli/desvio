@@ -138,13 +138,16 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
 # --- Triagem -----------------------------------------------------------------
 
 MAX_PERGUNTAS = 5
+# `multi`: a pessoa pode marcar mais de uma opção; sem ele, um toque responde
 PRIMEIRA_PERGUNTA = {"pergunta": "O que não pode faltar numa viagem sua?",
-                     "opcoes": ["Comida boa", "Natureza", "Pontos turísticos", "Descanso", "Aventura"]}
+                     "opcoes": ["Comida boa", "Natureza", "Pontos turísticos", "Descanso", "Aventura"],
+                     "multi": True}
 PERGUNTAS_RESERVA = [
-    {"pergunta": "Com quem você costuma viajar?", "opcoes": ["Sozinho", "Casal", "Família com crianças", "Amigos", "Com pet"]},
-    {"pergunta": "Que comida você procura na estrada?", "opcoes": ["Comida caseira", "Churrasco", "Lanche rápido", "Vegetariana", "Tanto faz"]},
-    {"pergunta": "Quanto quer gastar por refeição?", "opcoes": ["Até R$ 50", "R$ 50 a 100", "Mais de R$ 100"]},
-    {"pergunta": "Prefere lugares famosos ou escondidos?", "opcoes": ["Famosos", "Escondidos", "Um pouco de cada"]},
+    {"pergunta": "Com quem você costuma viajar?", "opcoes": ["Sozinho", "Casal", "Família com crianças", "Amigos", "Com pet"], "multi": False},
+    {"pergunta": "Que comida você procura na estrada?", "opcoes": ["Comida caseira", "Churrasco", "Lanche rápido", "Vegetariana", "Tanto faz"],
+     "multi": True},
+    {"pergunta": "Quanto quer gastar por refeição?", "opcoes": ["Até R$ 50", "R$ 50 a 100", "Mais de R$ 100"], "multi": False},
+    {"pergunta": "Prefere lugares famosos ou escondidos?", "opcoes": ["Famosos", "Escondidos", "Um pouco de cada"], "multi": False},
 ]
 # assunto de cada pergunta de reserva, reconhecido pelo começo das palavras da pergunta (sem acento);
 # "pet" só como palavra inteira, para "petisco" e "repetir" não contarem
@@ -181,23 +184,26 @@ def _proxima_reserva(respostas: list[dict]) -> dict | None:
     return None
 _SCHEMA_TRIAGEM = {
     "type": "object", "additionalProperties": False,
-    "required": ["pergunta", "opcoes", "fim", "resumo"],
+    "required": ["pergunta", "opcoes", "multi", "fim", "resumo"],
     "properties": {"pergunta": {"type": ["string", "null"]},
                    "opcoes": {"type": "array", "items": {"type": "string"}},
+                   "multi": {"type": "boolean"},
                    "fim": {"type": "boolean"},
                    "resumo": {"type": ["string", "null"]}},
 }
 _SISTEMA_TRIAGEM = (
     "Você monta o perfil de gosto de viagem de uma pessoa no Brasil, com no máximo "
     f"{MAX_PERGUNTAS} perguntas. Recebe as respostas até agora. Faça a próxima pergunta curta, "
-    "tratando por 'você', com 2 a 5 opções curtas, sem repetir assunto. Quando já der para "
+    "tratando por 'você', com 2 a 5 opções curtas, sem repetir assunto; multi=true quando fizer "
+    "sentido marcar mais de uma opção. Com restantes=1, a pergunta é aberta: a pessoa responde por "
+    "escrito e as opções são só sugestões. Quando já der para "
     "recomendar lugares (ou na última pergunta), responda fim=true, pergunta=null, opcoes=[] e "
     "um resumo de uma frase do gosto da pessoa. Português do Brasil.")
 
 
 async def triagem(client: httpx.AsyncClient, respostas: list[dict]) -> dict:
     if not respostas:
-        return {**PRIMEIRA_PERGUNTA, "fim": False, "resumo": None, "fonte": "fixa"}
+        return {**PRIMEIRA_PERGUNTA, "fim": False, "resumo": None, "fonte": "fixa", "livre": False}
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_TRIAGEM,
                               dados={"respostas": respostas, "restantes": MAX_PERGUNTAS - len(respostas)},
@@ -208,8 +214,11 @@ async def triagem(client: httpx.AsyncClient, respostas: list[dict]) -> dict:
         r = ({**p, "fim": False, "resumo": None} if p
              else {"pergunta": None, "opcoes": [], "fim": True, "resumo": None})
         r["fonte"] = "fixa"
+    # a última pergunta aceita texto livre, venha da IA ou da reserva
+    r["livre"] = len(respostas) == MAX_PERGUNTAS - 1
+    r["multi"] = bool(r.get("multi"))
     if len(respostas) >= MAX_PERGUNTAS or r["fim"] or not r.get("pergunta"):
-        r.update(pergunta=None, opcoes=[], fim=True)
+        r.update(pergunta=None, opcoes=[], fim=True, multi=False, livre=False)
         r["resumo"] = r.get("resumo") or resumo_simples(respostas)
     return r
 

@@ -119,7 +119,7 @@ def test_ia_sem_campos_obrigatorios_cai_no_plano_b():
 def test_triagem_fim_falso_sem_pergunta_termina():
     resp = [{"pergunta": "p", "resposta": "r"}]
     async def go():
-        async with _cliente_ia({"pergunta": None, "opcoes": [], "fim": False, "resumo": "x"}) as c:
+        async with _cliente_ia({"pergunta": None, "opcoes": [], "multi": False, "fim": False, "resumo": "x"}) as c:
             return await ia.triagem(c, resp)
     r = asyncio.run(go())
     assert r["fim"] is True and r["pergunta"] is None
