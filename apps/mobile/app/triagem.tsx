@@ -110,8 +110,9 @@ export default function Triagem() {
   }
 
   async function pular() {
-    // Ao refazer, pular antes da primeira resposta não tem o que substituir: o gosto antigo fica.
-    if (refazendo && respostas.length === 0) {
+    // Ao refazer, pular nunca grava: sem a triagem concluída não há resumo novo, e gravar o pulo
+    // apagaria o resumo antigo (inclusive um corrigido à mão no perfil).
+    if (refazendo) {
       router.back();
       return;
     }
@@ -121,8 +122,7 @@ export default function Triagem() {
       // Sem rede, as respostas não são guardadas, mas a pessoa não fica presa na triagem:
       // ela pode refazer as perguntas pelo perfil.
     }
-    if (refazendo) router.back();
-    else router.replace("/viagens");
+    router.replace("/viagens");
   }
 
   const fim = !!passo?.fim;
@@ -147,7 +147,7 @@ export default function Triagem() {
               accessibilityLabel="Pular"
               accessibilityHint={
                 refazendo
-                  ? "Guarda o que você já respondeu e volta ao perfil"
+                  ? "Volta ao perfil sem mudar o seu gosto"
                   : "Guarda o que você já respondeu e vai para suas viagens"
               }
               style={s.pular}
