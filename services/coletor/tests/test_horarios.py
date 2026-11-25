@@ -53,3 +53,8 @@ def test_opening_hours_do_openstreetmap():
     # Regra que o leitor simples não entende (feriado, mês) não vira horário inventado.
     assert horarios.de_hoje("Mo-Fr 08:00-18:00; PH off", "RS", utc(23, 15)) is None
     assert horarios.de_hoje("Tu 10:00-12:00", "RS", utc(23, 15)) is None
+
+
+def test_dia_com_texto_em_vez_de_lista():
+    assert horarios.de_hoje({"segunda-feira": "8:00–18:00"}, "SP", utc(23, 15)) == ["08:00–18:00"]
+    assert horarios.de_hoje({"segunda-feira": None}, "SP", utc(23, 15)) == []

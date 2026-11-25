@@ -82,9 +82,10 @@ export default function Perfil() {
 
   useEffect(() => {
     if (!dados) return;
+    // Recarregar ao voltar para a aba não apaga o que a pessoa está escrevendo no resumo.
+    setResumo((atual) => (perfil && atual.trim() !== (perfil.resumo ?? "") ? atual : dados.resumo ?? ""));
     setPerfil(dados);
-    setResumo(dados.resumo ?? "");
-  }, [dados]);
+  }, [dados]); // só reage a dados novos da API; `perfil` aqui é o de antes deles
 
   // As decisões mudam nas outras abas: ao voltar para o Perfil, recarrega (a primeira vez já carregou).
   useFocusEffect(

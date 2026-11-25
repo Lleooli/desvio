@@ -101,7 +101,9 @@ def de_hoje(horarios: dict | str | None, uf: str | None, agora: datetime) -> lis
     if isinstance(horarios, dict):
         for nome, faixas in horarios.items():
             if _dia(nome) == hoje:
-                return [f for f in map(_faixa, faixas) if f]
+                # uma fonte pode mandar o dia como texto só ("8:00–18:00"), não como lista
+                lista = [faixas] if isinstance(faixas, str) else faixas or []
+                return [f for f in map(_faixa, lista) if f]
     if isinstance(horarios, str):
         return _do_osm(horarios, local.weekday())
     return None
