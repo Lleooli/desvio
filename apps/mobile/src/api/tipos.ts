@@ -31,6 +31,14 @@ export type Card = {
   km_na_rota?: number | null;
   horas_desde_saida?: number | null;
   link_maps?: string | null;
+  endereco?: string | null;
+  /** Opções do lugar no Google ("Aceita pets", "Entrada acessível"…). */
+  sobre?: string[];
+  /**
+   * Faixas de hoje no fuso do lugar, "HH:MM–HH:MM"; [] quando fecha hoje e null quando
+   * o horário de hoje não é conhecido. Só vem em `GET /viagens/{id}`.
+   */
+  horario_hoje?: string[] | null;
 };
 
 export type Parada = {
