@@ -147,3 +147,28 @@ def test_ranqueamento_continua_depois_do_primeiro_swipe(pg, monkeypatch):
     assert cli.post("/swipe", json={"card": primeiro, "tipo": "passo"}, headers=cab).status_code == 200
     ids = [c["id"] for c in cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()["paradas"][0]["cards"]]
     assert ids == [f"osm:node/{i}" for i in range(28, -1, -1)] + ["osm:node/30", "osm:node/31"]
+
+
+def test_triagem_refeita_pelo_perfil_substitui_a_antiga_e_vale_no_proximo_ranqueamento(pg, monkeypatch):
+    """HU03: as respostas novas substituem as antigas, e o próximo job ranqueia com o resumo novo."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    antigas = _respostas(5)
+    novas = [{**r, "resposta": f"Nova {i}"} for i, r in enumerate(antigas)]
+    assert cli.post("/triagem", json={"respostas": antigas}, headers=cab).status_code == 200
+    r = cli.post("/triagem", json={"respostas": novas}, headers=cab).json()
+    assert r["fim"] is True
+
+    perfil = cli.get("/perfil", headers=cab).json()
+    assert perfil["respostas"] == novas and perfil["resumo"] == r["resumo"] == ia.resumo_simples(novas)
+
+    chamadas = []
+
+    async def anota(client, cards, texto):
+        chamadas.append(texto)
+        return cards
+
+    monkeypatch.setattr(ia, "_ranquear_pela_ia", anota)
+    _rodar(cli, cab, monkeypatch, [card(i, "turismo", nota=5) for i in range(3)])
+    assert chamadas == [ia.resumo_simples(novas)]
