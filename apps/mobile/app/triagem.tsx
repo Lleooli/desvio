@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -59,10 +59,14 @@ function Balao({ ia, texto }: { ia: boolean; texto: string }) {
   );
 }
 
-/** Triagem em conversa (canvas Triagem): até 5 perguntas, e a resposta vira o perfil de gosto. */
+/**
+ * Triagem em conversa (canvas Triagem): até 5 perguntas, e a resposta vira o perfil de gosto.
+ * Aberta pelo perfil (`refazer=1`, HU03), as respostas novas substituem as antigas e a tela volta ao perfil.
+ */
 export default function Triagem() {
   const { c, sombra } = useCores();
   const router = useRouter();
+  const refazendo = useLocalSearchParams<{ refazer?: string }>().refazer === "1";
   const margens = useSafeAreaInsets();
   const rolagem = useRef<ScrollView>(null);
   const [respostas, setRespostas] = useState<RespostaTriagem[]>([]);
@@ -106,6 +110,12 @@ export default function Triagem() {
   }
 
   async function pular() {
+    // Ao refazer, pular nunca grava: sem a triagem concluída não há resumo novo, e gravar o pulo
+    // apagaria o resumo antigo (inclusive um corrigido à mão no perfil).
+    if (refazendo) {
+      router.back();
+      return;
+    }
     try {
       await pularTriagem(respostas);
     } catch {
@@ -135,7 +145,11 @@ export default function Triagem() {
               onPress={pular}
               accessibilityRole="button"
               accessibilityLabel="Pular"
-              accessibilityHint="Guarda o que você já respondeu e vai para suas viagens"
+              accessibilityHint={
+                refazendo
+                  ? "Volta ao perfil sem mudar o seu gosto"
+                  : "Guarda o que você já respondeu e vai para suas viagens"
+              }
               style={s.pular}
             >
               <Text style={[estiloTexto("body-strong"), { color: c.placa }]}>Pular</Text>
@@ -231,7 +245,12 @@ export default function Triagem() {
           </>
         ) : null}
 
-        {fim ? (
+        {fim && refazendo ? (
+          <Button block onPress={() => router.back()}>
+            Voltar ao perfil
+          </Button>
+        ) : null}
+        {fim && !refazendo ? (
           <Button block onPress={() => router.replace("/viagens/nova")}>
             Planejar minha primeira viagem
           </Button>

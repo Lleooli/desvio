@@ -147,7 +147,7 @@ export default function Perfil() {
             ? `Aprendido com ${lugares(total)} que você deslizou. Usamos isso para ordenar os próximos cards.`
             : `Ainda estamos aprendendo seu gosto. Você avaliou ${lugares(total)}; a partir de ${MINIMO_DECISOES}, mostramos aqui o que você mais aceita.`}
         </Text>
-        <Link href="/triagem" style={[estiloTexto("body-strong"), s.link, { color: c.placa }]}>
+        <Link href={{ pathname: "/triagem", params: { refazer: "1" } }} style={[estiloTexto("body-strong"), s.link, { color: c.placa }]}>
           Refazer as perguntas
         </Link>
       </View>
