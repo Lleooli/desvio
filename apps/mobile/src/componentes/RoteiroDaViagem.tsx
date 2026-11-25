@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   editarRoteiroDaViagem,
   mensagemDeErro,
@@ -381,6 +382,7 @@ type PropsMapa = { viagem: Viagem; itens: Card[]; visivel: boolean; onFechar: ()
  */
 function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
   const { c } = useCores();
+  const margens = useSafeAreaInsets();
   const [proxima, setProxima] = useState(0);
   if (itens.length === 0) return null;
 
@@ -395,7 +397,9 @@ function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
   return (
     <Modal visible={visivel} transparent animationType="slide" onRequestClose={onFechar}>
       <Pressable accessibilityLabel="Fechar" style={[s.veu, { backgroundColor: c.scrim }]} onPress={onFechar} />
-      <View style={[s.painel, { backgroundColor: c["surface-100"] }]}>
+      <View
+        style={[s.painel, { backgroundColor: c["surface-100"], paddingBottom: margens.bottom + espaco["space-6"] }]}
+      >
         <Text accessibilityRole="header" style={[estiloTexto("title"), { color: c.ink }]}>
           Abrir no mapa
         </Text>
@@ -616,7 +620,6 @@ const s = StyleSheet.create({
   painel: {
     gap: espaco["space-3"],
     padding: espaco["space-4"],
-    paddingBottom: espaco["space-6"],
     borderTopLeftRadius: raio["radius-lg"],
     borderTopRightRadius: raio["radius-lg"],
   },
