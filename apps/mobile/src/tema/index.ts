@@ -86,6 +86,10 @@ export const medida = {
   seloIa: 32,
   cantoBalao: 6,
   barraTriagem: 8,
+  // Perfil: cada linha do gosto é rótulo, barra da taxa e porcentagem (canvas Perfil)
+  gostoRotulo: 120,
+  gostoBarra: 10,
+  gostoPorcentagem: 44,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
