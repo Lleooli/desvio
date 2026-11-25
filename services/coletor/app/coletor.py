@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import math
 import os
 import re
 import unicodedata
@@ -22,7 +23,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import cache, fronteira, geo, gmaps, instagram, osm
+from . import cache, fronteira, geo, gmaps, ia, instagram, osm, parada_cidade
 
 log = logging.getLogger("desvio.coletor")
 
@@ -202,10 +203,11 @@ async def _cidade_proxima_com_cache(client: httpx.AsyncClient, ponto: tuple[floa
     return cidade
 
 
-async def _pois_com_cache(client: httpx.AsyncClient, p: dict, categorias: list[str]) -> list[dict]:
+async def _pois_com_cache(client: httpx.AsyncClient, p: dict, categorias: list[str],
+                          forcar: bool = False) -> list[dict]:
     """Lugares do OSM da parada; só pergunta ao Overpass as categorias que o cache não tem."""
     chaves = {cat: f'osm|{_norm(p["nome"])}|{p.get("uf") or ""}|{p["raio_km"]:g}|{cat}' for cat in categorias}
-    por_cat = {cat: cache.obter(ch) for cat, ch in chaves.items()}
+    por_cat = {cat: None if forcar else cache.obter(ch) for cat, ch in chaves.items()}
     faltam = [cat for cat, v in por_cat.items() if v is None]
     if faltam:
         novos = await osm.pois(client, (p["lat"], p["lon"]), p["raio_km"], faltam)
@@ -218,11 +220,20 @@ async def _pois_com_cache(client: httpx.AsyncClient, p: dict, categorias: list[s
 async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categorias: list[str],
                        por_categoria: int, usar_google_maps: bool, buscar_instagram: bool,
                        nota_minima: float = 4.0, progresso: Progresso | None = None,
-                       ao_ter_parcial: Callable[[list[dict]], None] | None = None) -> list[dict]:
+                       ao_ter_parcial: Callable[[list[dict]], None] | None = None,
+                       situacao: dict | None = None, forcar: bool = False) -> list[dict]:
     """Recebe paradas {nome, uf, lat, lon, raio_km} e devolve as mesmas com "cards".
 
     Com o Google ligado, `ao_ter_parcial` recebe antes as paradas só com cards do OSM.
+    Em `situacao`, para a tabela parada_cidade (#93): "guardar" é falso com o Google
+    fora do ar ou com a Places API (os termos proíbem guardar o conteúdo); "google_vazio"
+    são os índices das paradas com alguma busca do Google vazia (o gosom pode não ter
+    alcançado a cidade), que valem só VAZIO_GOOGLE_DIAS, como o "gmaps-vazio".
+    Com `forcar`, não lê o cache de lugares (OSM e Google): busca tudo de novo.
     """
+    if situacao is None:
+        situacao = {}
+    google_vazio: set[int] = set()
     # O que o cache (30 dias, entre usuários) já tem do Google não vai para o Google de novo
     google: dict[str, list[dict]] = {}
     faltam_google: dict[str, str] = {}
@@ -232,9 +243,11 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 if cat not in CONSULTA_GOOGLE:
                     continue
                 texto = _consulta_cidade(cat, p)
-                guardado = cache.obter("gmaps|" + texto)
-                if guardado is None:
+                guardado = None if forcar else cache.obter("gmaps|" + texto)
+                if guardado is None and not forcar:
                     guardado = cache.obter("gmaps-vazio|" + texto, dias=VAZIO_GOOGLE_DIAS)
+                    if guardado is not None:
+                        google_vazio.add(i)
                 if guardado is None:
                     faltam_google[f"{i}|{cat}"] = texto
                 else:
@@ -247,7 +260,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     for i, p in enumerate(paradas):
         _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
                 35 + 40 * i // len(paradas))
-        brutos.append(await _pois_com_cache(client, p, categorias))
+        brutos.append(await _pois_com_cache(client, p, categorias, forcar))
 
     # 2) Google Maps (gmaps.py: Places API ou gosom). No gosom é um job só para a viagem
     #    inteira e leva minutos, então antes entrega um parcial só com OpenStreetMap,
@@ -273,6 +286,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 chave = "gmaps|" if lugares else "gmaps-vazio|"
                 cache.guardar(chave + faltam_google[cid], lugares)
             google.update(novos)
+            google_vazio |= {int(cid.split("|")[0]) for cid in faltam_google if not novos.get(cid)}
         except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
             log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", e)
             avisos.append("O Google Maps não respondeu, então os lugares vieram só do OpenStreetMap.")
@@ -298,7 +312,75 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     if avisos:
         for p in paradas:
             p.setdefault("avisos", []).extend(avisos)
+    situacao["guardar"] = not avisos and not (usar_google_maps and gmaps.fonte() == "places")
+    situacao["google_vazio"] = google_vazio
     return paradas
+
+
+
+
+# --- Cidades já feitas (#93) ----------------------------------------------------
+
+# cidade_proxima procura cidades a até 30 km do ponto da estrada: uma cidade já feita
+# também precisa estar a no máximo isso da rota para valer como parada
+RAIO_CIDADE_KM = 30
+# folga para trocar a cidade do ponto por uma já feita, pelo km na rota: 10% do intervalo
+# (20 km com 200 km), para a parada não andar muito; fora dela, coleta a cidade do ponto
+FOLGA_PARADA = float(os.getenv("PV_FOLGA_PARADA_PCT", "10")) / 100
+
+
+def _trilha(pontos: list[geo.Ponto], acc: list[float], maximo: int = 2000) -> list[tuple[geo.Ponto, float]]:
+    """A rota com no máximo `maximo` pontos, cada um com o seu km (para medir rápido)."""
+    passo = max(1, len(pontos) // maximo)
+    return [(pontos[i], acc[i]) for i in range(0, len(pontos), passo)]
+
+
+def _na_rota(trilha: list[tuple[geo.Ponto, float]], p: geo.Ponto) -> tuple[float, float]:
+    """(km na rota, distância até a rota em km) do ponto `p`."""
+    coslat = math.cos(math.radians(p[0]))
+    ponto, km = min(trilha, key=lambda t: (t[0][0] - p[0]) ** 2 + ((t[0][1] - p[1]) * coslat) ** 2)
+    return km, geo.distancia_km(ponto, p)
+
+
+def _cidades_feitas(pontos: list[geo.Ponto], acc: list[float], cats: str, var: str) -> list[dict]:
+    """Cidades já em parada_cidade perto da rota, com `km` e sem os cards."""
+    lats, lons = [p[0] for p in pontos], [p[1] for p in pontos]
+    m_lat = RAIO_CIDADE_KM / 111  # 1 grau de latitude tem ~111 km
+    m_lon = m_lat / max(0.2, math.cos(math.radians(max(abs(min(lats)), abs(max(lats))))))
+    linhas = parada_cidade.proximas(cats, var, min(lats) - m_lat, min(lons) - m_lon,
+                                    max(lats) + m_lat, max(lons) + m_lon)
+    trilha = _trilha(pontos, acc)
+    feitas = []
+    for l in linhas:
+        km, dist = _na_rota(trilha, (l["lat"], l["lon"]))
+        if dist <= RAIO_CIDADE_KM:
+            feitas.append({**l, "km": km})
+    return feitas
+
+
+def _feita_perto(feitas: list[dict], km: float, intervalo_km: float, total: float, vistas: set[str]) -> dict | None:
+    """A cidade já feita mais perto do km do ponto, dentro da folga; None se não tem."""
+    folga = intervalo_km * FOLGA_PARADA
+    candidatas = [f for f in feitas
+                  if abs(f["km"] - km) <= folga and total - f["km"] >= intervalo_km * 0.5
+                  and _norm(f["nome"]) not in vistas]
+    return min(candidatas, key=lambda f: abs(f["km"] - km), default=None)
+
+
+async def _ordens_genericas(client: httpx.AsyncClient,
+                            por_cidade: list[list[dict]]) -> list[tuple[list[dict], list[str] | None]]:
+    """Para cada cidade, os cards na ordem genérica da IA e os ids nessa ordem.
+
+    Uma leva só para a IA (em lotes, ia.ranquear_cidades). Cidade com menos de 2 cards não
+    precisa da IA; a que a IA não respondeu fica como veio, com a ordem None (plano B).
+    """
+    saida: list[tuple[list[dict], list[str] | None]] = [(cs, [c["id"] for c in cs]) for cs in por_cidade]
+    precisam = [k for k, cs in enumerate(por_cidade) if len(cs) >= 2]
+    if not precisam:
+        return saida
+    for k, o in zip(precisam, await ia.ranquear_cidades(client, [por_cidade[k] for k in precisam])):
+        saida[k] = (o, [c["id"] for c in o]) if o is not None else (por_cidade[k], None)
+    return saida
 
 
 async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
@@ -307,14 +389,23 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           veiculo: str = "carro",
                           raio_parada_km: float = 8, raio_destino_km: float = 15,
                           progresso: Progresso | None = None,
-                          parcial: Callable[[dict], None] | None = None) -> dict:
+                          parcial: Callable[[dict], None] | None = None,
+                          forcar: bool = False) -> dict:
     """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
 
     `progresso` recebe as etapas na ordem: rota, cidades, lugares, instagram.
     `parcial` recebe, com o Google ligado, o resultado só com OpenStreetMap antes do
     gosom (minutos); o resultado final contém todos os cards do parcial, com os mesmos ids.
+
+    Cidades já feitas (#93): perto de cada ponto de parada, uma cidade que já está em
+    parada_cidade (há menos de 30 dias) ganha da cidade nova, e os cards e a ordem
+    genérica da IA saem de lá. Só as cidades novas vão ao Overpass, ao Google, ao
+    Instagram e ao Groq, e depois entram na tabela. Com `forcar`, nada sai de
+    parada_cidade nem do cache de lugares: tudo é coletado de novo e a tabela atualizada.
     """
     categorias = categorias or CATEGORIAS_PADRAO
+    cats = parada_cidade.texto_categorias(categorias)
+    var_parada = parada_cidade.variante(raio_parada_km, por_categoria, usar_google_maps)
     async with httpx.AsyncClient() as client, cache.sessao():  # uma conexão com o cache por job
         o = await geo.geocodificar(client, origem)
         d = await geo.geocodificar(client, destino)
@@ -326,6 +417,7 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         _avisar(progresso, "rota", "Rota calculada",
                 texto_rota(rota["distancia_km"], rota["duracao_h"], veiculo), 20)
 
+        feitas = [] if forcar else _cidades_feitas(pontos, acc, cats, var_parada)
         paradas: list[dict] = []
         vistas = {_norm(o["nome"]), _norm(d["nome"])}
         # viagem entre duas cidades do Brasil não para em outro país (issue #95), nem quando a
@@ -333,9 +425,18 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         so_brasil = fronteira.no_brasil((o["lat"], o["lon"])) and fronteira.no_brasil((d["lat"], d["lon"]))
         if rota.get("sai_do_brasil"):
             log.warning("rota de %s a %s sai do Brasil; as paradas de fora ficam de fora", origem, destino)
+        if so_brasil:
+            feitas = [f for f in feitas if fronteira.no_brasil((f["lat"], f["lon"]))]
         for km, ponto in geo.amostrar(pontos, intervalo_km):
             if total - km < intervalo_km * 0.5:
                 break  # muito perto do destino, que já entra separado
+            feita = _feita_perto(feitas, km, intervalo_km, total, vistas)
+            if feita:  # cidade já coletada no trecho: reaproveita, sem Overpass nem Nominatim
+                vistas.add(_norm(feita["nome"]))
+                paradas.append({"nome": feita["nome"], "lat": feita["lat"], "lon": feita["lon"],
+                                "uf": feita["uf"], "tipo": "parada", "raio_km": raio_parada_km,
+                                "_km": feita["km"]})
+                continue
             cidade = await _cidade_proxima_com_cache(client, ponto)
             if not cidade or _norm(cidade["nome"]) in vistas:
                 continue
@@ -345,10 +446,25 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
             _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
             if so_brasil and pais not in (None, "br"):
                 continue
-            paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km})
+            paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km, "_km": km})
+        paradas.sort(key=lambda p: p.pop("_km"))  # a cidade feita pode estar um pouco antes ou depois
         paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
                         "tipo": "destino", "raio_km": raio_destino_km})
         _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
+
+        # cards das cidades já feitas; as outras vão para a coleta
+        chaves = [(parada_cidade.id_cidade(p["nome"], p.get("uf")), cats,
+                   parada_cidade.variante(p["raio_km"], por_categoria, usar_google_maps)) for p in paradas]
+        novas: list[int] = []
+        linhas: dict[int, dict] = {}
+        for i, (p, chave) in enumerate(zip(paradas, chaves)):
+            linha = None if forcar else parada_cidade.obter(*chave)
+            if linha is None:
+                novas.append(i)
+                continue
+            linhas[i] = linha
+            p["cards"] = linha["cards"]
+            p["ranqueada"] = linha["ordem_ia"] is not None
 
         def resultado(com_cards: list[dict]) -> dict:
             for p in com_cards:
@@ -369,12 +485,30 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         def ao_ter_parcial(com_cards: list[dict]) -> None:
             if not parcial:
                 return
+            parciais = iter(com_cards)  # só as novas, na ordem; as feitas já têm os cards finais
+            todas = [next(parciais) if i in novas else p for i, p in enumerate(paradas)]
             try:
-                parcial(resultado(com_cards))
+                parcial(resultado(todas))
             except Exception:  # gravar o parcial nunca derruba a coleta
                 log.warning("não consegui gravar o resultado parcial", exc_info=True)
 
-        await montar_cards(client, paradas, categorias, por_categoria, usar_google_maps, buscar_instagram,
-                           progresso=progresso, ao_ter_parcial=ao_ter_parcial)
+        situacao: dict = {}
+        if novas:
+            await montar_cards(client, [paradas[i] for i in novas], categorias, por_categoria, usar_google_maps,
+                               buscar_instagram, progresso=progresso, ao_ter_parcial=ao_ter_parcial,
+                               situacao=situacao, forcar=forcar)
+
+        # ordem genérica da IA: as cidades novas e as feitas que ficaram sem ela (a IA não
+        # respondeu da outra vez); uma cidade com ordem guardada não vai ao Groq
+        sem_ordem = [i for i in range(len(paradas)) if i not in linhas or not paradas[i]["ranqueada"]]
+        ordens = await _ordens_genericas(client, [paradas[i]["cards"] for i in sem_ordem])
+        for i, (cards, ordem) in zip(sem_ordem, ordens):
+            p = paradas[i]
+            p["cards"], p["ranqueada"] = cards, ordem is not None
+            if i in linhas:
+                if ordem is not None:
+                    parada_cidade.guardar(*chaves[i], p, cards, ordem, linhas[i]["completa"])
+            elif situacao.get("guardar"):
+                parada_cidade.guardar(*chaves[i], p, cards, ordem, novas.index(i) not in situacao["google_vazio"])
 
     return resultado(paradas)

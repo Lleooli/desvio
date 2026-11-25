@@ -76,81 +76,71 @@ def test_job_sem_resumo_fica_na_estatistica_e_nao_chama_a_ia(pg, monkeypatch):
     assert ids == ["osm:node/2", "osm:node/1"]
 
 
-def test_job_com_resumo_ranqueia_os_30_e_a_segunda_viagem_usa_o_cache(pg, monkeypatch):
+def _ranqueada(cards: list[dict]) -> dict:
+    """Resultado da coleta com a parada já na ordem genérica da IA (parada_cidade, #93)."""
+    r = resultado(cards, [])
+    r["paradas"][0]["ranqueada"] = True
+    return r
+
+
+def _rodar_ranqueada(cli, cab, monkeypatch, cards) -> dict:
+    resp = cli.post("/viagem", json=PEDIDO, headers=cab)
+    assert resp.status_code == 202, resp.text
+    coleta_falsa(monkeypatch, _ranqueada(cards))
+    assert asyncio.run(worker.rodar_uma_vez()) is True
+    return resp.json()
+
+
+def _sem_ia(monkeypatch) -> None:
+    def nao_chama(*a, **k):
+        raise AssertionError("o gosto da pessoa entra sem IA (#93)")
+    monkeypatch.setattr(ia, "_ranquear_lote_pela_ia", nao_chama)
+    monkeypatch.setattr(ia, "chamar_json", nao_chama)
+
+
+def test_job_com_resumo_nao_chama_a_ia_e_mantem_a_ordem_generica(pg, monkeypatch):
+    """#93: a IA ordena a cidade uma vez, sem o gosto de ninguém; o resumo não gera chamada nova."""
     uid, cab = criar_pessoa(pg)
     cli = TestClient(app)
-    resumo = "Gosta de natureza e viaja com pet."
-    preferencias.guardar_triagem(uid, None, _respostas(1), resumo, pulou=False)
-    chamadas = []
-
-    async def inverte(client, topos, texto):
-        chamadas.append(texto)
-        assert [len(cards) for cards in topos] == [ia.MAX_RANQUEAR]
-        return [list(reversed(cards)) for cards in topos]
-
-    monkeypatch.setattr(ia, "_ranquear_lote_pela_ia", inverte)
-    cards = [card(i, "turismo", nota=100 - i) for i in range(32)]
-    corpo = _rodar(cli, cab, monkeypatch, cards)
-    ordem = [f"osm:node/{i}" for i in range(29, -1, -1)] + ["osm:node/30", "osm:node/31"]
+    preferencias.guardar_triagem(uid, None, _respostas(1), "Gosta de natureza e viaja com pet.", pulou=False)
+    _sem_ia(monkeypatch)
+    # a ordem genérica é a inversa da nota: a posição vale mais que a nota na conta
+    cards = [card(i, "turismo", nota=4 + i / 100) for i in range(5)]
+    corpo = _rodar_ranqueada(cli, cab, monkeypatch, cards)
+    ordem = [f"osm:node/{i}" for i in range(5)]
     assert [c["id"] for c in cli.get(f"/jobs/{corpo['job_id']}", headers=cab).json()
             ["resultado"]["paradas"][0]["cards"]] == ordem
     assert [c["id"] for c in cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()
             ["paradas"][0]["cards"]] == ordem
-    assert chamadas == [resumo]
-    with psycopg.connect(pg) as con:
-        chaves = [r[0] for r in con.execute("select chave from cache where chave like 'ranque|%'")]
-    assert len(chaves) == 1 and chaves[0].startswith("ranque|saovicentedosul|turismo|")
-
-    segundo = _rodar(cli, cab, monkeypatch, cards)
-    assert chamadas == [resumo]
-    assert [c["id"] for c in cli.get(f"/jobs/{segundo['job_id']}", headers=cab).json()
-            ["resultado"]["paradas"][0]["cards"]] == ordem
-
-    preferencias.guardar_triagem(uid, None, _respostas(1), "Outro resumo.", pulou=False)
-    _rodar(cli, cab, monkeypatch, cards)
-    assert chamadas == [resumo, "Outro resumo."]
 
 
-def test_plano_b_do_ranqueamento_nao_vai_para_o_cache(pg, monkeypatch):
-    uid, cab = criar_pessoa(pg)
+def test_gosto_da_pessoa_entra_por_cima_da_ordem_generica(pg, monkeypatch):
+    _, cab = criar_pessoa(pg)
     cli = TestClient(app)
-    resumo = "Gosta de natureza."
-    preferencias.guardar_triagem(uid, None, _respostas(1), resumo, pulou=False)
-    chamadas = []
-
-    async def sem_ia(client, topos, texto):
-        chamadas.append(texto)
-        return [None] * len(topos)  # Groq fora do ar, 429 ou tempo esgotado
-
-    monkeypatch.setattr(ia, "_ranquear_lote_pela_ia", sem_ia)
-    cards = [card(i, "turismo", nota=100 - i) for i in range(5)]
-    _rodar(cli, cab, monkeypatch, cards)
-    with psycopg.connect(pg) as con:
-        assert con.execute("select count(*) from cache where chave like 'ranque|%'").fetchone()[0] == 0
-    _rodar(cli, cab, monkeypatch, cards)
-    assert chamadas == [resumo, resumo]  # a segunda viagem tenta a IA de novo
+    for i in (90, 91):  # a taxa só entra com 2 ou mais vistos
+        cli.post("/swipe", json={"card": card(i, "turismo"), "gostou": False}, headers=cab)
+        cli.post("/swipe", json={"card": card(i + 10, "posto"), "gostou": True}, headers=cab)
+    _sem_ia(monkeypatch)
+    corpo = _rodar_ranqueada(cli, cab, monkeypatch, [card(1, "turismo"), card(2, "turismo"), card(3, "posto")])
+    ids = [c["id"] for c in cli.get(f"/jobs/{corpo['job_id']}", headers=cab).json()["resultado"]["paradas"][0]["cards"]]
+    assert ids == ["osm:node/3", "osm:node/1", "osm:node/2"]  # o posto sobe; os turismos ficam na ordem da IA
 
 
-def test_ranqueamento_continua_depois_do_primeiro_swipe(pg, monkeypatch):
-    uid, cab = criar_pessoa(pg)
+def test_ordem_generica_continua_depois_do_primeiro_swipe(pg, monkeypatch):
+    _, cab = criar_pessoa(pg)
     cli = TestClient(app)
-    preferencias.guardar_triagem(uid, None, _respostas(1), "Gosta de natureza.", pulou=False)
-
-    async def inverte(client, topos, texto):
-        return [list(reversed(cards)) for cards in topos]
-
-    monkeypatch.setattr(ia, "_ranquear_lote_pela_ia", inverte)
-    cards = [card(i, "turismo", nota=100 - i) for i in range(32)]
-    corpo = _rodar(cli, cab, monkeypatch, cards)
+    _sem_ia(monkeypatch)
+    cards = [card(i, "turismo", nota=4 + i / 100) for i in range(32)]
+    corpo = _rodar_ranqueada(cli, cab, monkeypatch, cards)
     primeiro = cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()["paradas"][0]["cards"][0]
-    assert primeiro["id"] == "osm:node/29"
+    assert primeiro["id"] == "osm:node/0"
     assert cli.post("/swipe", json={"card": primeiro, "tipo": "passo"}, headers=cab).status_code == 200
     ids = [c["id"] for c in cli.get(f"/viagens/{corpo['viagem_id']}", headers=cab).json()["paradas"][0]["cards"]]
-    assert ids == [f"osm:node/{i}" for i in range(28, -1, -1)] + ["osm:node/30", "osm:node/31"]
+    assert ids == [f"osm:node/{i}" for i in range(1, 32)]
 
 
-def test_triagem_refeita_pelo_perfil_substitui_a_antiga_e_vale_no_proximo_ranqueamento(pg, monkeypatch):
-    """HU03: as respostas novas substituem as antigas, e o próximo job ranqueia com o resumo novo."""
+def test_triagem_refeita_pelo_perfil_substitui_a_antiga(pg, monkeypatch):
+    """HU03: as respostas novas substituem as antigas; o job não manda o resumo à IA (#93)."""
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     _, cab = criar_pessoa(pg)
     cli = TestClient(app)
@@ -163,12 +153,5 @@ def test_triagem_refeita_pelo_perfil_substitui_a_antiga_e_vale_no_proximo_ranque
     perfil = cli.get("/perfil", headers=cab).json()
     assert perfil["respostas"] == novas and perfil["resumo"] == r["resumo"] == ia.resumo_simples(novas)
 
-    chamadas = []
-
-    async def anota(client, topos, texto):
-        chamadas.append(texto)
-        return topos
-
-    monkeypatch.setattr(ia, "_ranquear_lote_pela_ia", anota)
+    _sem_ia(monkeypatch)
     _rodar(cli, cab, monkeypatch, [card(i, "turismo", nota=5) for i in range(3)])
-    assert chamadas == [ia.resumo_simples(novas)]

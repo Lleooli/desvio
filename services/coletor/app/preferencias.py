@@ -225,14 +225,23 @@ def ja_vistos(usuario: str) -> set[str]:
         return {r["lugar"] for r in con.execute("select lugar from decisao where usuario = %s", (usuario,))}
 
 
-def pontuar(cards: list[dict], p: dict) -> list[dict]:
-    """Ordena os cards novos pelo gosto aprendido (sem IA, só estatística)."""
+def pontuar(cards: list[dict], p: dict, ordem_generica: bool = False) -> list[dict]:
+    """Ordena os cards novos pelo gosto aprendido (sem IA, só estatística).
+
+    Com `ordem_generica` (os cards vêm na ordem da IA para a cidade, #93), a posição
+    ocupa o lugar da nota na conta: o primeiro da IA vale 0,5, como uma nota 5, e o
+    gosto da pessoa mexe em cima disso.
+    """
+    pos = {id(c): i for i, c in enumerate(cards)}
+
     def score(c: dict) -> float:
         s = 0.5
         for campo in ("categoria", "tipo", "faixa_preco"):
             info = p.get(campo, {}).get(c.get(campo) or "")
             if info:
                 s += info["taxa"] - 0.5
+        if ordem_generica:
+            return s + 0.5 * (1 - pos[id(c)] / len(cards))
         return s + (c.get("nota") or 0) / 10
     return sorted(cards, key=score, reverse=True)
 
@@ -244,5 +253,6 @@ def personalizar(resultado: dict, usuario: str | None, perfil_pronto: dict | Non
     vistos = ja_vistos(usuario)
     p = perfil(usuario) if perfil_pronto is None else perfil_pronto
     for parada in resultado["paradas"]:
-        parada["cards"] = pontuar([c for c in parada["cards"] if c["id"] not in vistos], p)
+        parada["cards"] = pontuar([c for c in parada["cards"] if c["id"] not in vistos], p,
+                                  bool(parada.get("ranqueada")))
     return resultado
