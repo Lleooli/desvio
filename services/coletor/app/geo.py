@@ -17,7 +17,7 @@ import os
 
 import httpx
 
-from . import cache, cidades
+from . import cache, cidades, fronteira
 
 USER_AGENT = os.getenv("PV_USER_AGENT", "planejador-viagem/0.1 (troque-pelo-seu-email@exemplo.com)")
 HEADERS = {"User-Agent": USER_AGENT, "Accept-Language": "pt-BR,pt;q=0.9"}
@@ -107,12 +107,18 @@ async def geocodificar(client: httpx.AsyncClient, lugar: str) -> dict:
     }
 
 
-async def cidade_e_uf(client: httpx.AsyncClient, ponto: Ponto) -> tuple[str | None, str | None]:
-    """Geocodificação reversa no nível de município."""
+async def cidade_uf_pais(client: httpx.AsyncClient, ponto: Ponto) -> tuple[str | None, str | None, str | None]:
+    """Geocodificação reversa no nível de município: nome, UF e país ("br"; None se não veio)."""
     d = await _nominatim(client, "reverse", {"lat": ponto[0], "lon": ponto[1], "format": "jsonv2", "zoom": 10, "addressdetails": 1})
     end = (d or {}).get("address", {}) if isinstance(d, dict) else {}
     nome = end.get("city") or end.get("town") or end.get("municipality") or end.get("village")
-    return nome, _uf(end)
+    return nome, _uf(end), (end.get("country_code") or "").lower() or None
+
+
+async def cidade_e_uf(client: httpx.AsyncClient, ponto: Ponto) -> tuple[str | None, str | None]:
+    """Geocodificação reversa no nível de município."""
+    nome, uf, _ = await cidade_uf_pais(client, ponto)
+    return nome, uf
 
 
 def _uf(endereco: dict) -> str | None:
@@ -126,26 +132,72 @@ def servidor_rota(veiculo: str) -> str:
     return OSRM_BIKE if veiculo == "bicicleta" else OSRM
 
 
-async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo: str = "carro") -> dict:
-    (la1, lo1), (la2, lo2) = origem, destino
+# Quantas vezes a rota tenta um ponto de passagem no Brasil antes de desistir (cada uma é
+# uma chamada a mais ao OSRM)
+MAX_PASSAGENS = 3
+
+
+async def _rotas_osrm(client: httpx.AsyncClient, pontos: list[Ponto], veiculo: str) -> list[dict]:
+    """As rotas do OSRM pelos `pontos`, a mais rápida primeiro; com 2 pontos, com alternativas."""
     perfil = "bike" if veiculo == "bicicleta" else "driving"
-    url = f"{servidor_rota(veiculo)}/route/v1/{perfil}/{lo1},{la1};{lo2},{la2}"
-    chave = f"osrm|{veiculo}|{lo1:.4f},{la1:.4f};{lo2:.4f},{la2:.4f}"
-    guardada = cache.obter(chave)
-    if guardada is not None:
-        return {**guardada, "pontos": [tuple(p) for p in guardada["pontos"]]}
-    r = await client.get(url, params={"overview": "full", "geometries": "geojson"}, headers=HEADERS, timeout=60)
+    coords = ";".join(f"{lo},{la}" for la, lo in pontos)
+    params = {"overview": "full", "geometries": "geojson"}
+    if len(pontos) == 2:  # o OSRM só calcula alternativas entre dois pontos
+        params["alternatives"] = "3"
+    r = await client.get(f"{servidor_rota(veiculo)}/route/v1/{perfil}/{coords}", params=params,
+                         headers=HEADERS, timeout=60)
     r.raise_for_status()
     dados = r.json()
     if dados.get("code") != "Ok" or not dados.get("routes"):
         raise RotaNaoEncontrada(str(dados.get("message") or dados.get("code")))
-    rota = dados["routes"][0]
-    pontos = [(lat, lon) for lon, lat in rota["geometry"]["coordinates"]]
-    resultado = {
-        "distancia_km": rota["distance"] / 1000,
-        "duracao_h": rota["duration"] / 3600,
-        "pontos": pontos,
-    }
+    return [{"distancia_km": x["distance"] / 1000, "duracao_h": x["duration"] / 3600,
+             "pontos": [(lat, lon) for lon, lat in x["geometry"]["coordinates"]]}
+            for x in dados["routes"]]
+
+
+async def _rota_no_brasil(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo: str) -> dict:
+    """A rota mais rápida que não sai do Brasil (issue #95).
+
+    O OSRM vai pelo caminho mais curto, mesmo que passe por outro país: de Alegrete a
+    Vitória da Conquista ele foi por Hohenau e Ciudad del Este. Primeiro vale a mais
+    rápida das alternativas que fica no Brasil. Se nenhuma fica, a rota passa pela sede
+    de município brasileira mais perto do trecho de fora (fronteira.ponto_de_passagem),
+    até MAX_PASSAGENS vezes. Se mesmo assim sair, fica a mais rápida, com
+    `sai_do_brasil`, e as paradas fora do país são descartadas pelo coletor.
+    """
+    rotas = await _rotas_osrm(client, [origem, destino], veiculo)
+    if not (fronteira.no_brasil(origem) and fronteira.no_brasil(destino)):
+        return rotas[0]  # viagem que começa ou termina fora: a regra não se aplica
+    for r in rotas:
+        if not fronteira.pontos_fora(r["pontos"]):
+            return r
+    passagens: list[Ponto] = []
+    fora = fronteira.pontos_fora(rotas[0]["pontos"])
+    for _ in range(MAX_PASSAGENS):
+        via = fronteira.ponto_de_passagem(fora)
+        if via is None or via in passagens:
+            break
+        passagens.append(via)
+        passagens.sort(key=lambda p: distancia_km(origem, p))
+        try:
+            [r, *_] = await _rotas_osrm(client, [origem, *passagens, destino], veiculo)
+        except (RotaNaoEncontrada, httpx.HTTPError):
+            break
+        fora = fronteira.pontos_fora(r["pontos"])
+        if not fora:
+            return r
+    return {**rotas[0], "sai_do_brasil": True}
+
+
+async def rota(client: httpx.AsyncClient, origem: Ponto, destino: Ponto, veiculo: str = "carro") -> dict:
+    (la1, lo1), (la2, lo2) = origem, destino
+    servidor_rota(veiculo)  # veículo desconhecido falha antes do cache
+    # "osrm-br": a rota agora fica no Brasil; as guardadas com "osrm|" podiam passar pelo Paraguai
+    chave = f"osrm-br|{veiculo}|{lo1:.4f},{la1:.4f};{lo2:.4f},{la2:.4f}"
+    guardada = cache.obter(chave)
+    if guardada is not None:
+        return {**guardada, "pontos": [tuple(p) for p in guardada["pontos"]]}
+    resultado = await _rota_no_brasil(client, origem, destino, veiculo)
     cache.guardar(chave, resultado)
     return resultado
 

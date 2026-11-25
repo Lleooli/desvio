@@ -96,14 +96,56 @@ def de_hoje(horarios: dict | str | None, uf: str | None, agora: datetime) -> lis
     Returns:
         As faixas de hoje ([] quando fecha hoje); None quando o horário de hoje não é conhecido.
     """
+    # o dia é o do lugar, não o do servidor
     local = agora + timedelta(hours=_FUSO_POR_UF.get((uf or "").upper(), _FUSO_PADRAO))
-    hoje = _DIAS[local.weekday()]
+    return do_dia(horarios, local.weekday())
+
+
+def do_dia(horarios: dict | str | None, dia: int) -> list[str] | None:
+    """As faixas de um dia da semana (0 é segunda); [] quando fecha, None quando não se sabe."""
     if isinstance(horarios, dict):
         for nome, faixas in horarios.items():
-            if _dia(nome) == hoje:
+            if _dia(nome) == _DIAS[dia]:
                 # uma fonte pode mandar o dia como texto só ("8:00–18:00"), não como lista
                 lista = [faixas] if isinstance(faixas, str) else faixas or []
                 return [f for f in map(_faixa, lista) if f]
     if isinstance(horarios, str):
-        return _do_osm(horarios, local.weekday())
+        return _do_osm(horarios, dia)
     return None
+
+
+_FAIXA_PADRAO = re.compile(r"(\d{2}):(\d{2})–(\d{2}):(\d{2})")
+
+
+def _aberto_nas_faixas(faixas: list[str], minuto: int) -> bool | None:
+    """Se alguma faixa "HH:MM–HH:MM" cobre `minuto` do dia; None se uma faixa não é legível."""
+    for f in faixas:
+        achado = _FAIXA_PADRAO.fullmatch(f)
+        if not achado:
+            return None  # texto que o leitor não entende: melhor não afirmar nada
+        h1, m1, h2, m2 = map(int, achado.groups())
+        ini, fim = h1 * 60 + m1, h2 * 60 + m2
+        if (ini <= minuto < fim) if ini < fim else (minuto >= ini or minuto < fim):  # faixa que vira a noite
+            return True
+    return False
+
+
+def aberto(horarios: dict | str | None, minuto: int, dia: int | None = None) -> bool | None:
+    """Se o lugar está aberto `minuto` minutos depois da meia-noite (issue #95).
+
+    Com `dia` (0 é segunda), olha só esse dia. Sem ele (a data da viagem não veio), diz
+    fechado só quando todo dia conhecido está fechado nessa hora. None quando não se sabe.
+    """
+    dias = [dia] if dia is not None else range(7)
+    respostas = []
+    for d in dias:
+        faixas = do_dia(horarios, d)
+        if faixas is None:
+            continue
+        r = _aberto_nas_faixas(faixas, minuto)
+        if r is None:
+            return None
+        respostas.append(r)
+    if not respostas:
+        return None
+    return any(respostas)

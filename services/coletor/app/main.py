@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from datetime import date
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -111,6 +112,10 @@ class ContextoRoteiro(BaseModel):
     saida: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", examples=["07:00"],
                               description="Hora de saída, HH:MM")
     dias: int | None = Field(None, ge=1, le=60, examples=[1], description="Dias de viagem")
+    data: date | None = Field(None, examples=["2026-12-20"],
+                              description="Dia da saída; com ele, o horário de funcionamento é o do dia da semana certo")
+    veiculo: Literal["carro", "moto", "bicicleta"] | None = Field(
+        None, description="Decide as horas ao volante por dia; sem ele, vale o veículo da viagem")
 
 
 class RoteiroDaViagem(BaseModel):
@@ -265,8 +270,10 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
         # grava, e regravar aqui desfaria um PUT que chegasse entre a leitura e a escrita
         return r
     if req.usar_ia:
+        contexto = req.contexto.model_dump(mode="json", exclude_none=True)
+        veiculo = contexto.get("veiculo") or await run_in_threadpool(viagens.veiculo, viagem_id)
         async with httpx.AsyncClient() as client:
-            r = await ia.ajustar_roteiro(client, r["itens"], req.contexto.model_dump(exclude_none=True))
+            r = await ia.ajustar_roteiro(client, r["itens"], contexto, veiculo)
     if not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
         # a pessoa editou enquanto a IA respondia: vale a ordem dela
         r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)

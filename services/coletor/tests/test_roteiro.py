@@ -70,7 +70,7 @@ def test_roteiro_ajustado_pela_ia_traz_explicacoes_e_fica_guardado(pg, monkeypat
 
     async def groq_falso(client, **kw):
         pedidos.append(kw["dados"])
-        return {"ordem": [{"id": "osm:node/2", "porque": "Almoço às 12h"},
+        return {"ordem": [{"id": "osm:node/2", "porque": "Café da manhã na estrada"},
                           {"id": "osm:node/1", "porque": "Café na saída"}]}
     monkeypatch.setattr(ia, "chamar_json", groq_falso)
 
@@ -80,12 +80,13 @@ def test_roteiro_ajustado_pela_ia_traz_explicacoes_e_fica_guardado(pg, monkeypat
     corpo = r.json()
     assert corpo["fonte"] == "ia"
     assert [c["id"] for c in corpo["itens"]] == ["osm:node/2", "osm:node/1"]
-    assert corpo["explicacoes"] == {"osm:node/2": "Almoço às 12h", "osm:node/1": "Café na saída"}
+    assert corpo["explicacoes"] == {"osm:node/2": "Café da manhã na estrada", "osm:node/1": "Café na saída"}
     assert pedidos[0]["contexto"] == {"saida": "07:00", "dias": 1}
+    assert pedidos[0]["horas_volante_por_dia"] == 8  # issue #95: a viagem é de moto
 
     [v] = cli.get("/eu/exportar", headers=cab).json()["viagens"]
     assert v["roteiro"]["fonte"] == "ia"
-    assert v["roteiro"]["explicacao"] == {"osm:node/2": "Almoço às 12h", "osm:node/1": "Café na saída"}
+    assert v["roteiro"]["explicacao"] == {"osm:node/2": "Café da manhã na estrada", "osm:node/1": "Café na saída"}
 
 
 def test_roteiro_com_ia_fora_do_ar_vem_pela_ordem_do_km(pg, monkeypatch):

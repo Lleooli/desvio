@@ -126,10 +126,10 @@ def test_ranquear_sem_resumo_nao_chama_ia():
 
 def test_roteiro_ia_e_fallback():
     itens = [CARDS[2], CARDS[0], CARDS[1]]
-    ia_diz = {"ordem": [{"id": "c1", "porque": "almoço"}, {"id": "c0", "porque": "café"}]}
+    ia_diz = {"ordem": [{"id": "c1", "porque": "café"}, {"id": "c0", "porque": "mirante"}]}
     r, _ = rodar(lambda c: ia.ajustar_roteiro(c, itens, {"saida": "07:00"}), ia_diz)
     assert [c["id"] for c in r["itens"]] == ["c1", "c0", "c2"] and r["fonte"] == "ia"
-    assert r["explicacoes"] == {"c1": "almoço", "c0": "café"}
+    assert r["explicacoes"] == {"c1": "café", "c0": "mirante"}
     r2, _ = rodar(lambda c: ia.ajustar_roteiro(c, itens, {}), falha=True)
     assert [c["id"] for c in r2["itens"]] == ["c0", "c1", "c2"] and r2["fonte"] == "geometria"
 
@@ -139,7 +139,11 @@ def test_roteiro_manda_a_hora_de_chegada_de_cada_lugar_para_a_ia():
     itens = [{**CARDS[0], "horas_desde_saida": 4.5}, {**CARDS[1], "horas_desde_saida": 18.25}]
     _, enviados = rodar(lambda c: ia.ajustar_roteiro(c, itens, {"saida": "07:00", "dias": 2}), {"ordem": []})
     lugares = json.loads(enviados[0]["messages"][1]["content"])["lugares"]
-    assert [(l["horas_desde_saida"], l["chegada"], l["dia"]) for l in lugares] == [(4.5, "11:30", 1), (18.25, "01:15", 2)]
+    # issue #95: 13h45 de estrada depois do almoço não cabem num dia de 9h ao volante. Dorme no
+    # primeiro lugar, roda um dia inteiro e chega no terceiro dia, não à 01h15 do segundo
+    assert [(l["horas_desde_saida"], l["chegada"], l["dia"], l["pernoite"]) for l in lugares] == [
+        (4.5, "11:30", 1, True), (18.25, "11:45", 3, False)]
+    assert json.loads(enviados[0]["messages"][1]["content"])["horas_volante_por_dia"] == 9
     assert "chegada" in enviados[0]["messages"][0]["content"]
 
 

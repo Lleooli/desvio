@@ -81,8 +81,13 @@ _limitadores: dict[str, Limitador] = {}
 
 
 async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, dados: dict,
-                      schema: dict, nome: str, max_tokens: int = 1024, timeout: float = 10.0) -> dict:
-    """Chama o Groq. `timeout` é o prazo total: espera no limitador + requisição HTTP."""
+                      schema: dict, nome: str, max_tokens: int = 1024, timeout: float = 10.0,
+                      espera_max: float | None = None) -> dict:
+    """Chama o Groq. `timeout` é o prazo total: espera no limitador + requisição HTTP.
+
+    Com `espera_max` (só no worker, onde ninguém espera na tela), a fila do limitador
+    pode esperar até `espera_max` segundos, e `timeout` vale só para a requisição HTTP.
+    """
     chave = os.getenv("GROQ_API_KEY")
     if not chave:
         raise IAIndisponivel("GROQ_API_KEY não configurada")
@@ -90,13 +95,14 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
     conteudo = json.dumps(dados, ensure_ascii=False)
     tokens = estimar_tokens(sistema + conteudo) + max_tokens
     lim = _limitadores.setdefault(modelo, Limitador())
+    prazo_fila = timeout if espera_max is None else espera_max
     try:
-        await asyncio.wait_for(lim.reservar(tokens, timeout), timeout)
+        await asyncio.wait_for(lim.reservar(tokens, prazo_fila), prazo_fila)
     except TimeoutError as e:
-        raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {timeout:g}s") from e
+        raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {prazo_fila:g}s") from e
     except RuntimeError as e:  # lock preso a outro event loop (vários asyncio.run): plano B, não 500
         raise IAIndisponivel(f"limite do Groq indisponível: {e}") from e
-    restante = timeout - (time.monotonic() - inicio)
+    restante = timeout - (time.monotonic() - inicio) if espera_max is None else timeout
     if restante <= 0:
         raise IAIndisponivel(f"Groq: prazo de {timeout:g}s esgotado na fila")
     corpo = {
@@ -264,6 +270,74 @@ async def _ranquear_pela_ia(client: httpx.AsyncClient, cards: list[dict], resumo
     return _reordenar(topo, r["ids"]) + resto
 
 
+# Ranqueamento no worker (issue #95): uma parada por chamada esgotava os 8 mil tokens por
+# minuto na sétima parada e o resto caía no plano B. Agora as paradas vão juntas, até
+# LOTE_TOKENS de entrada por chamada, com os cards numerados (número gasta menos token que
+# o id), e a fila do limitador espera até ESPERA_LOTE_S pela vaga em vez de desistir em 10 s.
+LOTE_TOKENS = int(os.getenv("PV_RANQUE_LOTE_TOKENS", "3000"))
+ESPERA_LOTE_S = float(os.getenv("PV_RANQUE_ESPERA_S", "70"))
+_SCHEMA_RANQUEAR_LOTE = {
+    "type": "object", "additionalProperties": False, "required": ["paradas"],
+    "properties": {"paradas": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False, "required": ["parada", "ordem"],
+        "properties": {"parada": {"type": "integer"},
+                       "ordem": {"type": "array", "items": {"type": "integer"}}}}}},
+}
+_SISTEMA_RANQUEAR_LOTE = (
+    "Você ordena lugares de várias paradas de uma viagem pelo gosto da pessoa. Recebe o resumo do "
+    "gosto e, para cada parada, os cards numerados (n). Para cada parada, devolva todos os n dela, "
+    "do mais recomendado ao menos, sem inventar números.")
+
+
+def _parada_do_lote(i: int, topo: list[dict]) -> dict:
+    # sem o id (vai o número), sem campo vazio e com descrição curta: cada token conta no
+    # limite por minuto, e 12 paradas de 15 cards já passam dele
+    cards = [{"n": n, **{k: v for k, v in {**_card_enxuto(c), "descricao": (c.get("descricao") or "")[:60],
+                                            "sobre": (c.get("sobre") or [])[:3]}.items()
+                         if k != "id" and v not in (None, "", [])}}
+             for n, c in enumerate(topo)]
+    return {"parada": i, "cards": cards}
+
+
+def _lotes(topos: list[list[dict]]) -> list[list[int]]:
+    """Índices das paradas agrupados para caber em LOTE_TOKENS de entrada por chamada."""
+    lotes: list[list[int]] = []
+    soma = 0
+    for i, topo in enumerate(topos):
+        t = estimar_tokens(json.dumps(_parada_do_lote(i, topo), ensure_ascii=False))
+        if lotes and soma + t <= LOTE_TOKENS:
+            lotes[-1].append(i)
+            soma += t
+        else:
+            lotes.append([i])
+            soma = t
+    return lotes
+
+
+async def _ranquear_lote_pela_ia(client: httpx.AsyncClient, topos: list[list[dict]],
+                                 resumo: str) -> list[list[dict] | None]:
+    """Os cards de cada parada ordenados pelo Groq, em poucas chamadas; None na parada sem resposta."""
+    saida: list[list[dict] | None] = [None] * len(topos)
+    for lote in _lotes(topos):
+        n_cards = sum(len(topos[i]) for i in lote)
+        try:
+            r = await chamar_json(client, modelo=MODELO_RAPIDO, sistema=_SISTEMA_RANQUEAR_LOTE,
+                                  dados={"gosto": resumo, "paradas": [_parada_do_lote(i, topos[i]) for i in lote]},
+                                  schema=_SCHEMA_RANQUEAR_LOTE, nome="ranqueamento",
+                                  max_tokens=min(2000, 300 + 8 * n_cards), espera_max=ESPERA_LOTE_S)
+        except IAIndisponivel:
+            continue  # plano B deste lote; o próximo ainda tenta
+        for p in r["paradas"]:
+            i = p.get("parada") if isinstance(p, dict) else None
+            if i not in lote or saida[i] is not None:
+                continue
+            ids = [topos[i][n]["id"] for n in p.get("ordem") or []
+                   if isinstance(n, int) and 0 <= n < len(topos[i])]
+            if ids:
+                saida[i] = _reordenar(topos[i], ids)
+    return saida
+
+
 async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict]:
     """Os cards ordenados pelo gosto; sem IA, na ordem em que vieram."""
     return await _ranquear_pela_ia(client, cards, resumo) or cards
@@ -325,28 +399,35 @@ async def ranquear_paradas(paradas: list[dict], resumo: str | None) -> None:
 
     A ordem de quem chamou (a estatística) vale para o resto e para o plano B.
     Sem resumo, não chama a IA. Cidade e categoria já ranqueadas com o mesmo
-    resumo saem do cache e não vão ao Groq de novo.
+    resumo saem do cache e não vão ao Groq de novo. As outras vão juntas, em lotes
+    (_ranquear_lote_pela_ia); o lote que falha fica com a ordem estatística.
     """
     if not resumo:
         return
+    pendentes = []
+    for parada in paradas:
+        cards = parada.get("cards") or []
+        topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
+        if len(topo) < 2:
+            continue
+        ordem = _ordem_em_cache(parada, resumo)
+        if ordem:
+            parada["cards"] = _reordenar(topo, ordem) + resto
+        else:
+            pendentes.append(parada)
+    if not pendentes:
+        return
+    topos = [p["cards"][:MAX_RANQUEAR] for p in pendentes]
     async with httpx.AsyncClient() as client:
-        for parada in paradas:
-            cards = parada.get("cards") or []
-            topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
-            if len(topo) < 2:
-                continue
-            ordem = _ordem_em_cache(parada, resumo)
-            if ordem:
-                parada["cards"] = _reordenar(topo, ordem) + resto
-                continue
-            ordenados = await _ranquear_pela_ia(client, topo, resumo)
-            if ordenados is None:
-                continue  # plano B: fica a ordem estatística, e nada vai ao cache como se fosse da IA
-            ordem = [c["id"] for c in ordenados]
-            cidade = parada.get("nome") or ""
-            for cat in _categorias_do_topo(topo):
-                cache.guardar(chave_ranque(cidade, cat, resumo), ordem)
-            parada["cards"] = ordenados + resto
+        respostas = await _ranquear_lote_pela_ia(client, topos, resumo)
+    for parada, topo, ordenados in zip(pendentes, topos, respostas):
+        if ordenados is None:
+            continue  # plano B: fica a ordem estatística, e nada vai ao cache como se fosse da IA
+        ordem = [c["id"] for c in ordenados]
+        cidade = parada.get("nome") or ""
+        for cat in _categorias_do_topo(topo):
+            cache.guardar(chave_ranque(cidade, cat, resumo), ordem)
+        parada["cards"] = ordenados + parada["cards"][MAX_RANQUEAR:]
 
 
 # --- Roteiro -----------------------------------------------------------------
@@ -358,38 +439,107 @@ _SCHEMA_ROTEIRO = {
         "properties": {"id": {"type": "string"}, "porque": {"type": "string"}}}}},
 }
 _SISTEMA_ROTEIRO = (
-    "Você ajusta a ordem das paradas de uma viagem por terra (carro, moto ou bicicleta; o veículo vem no contexto). Recebe os lugares já em ordem de km "
-    "e o contexto (hora de saída, dias). Quando houver, `chegada` (HH:MM) e `dia` dizem quando a "
-    "pessoa passa por cada lugar. Ajuste ao horário: se houver restaurante, o almoço é um com "
-    "chegada entre 11h e 14h; mirante no fim da tarde, pernoite. Não volte na estrada mais de 30 km. "
-    "Para cada lugar, uma linha curta dizendo por quê, em português do Brasil.")
+    "Você ajusta a ordem das paradas de uma viagem por terra (carro, moto ou bicicleta). Recebe o "
+    "contexto e os lugares já em ordem de km, com a agenda que o servidor calculou para essa ordem: "
+    "`dia`, `chegada` (HH:MM), `pernoite` (true: a pessoa dorme na cidade desse lugar) e "
+    "`aberto_na_chegada` (false: fechado nessa hora; null: horário desconhecido). Cada dia tem no "
+    "máximo `horas_volante_por_dia` horas de estrada e ninguém chega a um lugar depois das 22h; o "
+    "servidor refaz a agenda com a ordem que você devolver. Só troque lugares vizinhos, sem voltar "
+    "na estrada mais de 30 km, para encaixar o almoço (chegada entre 11h e 15h), o jantar (entre 18h "
+    "e 22h) e o mirante no fim da tarde. Use a `chegada` de cada lugar: não chame de almoço ou jantar "
+    "um lugar fora dessas horas, não fale em madrugada e, quando aberto_na_chegada for false, diga "
+    "que o lugar estará fechado em vez de recomendar a visita. Para cada lugar, uma linha curta "
+    "dizendo por quê, em português do Brasil, tratando por 'você'.")
+
+# Palavras da explicação que só valem com a chegada dentro da janela (minutos do dia)
+_JANELAS = (
+    (("almoco", "almocar", "almoca"), 11 * 60, 15 * 60),
+    (("jantar", "janta"), 18 * 60, 23 * 60),
+    (("cafe da manha",), 5 * 60, 10 * 60 + 30),
+    (("por do sol", "fim da tarde", "entardecer"), 16 * 60, 19 * 60 + 30),
+)
+VOLTA_MAXIMA_KM = 30
 
 
-def _chegada(saida: str | None, horas: float | None) -> dict:
-    """`chegada` (HH:MM) e `dia` (1 é o dia da saída) de um lugar; vazio sem saída ou sem horas."""
-    # o POST /roteiro aceita contexto livre: saída fora de HH:MM só fica sem chegada
-    hora = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", saida) if isinstance(saida, str) else None
-    if not hora or not isinstance(horas, (int, float)):
-        return {}
-    total = int(hora[1]) * 60 + int(hora[2]) + round(horas * 60)
-    dia, minutos = divmod(total, 24 * 60)
-    return {"chegada": f"{minutos // 60:02d}:{minutos % 60:02d}", "dia": dia + 1}
+def _coerente(porque: str, item: dict) -> bool:
+    """Se a explicação da IA bate com a agenda do lugar (hora de chegada e horário de funcionamento)."""
+    texto = _sem_acento(porque)
+    if "madrugada" in texto:
+        return False  # a agenda nunca chega a um lugar de madrugada
+    chegada = roteiro.minutos(item.get("chegada"))
+    if chegada is None:
+        return True
+    for palavras, ini, fim in _JANELAS:
+        if any(p in texto for p in palavras) and not ini <= chegada <= fim:
+            return False
+    return not (item.get("aberto_na_chegada") is False and "fechad" not in texto)
 
 
-async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto: dict) -> dict:
-    base = roteiro.ordenar_na_rota(itens)
-    saida = contexto.get("saida")
+def _porque_da_agenda(item: dict) -> str | None:
+    """Explicação sem IA, só com o que a agenda sabe; None quando não há nada a dizer."""
+    partes = []
+    if item.get("aberto_na_chegada") is False:
+        partes.append(f'Você chega às {item["chegada"]}, e nessa hora deve estar fechado. Confira o horário.')
+    if item.get("pernoite"):
+        partes.append(f'Pernoite do dia {item["dia"]} nesta cidade.')
+    return " ".join(partes) or None
+
+
+def _volta_na_estrada(itens: list[dict]) -> bool:
+    """Se a ordem volta mais de VOLTA_MAXIMA_KM em relação ao ponto mais longe já alcançado."""
+    mais_longe = 0.0
+    for c in itens:
+        km = c.get("km_na_rota") or 0
+        if km < mais_longe - VOLTA_MAXIMA_KM:
+            return True
+        mais_longe = max(mais_longe, km)
+    return False
+
+
+def _plano_b(base: list[dict]) -> dict:
+    return {"itens": base, "explicacoes": {c["id"]: p for c in base if (p := _porque_da_agenda(c))},
+            "fonte": "geometria"}
+
+
+async def ajustar_roteiro(client: httpx.AsyncClient, itens: list[dict], contexto: dict,
+                          veiculo: str | None = None) -> dict:
+    """A ordem de visita com dias, chegada e pernoite; a IA ajusta a ordem e explica cada lugar.
+
+    A agenda (roteiro.agendar) é sem IA: dias com limite de horas ao volante, pernoite e
+    hora de chegada. A resposta da IA é conferida (issue #95): ordem que volta mais de
+    30 km na estrada vira a ordem do km; explicação que não bate com a chegada ou com o
+    horário de funcionamento (jantar de manhã, refeição em lugar fechado, madrugada) é
+    trocada pela da agenda. Sem IA, fica a ordem do km com a agenda (`fonte` "geometria").
+    """
+    veiculo = veiculo or contexto.get("veiculo") or "carro"
+    saida, data = contexto.get("saida"), contexto.get("data")
+    base = roteiro.agendar(roteiro.ordenar_na_rota(itens), saida, veiculo, data)
     try:
         r = await chamar_json(client, modelo=MODELO_RACIOCINIO, sistema=_SISTEMA_ROTEIRO,
                               dados={"contexto": contexto,
+                                     "horas_volante_por_dia": roteiro.HORAS_VOLANTE.get(veiculo, 9),
                                      "lugares": [{**_card_enxuto(c), "km_na_rota": c.get("km_na_rota"),
                                                   "horas_desde_saida": c.get("horas_desde_saida"),
-                                                  **_chegada(saida, c.get("horas_desde_saida")),
+                                                  **{k: c[k] for k in ("dia", "chegada", "pernoite",
+                                                                       "aberto_na_chegada") if k in c},
                                                   "horarios": c.get("horarios")} for c in base]},
                               schema=_SCHEMA_ROTEIRO, nome="roteiro", max_tokens=1200)
     except IAIndisponivel:
-        return {"itens": base, "explicacoes": {}, "fonte": "geometria"}
+        return _plano_b(base)
     validos = {c["id"] for c in base}
     ordem = [o for o in r["ordem"] if isinstance(o, dict) and o.get("id") in validos]
-    explic = {o["id"]: str(o.get("porque", "")) for o in ordem}
-    return {"itens": _reordenar(base, [o["id"] for o in ordem]), "explicacoes": explic, "fonte": "ia"}
+    itens_ia = roteiro.agendar(_reordenar(base, [o["id"] for o in ordem]), saida, veiculo, data)
+    if _volta_na_estrada(itens_ia):
+        itens_ia = base  # a IA mandou voltar na estrada: vale a ordem do km
+    por_id = {c["id"]: c for c in itens_ia}
+    explic = {}
+    for o in ordem:
+        item, porque = por_id[o["id"]], str(o.get("porque", "")).strip()
+        if porque and _coerente(porque, item):
+            explic[o["id"]] = porque
+        elif p := _porque_da_agenda(item):
+            explic[o["id"]] = p
+    for c in itens_ia:  # o que a IA não explicou e a agenda tem a dizer (fechado, pernoite)
+        if c["id"] not in explic and (p := _porque_da_agenda(c)):
+            explic[c["id"]] = p
+    return {"itens": itens_ia, "explicacoes": explic, "fonte": "ia"}
