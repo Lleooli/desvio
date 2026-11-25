@@ -12,7 +12,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { espaco, medida } from "@/tema";
+import { espaco, medida, tipografia } from "@/tema";
 import { SwipeActions } from "./SwipeActions";
 import { Carimbo, SwipeCard, type CardLugar, type Decisao } from "./SwipeCard";
 
@@ -23,7 +23,15 @@ type Props = {
   onDecisao: (card: CardLugar, decisao: Decisao) => void;
   /** Toque no card do topo: abre o detalhe do lugar. */
   onAbrir?: (card: CardLugar) => void;
+  /** Altura disponível para o card e os botões; o card encolhe para caber sem invadir o que está acima. */
+  alturaMaxima?: number;
+  /** false enquanto algo cobre o card (o toast com Desfazer): o toque não abre o detalhe por baixo. */
+  toqueAtivo?: boolean;
 };
+
+// SwipeActions (respiro, botão e rótulo) mais o gap da pilha: o que fica abaixo do card.
+export const ALTURA_ACOES =
+  2 * espaco["space-4"] + medida.botaoSwipe + espaco["space-1"] + tipografia.label.altura;
 
 // Movimento do swipe em docs/design/DESIGN-SYSTEM.md (Movimento) e bundle.css (--t-folha, --ease-folha).
 const LIMIAR = 0.3;
@@ -50,9 +58,14 @@ export function decisaoDoArrasto(x: number, y: number, largura: number): Decisao
 }
 
 /** A pilha do swipe: card do topo com gesto, o próximo já carregado atrás e os botões embaixo. */
-export function PilhaSwipe({ cards, onDecisao, onAbrir }: Props) {
+export function PilhaSwipe({ cards, onDecisao, onAbrir, alturaMaxima, toqueAtivo = true }: Props) {
   const { width } = useWindowDimensions();
-  const largura = Math.min(width - 2 * espaco["space-4"], medida.cardLarguraMaxima);
+  // Em tela baixa a largura sai da altura que sobra: o card mantém a proporção e não sobe
+  // por cima dos chips do filtro.
+  const pelaAltura = alturaMaxima
+    ? (alturaMaxima - ALTURA_ACOES - espaco["space-4"]) * medida.cardProporcao
+    : Infinity;
+  const largura = Math.max(0, Math.min(width - 2 * espaco["space-4"], medida.cardLarguraMaxima, pelaAltura));
   const topo = useRef<{ decidir: (decisao: Decisao) => void }>(null);
   const [saindo, setSaindo] = useState(false);
   const [atual, proximo] = cards;
@@ -91,6 +104,7 @@ export function PilhaSwipe({ cards, onDecisao, onAbrir }: Props) {
           onVolta={() => setSaindo(false)}
           onDecisao={decidir}
           onToque={() => onAbrir?.(atual)}
+          toqueAtivo={toqueAtivo}
         />
       </View>
       <SwipeActions
@@ -111,11 +125,12 @@ type CardDoTopoProps = {
   onVolta: () => void;
   onDecisao: (card: CardLugar, decisao: Decisao) => void;
   onToque: () => void;
+  toqueAtivo: boolean;
   ref: Ref<{ decidir: (decisao: Decisao) => void }>;
 };
 
 /** Montado de novo a cada card (key = id), então o deslocamento sempre começa em zero. */
-function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, onToque, ref }: CardDoTopoProps) {
+function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, onToque, toqueAtivo, ref }: CardDoTopoProps) {
   const menosMovimento = useReducedMotion();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
@@ -182,7 +197,7 @@ function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, onToque, ref }
     });
 
   // Toque sem arrasto abre o detalhe; o arrasto que começa cancela o toque.
-  const toque = Gesture.Tap().onEnd((_e, terminou) => {
+  const toque = Gesture.Tap().enabled(toqueAtivo).onEnd((_e, terminou) => {
     if (terminou && !saiu.value) runOnJS(onToque)();
   });
   const gesto = Gesture.Race(arrasto, toque);

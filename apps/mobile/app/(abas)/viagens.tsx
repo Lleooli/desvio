@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listarViagens, obterJob, type ResumoViagem, type Veiculo } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { Aviso } from "@/componentes/Aviso";
+import { FaixaDoStatus } from "@/componentes/FaixaDoStatus";
 import { Button } from "@/componentes/Button";
 import { Destaque } from "@/componentes/Destaque";
 import { Icon, type IconName } from "@/componentes/Icon";
@@ -45,36 +46,39 @@ export default function Viagens() {
   if (erro && !dados) return <Aviso mensagem={erro} acao="Tentar de novo" onAcao={tentarDeNovo} />;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: c["surface-100"] }}
-      contentContainerStyle={[s.conteudo, { paddingTop: margens.top + espaco["space-6"] }]}
-    >
-      <View style={s.cabecalho}>
-        <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
-          Suas <Destaque>viagens</Destaque>
-        </Text>
-        <Button block icon="route" onPress={() => router.push("/viagens/nova")}>
-          Nova viagem
-        </Button>
-      </View>
-      {!dados ? (
-        <ActivityIndicator color={c.placa} accessibilityLabel="Carregando suas viagens" style={s.carregando} />
-      ) : dados.length === 0 ? (
-        <View style={s.vazio}>
-          <Text style={[estiloTexto("title"), { color: c.ink }]}>Sua primeira viagem começa aqui</Text>
-          <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
-            Diga de onde você sai e para onde vai. O Desvio acha os lugares no caminho para você escolher.
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ backgroundColor: c["surface-100"] }}
+        contentContainerStyle={[s.conteudo, { paddingTop: margens.top + espaco["space-6"] }]}
+      >
+        <View style={s.cabecalho}>
+          <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
+            Suas <Destaque>viagens</Destaque>
           </Text>
+          <Button block icon="route" onPress={() => router.push("/viagens/nova")}>
+            Nova viagem
+          </Button>
         </View>
-      ) : (
-        <View style={s.lista}>
-          <Text style={[estiloTexto("label"), s.secao, { color: c["ink-muted"] }]}>Em planejamento</Text>
-          {dados.map((v) => (
-            <CartaoViagem key={v.id} viagem={v} />
-          ))}
-        </View>
-      )}
-    </ScrollView>
+        {!dados ? (
+          <ActivityIndicator color={c.placa} accessibilityLabel="Carregando suas viagens" style={s.carregando} />
+        ) : dados.length === 0 ? (
+          <View style={s.vazio}>
+            <Text style={[estiloTexto("title"), { color: c.ink }]}>Sua primeira viagem começa aqui</Text>
+            <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
+              Diga de onde você sai e para onde vai. O Desvio acha os lugares no caminho para você escolher.
+            </Text>
+          </View>
+        ) : (
+          <View style={s.lista}>
+            <Text style={[estiloTexto("label"), s.secao, { color: c["ink-muted"] }]}>Em planejamento</Text>
+            {dados.map((v) => (
+              <CartaoViagem key={v.id} viagem={v} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+      <FaixaDoStatus />
+    </View>
   );
 }
 

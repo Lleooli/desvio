@@ -31,3 +31,30 @@ def test_nome_que_nao_bate_devolve_none():
 
 def test_lista_vazia():
     assert instagram.escolher_handle("X", "Y", []) is None
+
+
+def test_instagram_da_agencia_no_rodape_do_site_e_descartado():
+    # caso real (Uruguaiana, 25/11): o site da churrascaria só cita o Instagram de quem fez o site
+    assert not instagram.combina_com_o_lugar("visualhuman_studio", "Churrascaria e Restaurante Prodócimo",
+                                             "http://www.churrascariaprodocimo.com.br/")
+
+
+def test_instagram_do_site_que_combina_pelo_nome_ou_pelo_dominio():
+    assert instagram.combina_com_o_lugar("prodocimo.uruguaiana", "Churrascaria e Restaurante Prodócimo")
+    assert instagram.combina_com_o_lugar("churrascariaprodocimo", "Prodócimo", "http://churrascariaprodocimo.com.br")
+    assert instagram.combina_com_o_lugar("cantinanono", "Cantina", "https://www.cantinanono.com.br/menu")
+
+
+def test_do_site_escolhe_o_perfil_do_lugar_entre_varios():
+    import asyncio
+
+    import httpx
+
+    html = ('<a href="https://instagram.com/visualhuman_studio">site por</a>'
+            '<a href="https://www.instagram.com/prodocimo_churrascaria/">siga</a>')
+    cliente = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200, text=html)))
+    url = "http://www.churrascariaprodocimo.com.br/"
+    assert asyncio.run(instagram.do_site(cliente, url, "Churrascaria Prodócimo")) == "prodocimo_churrascaria"
+    so_agencia = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, text='<a href="https://instagram.com/visualhuman_studio">x</a>')))
+    assert asyncio.run(instagram.do_site(so_agencia, url, "Churrascaria Prodócimo")) is None

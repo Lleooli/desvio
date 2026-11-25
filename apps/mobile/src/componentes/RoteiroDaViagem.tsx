@@ -174,9 +174,11 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
   const noites = noitesNaTela(dados?.noites ?? [], itens);
   const totalKm = destino?.km_na_rota ?? null;
   const cidades = [viagem.origem, ...viagem.paradas.map((p) => p.nome)].map((cidade) => cidade.split(",")[0]);
+  // Enquanto a IA monta, ainda não há lugares para contar: "0 lugares" e "pronto" seriam falsos.
+  const montando = !roteiro;
   const resumo = [
     totalKm != null ? `KM ${numero(totalKm)}` : null,
-    `${numero(itens.length)} ${itens.length === 1 ? "lugar" : "lugares"}`,
+    montando ? null : `${numero(itens.length)} ${itens.length === 1 ? "lugar" : "lugares"}`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -233,7 +235,15 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
         </Text>
         <Text style={[estiloTexto("km"), s.maiusculas, { color: c["ink-muted"] }]}>{resumo}</Text>
         <Text accessibilityRole="header" style={[estiloTexto("display-l"), { color: c.ink }]}>
-          Seu roteiro está <Destaque>pronto</Destaque>
+          {montando ? (
+            <>
+              Montando seu <Destaque>roteiro</Destaque>
+            </>
+          ) : (
+            <>
+              Seu roteiro está <Destaque>pronto</Destaque>
+            </>
+          )}
         </Text>
         <View style={s.faixaEstrada}>
           <View style={s.recorteEstrada}>

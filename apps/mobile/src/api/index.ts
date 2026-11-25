@@ -2,7 +2,7 @@
  * Uma função tipada por rota do coletor (services/coletor/README.md, seção Endpoints).
  * Todas lançam ErroApi, com a mensagem pronta para a tela.
  */
-import { chamar } from "./cliente";
+import { chamar, URL_API } from "./cliente";
 import type {
   AjustePerfil,
   Card,
@@ -101,6 +101,16 @@ export const editarRoteiroDaViagem = (viagemId: string, ids: string[]) =>
 
 /** LGPD: tudo o que o Desvio guarda da pessoa. */
 export const exportarMeusDados = () => chamar<Record<string, unknown>>("/eu/exportar");
+
+/**
+ * LGPD: link de download dos dados, de uso único e válido por 10 minutos. O app abre no
+ * navegador, que baixa o arquivo: o JSON passa de 1 MB numa viagem longa, e o compartilhar
+ * do Android recusa texto desse tamanho.
+ */
+export const linkParaExportar = async (): Promise<string> => {
+  const { caminho } = await chamar<{ caminho: string; valido_min: number }>("/eu/exportar/link", { metodo: "POST" });
+  return URL_API + caminho;
+};
 
 /** LGPD: apaga os dados e a conta. */
 export const apagarMinhaConta = () =>

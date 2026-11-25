@@ -77,14 +77,52 @@ def escolher_handle(nome: str, cidade: str, resultados: list[dict]) -> str | Non
     return melhor if melhor_nota >= 0.5 else None
 
 
-async def do_site(client: httpx.AsyncClient, url: str) -> str | None:
-    if handle_de_texto(url):
-        return handle_de_texto(url)
-    try:
-        r = await client.get(url, headers=NAVEGADOR, timeout=12, follow_redirects=True)
-        return handle_de_texto(r.text[:500_000])
-    except (httpx.HTTPError, ValueError):
-        return None
+def handles_de_texto(texto: str) -> list[str]:
+    """Todos os perfis citados no texto, na ordem, sem repetir."""
+    vistos: list[str] = []
+    for m in IG.finditer(texto or ""):
+        h = m.group(1).rstrip(".")
+        if h.lower() not in NAO_PERFIL and h.lower() not in (v.lower() for v in vistos):
+            vistos.append(h)
+    return vistos
+
+
+def _dominio(url: str) -> str:
+    """"http://www.churrascariaprodocimo.com.br/" -> "churrascariaprodocimo"."""
+    host = re.sub(r"^[a-z]+://", "", (url or "").lower()).split("/")[0].split(":")[0]
+    partes = [p for p in host.split(".") if p not in {"www", "com", "br", "net", "org", "site", "wixsite"}]
+    return partes[0] if partes else ""
+
+
+def combina_com_o_lugar(handle: str, nome: str, site: str = "") -> bool:
+    """Se o perfil parece ser do próprio lugar, pelo nome ou pelo domínio do site.
+
+    O site de um restaurante costuma ter no rodapé o Instagram de quem fez o site
+    ("desenvolvido por @agencia"); esse perfil não tem nada do nome nem do domínio.
+    """
+    h = _norm(handle).replace(" ", "")
+    if parece_o_mesmo(nome, h):
+        return True
+    alvo = _norm(nome).replace(" ", "")
+    if alvo and difflib.SequenceMatcher(None, alvo, h).ratio() >= 0.6:
+        return True
+    dominio = _norm(_dominio(site)).replace(" ", "")
+    return len(dominio) >= 4 and (dominio in h or h in dominio
+                                  or difflib.SequenceMatcher(None, dominio, h).ratio() >= 0.6)
+
+
+async def do_site(client: httpx.AsyncClient, url: str, nome: str = "") -> str | None:
+    """O perfil do lugar citado no site; perfil que não combina com o lugar é descartado."""
+    candidatos = handles_de_texto(url)
+    if not candidatos:
+        try:
+            r = await client.get(url, headers=NAVEGADOR, timeout=12, follow_redirects=True)
+            candidatos = handles_de_texto(r.text[:500_000])
+        except (httpx.HTTPError, ValueError):
+            return None
+    if not nome:
+        return candidatos[0] if candidatos else None
+    return next((h for h in candidatos if combina_com_o_lugar(h, nome, url)), None)
 
 
 async def por_busca(nome: str, cidade: str) -> str | None:
@@ -111,9 +149,9 @@ async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bo
             continue
         lugar = c.get("id")
         if lugar:
-            guardado = cache.obter("instagram|" + lugar)
+            guardado = cache.obter("instagram2|" + lugar)
             if guardado is None:
-                guardado = cache.obter("instagram-vazio|" + lugar, dias=VAZIO_DIAS)
+                guardado = cache.obter("instagram2-vazio|" + lugar, dias=VAZIO_DIAS)
             if isinstance(guardado, dict):
                 if guardado.get("handle"):
                     c["instagram"] = f'https://instagram.com/{guardado["handle"]}'
@@ -121,7 +159,7 @@ async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bo
                 continue
         h, origem = None, None
         if c.get("site"):
-            h, origem = await do_site(client, c["site"]), "site"
+            h, origem = await do_site(client, c["site"], c.get("nome") or ""), "site"
         if not h and usar_busca:
             h, origem = await por_busca(c["nome"], c.get("cidade", "")), "busca"
             await asyncio.sleep(1.5)  # gentileza com os buscadores
@@ -129,6 +167,6 @@ async def completar(client: httpx.AsyncClient, cards: list[dict], usar_busca: bo
             c["instagram"] = f"https://instagram.com/{h}"
             c["instagram_origem"] = origem
             if lugar:
-                cache.guardar("instagram|" + lugar, {"handle": h, "origem": origem})
+                cache.guardar("instagram2|" + lugar, {"handle": h, "origem": origem})
         elif lugar and usar_busca:  # sem a busca, "não achou" ainda não é resposta
-            cache.guardar("instagram-vazio|" + lugar, {})
+            cache.guardar("instagram2-vazio|" + lugar, {})

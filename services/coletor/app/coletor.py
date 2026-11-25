@@ -47,8 +47,18 @@ def _numero(n: float) -> str:
 
 def texto_rota(distancia_km: float, duracao_h: float, veiculo: str) -> str:
     de = "de pedal" if veiculo == "bicicleta" else "de estrada"
-    horas = "menos de 1h" if duracao_h < 1 else f"uns {_numero(duracao_h)}h"
-    return f"{_numero(distancia_km)} km, {horas} {de}"
+    return f"{_numero(distancia_km)} km, uns {_duracao(duracao_h)} {de}"
+
+
+def _duracao(horas: float) -> str:
+    """Como a pessoa fala: "20 min", "1h50", "35h". Até 10 h, de 10 em 10 minutos; nunca "1,8h"."""
+    if horas >= 10:
+        return f"{_numero(horas)}h"
+    minutos = max(10, round(horas * 6) * 10)
+    h, m = divmod(minutos, 60)
+    if h == 0:
+        return f"{m} min"
+    return f"{h}h{m:02d}" if m else f"{h}h"
 
 
 def texto_cidades(n: int, intervalo_km: float) -> tuple[str, str]:

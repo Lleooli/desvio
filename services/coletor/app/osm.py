@@ -139,12 +139,33 @@ def foto_das_tags(tags: dict) -> str | None:
 async def resumo_wikipedia(client: httpx.AsyncClient, tag: str) -> tuple[str | None, str | None]:
     """Foto e resumo de um ponto turístico a partir da tag wikipedia ("pt:Nome")."""
     lang, _, titulo = tag.partition(":") if ":" in tag else ("pt", "", tag)
-    url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(titulo.replace(' ', '_'))}"
+    texto_vale = lang == "pt"
     try:
+        if not texto_vale:
+            # Artigo em outra língua (comum na fronteira: "es:..."): usa a versão em português
+            # se existir; senão fica só a foto, porque o card é lido em português.
+            em_pt = await _titulo_em_portugues(client, lang, titulo)
+            if em_pt:
+                lang, titulo, texto_vale = "pt", em_pt, True
+        url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(titulo.replace(' ', '_'))}"
         r = await client.get(url, headers=HEADERS, timeout=15, follow_redirects=True)
         if r.status_code != 200:
             return None, None
         j = r.json()
-        return (j.get("originalimage") or j.get("thumbnail") or {}).get("source"), j.get("extract")
-    except httpx.HTTPError:
+        foto = (j.get("originalimage") or j.get("thumbnail") or {}).get("source")
+        return foto, j.get("extract") if texto_vale else None
+    except (httpx.HTTPError, ValueError):
         return None, None
+
+
+async def _titulo_em_portugues(client: httpx.AsyncClient, lang: str, titulo: str) -> str | None:
+    """O título do mesmo artigo na Wikipedia em português (langlinks), ou None."""
+    r = await client.get(f"https://{lang}.wikipedia.org/w/api.php",
+                         params={"action": "query", "prop": "langlinks", "lllang": "pt", "titles": titulo,
+                                 "format": "json", "formatversion": "2"},
+                         headers=HEADERS, timeout=15)
+    if r.status_code != 200:
+        return None
+    paginas = (r.json().get("query") or {}).get("pages") or []
+    links = (paginas[0].get("langlinks") if paginas else None) or []
+    return links[0].get("title") if links else None

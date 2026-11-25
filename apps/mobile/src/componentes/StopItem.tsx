@@ -1,3 +1,4 @@
+import { duracao } from "@/duracao";
 import { StyleSheet, Text, View } from "react-native";
 import { espaco, estiloTexto, fontes, medida, raio, useCores } from "@/tema";
 import { numero } from "./Rating";
@@ -29,7 +30,7 @@ export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false
   const nome = uf ? `${cidade}, ${uf}` : cidade;
   const rotuloKm = km != null ? `KM ${numero(km)}` : "";
   const detalhes: string[] = [];
-  if (horas != null) detalhes.push(horas === 0 ? "Saída" : `~${numero(horas, horas % 1 ? 1 : 0)}h de estrada`);
+  if (horas != null) detalhes.push(horas === 0 ? "Saída" : `~${duracao(horas)} de estrada`);
   if (noite != null) detalhes.push(noite ? `Pernoite do dia ${noite}` : "Pernoite");
   const contagem = total != null ? `${aceitos} de ${total}` : null;
 

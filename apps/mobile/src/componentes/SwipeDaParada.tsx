@@ -11,14 +11,14 @@ import { categorias, Chip, type Categoria } from "./Chip";
 import { useFoco } from "./foco";
 import { Icon } from "./Icon";
 import { AindaBuscando, naOrdemDaEstrada } from "./ParadasDaViagem";
-import { PilhaSwipe } from "./PilhaSwipe";
+import { ALTURA_ACOES, PilhaSwipe } from "./PilhaSwipe";
 import { numero } from "./Rating";
 import type { CardLugar, Decisao } from "./SwipeCard";
 import { Toast } from "./Toast";
 
 const DURACAO_DESFAZER_MS = 4000;
-// Altura dos SwipeActions (padding, botão e rótulo): o toast fica logo acima deles, sobre o card.
-const ALTURA_BOTOES = 2 * espaco["space-4"] + medida.botaoSwipe + espaco["space-1"] + tipografia.label.altura;
+// O toast fica logo acima dos SwipeActions, sobre o card.
+const ALTURA_BOTOES = ALTURA_ACOES;
 
 /** O card da API no formato do SwipeCard. */
 function paraCardLugar(card: Card): CardLugar {
@@ -107,6 +107,8 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
   const [ultima, setUltima] = useState<{ card: Card; decisao: Decisao } | null>(null);
   // Vazio mostra todas as categorias.
   const [filtro, setFiltro] = useState<ReadonlySet<Categoria>>(new Set());
+  // Altura do meio da tela (entre o filtro e o rodapé): o card da pilha encolhe para caber nela.
+  const [alturaMeio, setAlturaMeio] = useState<number>();
 
   // Os lugares decididos nesta pilha. Uma viagem buscada antes de a decisão chegar ao
   // coletor ainda traz o card; com este conjunto ele não volta.
@@ -223,11 +225,20 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
       ) : null}
 
       {/* Com a pilha, os botões ficam embaixo e o toast logo acima deles; sem ela, o aviso no centro. */}
-      <View style={[s.meio, topo ? s.meioComPilha : null]}>
+      <View
+        style={[s.meio, topo ? s.meioComPilha : null]}
+        onLayout={(e) => setAlturaMeio(e.nativeEvent.layout.height)}
+      >
         {visiveis === null ? (
           <ActivityIndicator color={c.placa} accessibilityLabel="Carregando os lugares" />
         ) : topo ? (
-          <PilhaSwipe cards={visiveis.map(paraCardLugar)} onDecisao={decidir} onAbrir={abrirDetalhe} />
+          <PilhaSwipe
+            cards={visiveis.map(paraCardLugar)}
+            onDecisao={decidir}
+            onAbrir={abrirDetalhe}
+            alturaMaxima={alturaMeio}
+            toqueAtivo={!ultima}
+          />
         ) : cards && cards.length > 0 ? (
           <View style={s.fim}>
             <Text style={[estiloTexto("body"), s.textoFim, { color: c.ink }]}>
