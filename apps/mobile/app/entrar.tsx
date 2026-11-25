@@ -45,11 +45,23 @@ export default function Entrar() {
   const [linkEnviado, setLinkEnviado] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const rolagem = useRef<ScrollView>(null);
+  const tecladoAberto = useRef(false);
 
   // Com o teclado aberto, o campo de e-mail e o botão do link (no fim da tela) sobem para cima dele.
+  // No Android o padding do KeyboardAvoidingView só chega num layout depois do evento, então a
+  // rolagem se repete no onLayout do ScrollView, já com a área encolhida.
   useEffect(() => {
-    const assinatura = Keyboard.addListener("keyboardDidShow", () => rolagem.current?.scrollToEnd());
-    return () => assinatura.remove();
+    const abriu = Keyboard.addListener("keyboardDidShow", () => {
+      tecladoAberto.current = true;
+      rolagem.current?.scrollToEnd();
+    });
+    const fechou = Keyboard.addListener("keyboardDidHide", () => {
+      tecladoAberto.current = false;
+    });
+    return () => {
+      abriu.remove();
+      fechou.remove();
+    };
   }, []);
 
   async function seguir(entrada: () => Promise<Session | null>) {
@@ -114,6 +126,9 @@ export default function Entrar() {
         style={{ backgroundColor: c["surface-100"] }}
         contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
         keyboardShouldPersistTaps="handled"
+        onLayout={() => {
+          if (tecladoAberto.current) rolagem.current?.scrollToEnd();
+        }}
       >
         <Ceu serra>
           <View style={{ paddingTop: margens.top }}>
