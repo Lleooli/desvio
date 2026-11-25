@@ -230,81 +230,84 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
 
   return (
     <View style={s.tela}>
-      <Ceu serra>
-        <Text style={[estiloTexto("km"), s.maiusculas, { color: c["ink-muted"] }]}>
-          {viagem.origem} → {viagem.destino}
-        </Text>
-        <Text style={[estiloTexto("km"), s.maiusculas, { color: c["ink-muted"] }]}>{resumo}</Text>
-        <Text accessibilityRole="header" style={[estiloTexto("display-l"), { color: c.ink }]}>
-          {montando ? (
-            <>
-              Montando seu <Destaque>roteiro</Destaque>
-            </>
-          ) : (
-            <>
-              Seu roteiro está <Destaque>pronto</Destaque>
-            </>
-          )}
-        </Text>
-        <View style={s.faixaEstrada}>
-          <View style={s.recorteEstrada}>
-            <Estrada cidades={cidades} variante="curva" largura={medida.roteiroEstradaLargura} />
+      {/* Uma rolagem só: o cabeçalho e a Saída sobem junto com a lista. */}
+      <ScrollView contentContainerStyle={s.rolagem}>
+        <Ceu serra>
+          <Text style={[estiloTexto("km"), s.maiusculas, { color: c["ink-muted"] }]}>
+            {viagem.origem} → {viagem.destino}
+          </Text>
+          <Text style={[estiloTexto("km"), s.maiusculas, { color: c["ink-muted"] }]}>{resumo}</Text>
+          <Text accessibilityRole="header" style={[estiloTexto("display-l"), { color: c.ink }]}>
+            {montando ? (
+              <>
+                Montando seu <Destaque>roteiro</Destaque>
+              </>
+            ) : (
+              <>
+                Seu roteiro está <Destaque>pronto</Destaque>
+              </>
+            )}
+          </Text>
+          <View style={s.faixaEstrada}>
+            <View style={s.recorteEstrada}>
+              <Estrada cidades={cidades} variante="curva" largura={medida.roteiroEstradaLargura} />
+            </View>
+          </View>
+        </Ceu>
+
+        <View style={s.saida}>
+          <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Saída</Text>
+          <View style={s.seletor}>
+            <BotaoHora rotulo="−" leitura="30 minutos mais cedo" onPress={() => mudarSaida(-PASSO_SAIDA)} />
+            <Text
+              accessibilityLabel={`Saída às ${hora(saida)}`}
+              accessibilityLiveRegion="polite"
+              style={[estiloTexto("km"), s.horaSaida, { color: c.ink }]}
+            >
+              {hora(saida)}
+            </Text>
+            <BotaoHora rotulo="+" leitura="30 minutos mais tarde" onPress={() => mudarSaida(PASSO_SAIDA)} />
           </View>
         </View>
-      </Ceu>
 
-      <View style={s.saida}>
-        <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Saída</Text>
-        <View style={s.seletor}>
-          <BotaoHora rotulo="−" leitura="30 minutos mais cedo" onPress={() => mudarSaida(-PASSO_SAIDA)} />
-          <Text
-            accessibilityLabel={`Saída às ${hora(saida)}`}
-            accessibilityLiveRegion="polite"
-            style={[estiloTexto("km"), s.horaSaida, { color: c.ink }]}
-          >
-            {hora(saida)}
-          </Text>
-          <BotaoHora rotulo="+" leitura="30 minutos mais tarde" onPress={() => mudarSaida(PASSO_SAIDA)} />
-        </View>
-      </View>
-
-      {!roteiro ? (
-        <View style={s.centro}>
-          <ActivityIndicator color={c.placa} accessibilityLabel="Montando o roteiro" />
-        </View>
-      ) : itens.length === 0 ? (
-        <View style={s.centro}>
-          <Text style={[estiloTexto("body"), s.vazio, { color: c["ink-muted"] }]}>
-            Nenhum lugar com Bora ainda. Volte às paradas e escolha os seus.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={s.lista}>
-          {roteiro.fonte === "geometria" ? (
-            <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
-              Por agora, a ordem segue o km da estrada.
+        {!roteiro ? (
+          <View style={s.centro}>
+            <ActivityIndicator color={c.placa} accessibilityLabel="Montando o roteiro" />
+          </View>
+        ) : itens.length === 0 ? (
+          <View style={s.centro}>
+            <Text style={[estiloTexto("body"), s.vazio, { color: c["ink-muted"] }]}>
+              Nenhum lugar com Bora ainda. Volte às paradas e escolha os seus.
             </Text>
-          ) : null}
-          {erroEdicao ? (
-            <Text accessibilityLiveRegion="polite" style={[estiloTexto("body-s"), { color: c.ink }]}>
-              {erroEdicao}
-            </Text>
-          ) : null}
-          {noites.length > 0 ? <NoitesDaViagem viagemId={viagem.id} noites={noites} /> : null}
-          {itens.map((item, i) => (
-            <ItemRoteiro
-              key={item.id}
-              item={item}
-              posicao={i + 1}
-              total={itens.length}
-              saida={saida}
-              porque={roteiro.explicacoes[item.id]}
-              onMover={(passos) => moverItem(i, passos)}
-              onTirar={() => tirarItem(i)}
-            />
-          ))}
-        </ScrollView>
-      )}
+          </View>
+        ) : (
+          <View style={s.lista}>
+            {roteiro.fonte === "geometria" ? (
+              <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+                Por agora, a ordem segue o km da estrada.
+              </Text>
+            ) : null}
+            {erroEdicao ? (
+              <Text accessibilityLiveRegion="polite" style={[estiloTexto("body-s"), { color: c.ink }]}>
+                {erroEdicao}
+              </Text>
+            ) : null}
+            {noites.length > 0 ? <NoitesDaViagem viagemId={viagem.id} noites={noites} /> : null}
+            {itens.map((item, i) => (
+              <ItemRoteiro
+                key={item.id}
+                item={item}
+                posicao={i + 1}
+                total={itens.length}
+                saida={saida}
+                porque={roteiro.explicacoes[item.id]}
+                onMover={(passos) => moverItem(i, passos)}
+                onTirar={() => tirarItem(i)}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
 
       {tirado ? (
         <Toast icon="x" acao="Desfazer" onAcao={desfazer}>
@@ -564,6 +567,7 @@ function ItemRoteiro({ item, posicao, total, saida, porque, onMover, onTirar }: 
 
 const s = StyleSheet.create({
   tela: { flex: 1 },
+  rolagem: { flexGrow: 1 },
   maiusculas: { textTransform: "uppercase" },
   faixaEstrada: {
     height: medida.roteiroEstradaAltura,
