@@ -22,7 +22,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import cache, geo, gmaps, instagram, osm
+from . import cache, fronteira, geo, gmaps, instagram, osm
 
 log = logging.getLogger("desvio.coletor")
 
@@ -328,6 +328,11 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
 
         paradas: list[dict] = []
         vistas = {_norm(o["nome"]), _norm(d["nome"])}
+        # viagem entre duas cidades do Brasil não para em outro país (issue #95), nem quando a
+        # rota encosta na fronteira e a cidade maior perto da estrada é Ciudad del Este
+        so_brasil = fronteira.no_brasil((o["lat"], o["lon"])) and fronteira.no_brasil((d["lat"], d["lon"]))
+        if rota.get("sai_do_brasil"):
+            log.warning("rota de %s a %s sai do Brasil; as paradas de fora ficam de fora", origem, destino)
         for km, ponto in geo.amostrar(pontos, intervalo_km):
             if total - km < intervalo_km * 0.5:
                 break  # muito perto do destino, que já entra separado
@@ -335,7 +340,11 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
             if not cidade or _norm(cidade["nome"]) in vistas:
                 continue
             vistas.add(_norm(cidade["nome"]))
-            _, uf = await geo.cidade_e_uf(client, (cidade["lat"], cidade["lon"]))
+            if so_brasil and not fronteira.no_brasil((cidade["lat"], cidade["lon"])):
+                continue  # longe da fronteira: nem pergunta ao Nominatim
+            _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
+            if so_brasil and pais not in (None, "br"):
+                continue
             paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km})
         paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
                         "tipo": "destino", "raio_km": raio_destino_km})

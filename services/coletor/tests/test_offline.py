@@ -10,8 +10,8 @@ import pytest
 
 from app import coletor, geo, gmaps, instagram, osm, preferencias, roteiro
 
-# Rota reta simulada: de (-29.78,-55.79) subindo ~1.000 km para o norte
-ROTA = [(-29.78 + i * 0.09, -55.79 + i * 0.02) for i in range(101)]
+# Rota reta simulada: de (-29.78,-55.79) subindo ~1.000 km para o nordeste, sem sair do Brasil
+ROTA = [(-29.78 + i * 0.07, -55.79 + i * 0.06) for i in range(101)]
 
 
 def test_amostrar_e_km():
