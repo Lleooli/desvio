@@ -204,7 +204,7 @@ function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, onToque, ref }
   return (
     <GestureDetector gesture={gesto}>
       <Animated.View style={[StyleSheet.absoluteFill, movimento]}>
-        <SwipeCard card={card} />
+        <SwipeCard card={card} toqueDeFora={toque} />
         {(
           [
             ["bora", bora],
