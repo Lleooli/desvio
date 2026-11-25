@@ -3,16 +3,27 @@
     python cli.py "Alegrete, RS" "Vitória da Conquista, BA"
     python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo moto --google --intervalo 250
     python cli.py "Florianópolis, SC" "Garopaba, SC" --veiculo bicicleta --intervalo 30
+    python cli.py uso-ia --dias 30     # uso do Groq por modelo e dia, com a % da cota (precisa de PV_DATABASE_URL)
 """
 import argparse
 import asyncio
 import json
+import sys
 
-from app import coletor, geo
+from app import coletor, geo, uso_ia
+
+
+def uso() -> None:
+    ap = argparse.ArgumentParser(prog="cli.py uso-ia", description="Uso diário do Groq por modelo e % da cota (#41)")
+    ap.add_argument("--dias", type=int, default=7, help="dias para trás (padrão 7)")
+    args = ap.parse_args(sys.argv[2:])
+    print(uso_ia.tabela(uso_ia.resumo(args.dias)))
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Monta uma viagem por terra (carro, moto ou bicicleta)")
+    if sys.argv[1:2] == ["uso-ia"]:
+        return uso()
+    ap =argparse.ArgumentParser(description="Monta uma viagem por terra (carro, moto ou bicicleta)")
     ap.add_argument("origem")
     ap.add_argument("destino")
     ap.add_argument("--veiculo", choices=geo.VEICULOS, default="carro")

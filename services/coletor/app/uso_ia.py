@@ -48,3 +48,27 @@ def resumo(dias: int = 7) -> list[dict]:
     return [{"dia": l["dia"].isoformat(), "modelo": l["modelo"], "chamadas": l["chamadas"], "tokens": l["tokens"],
              "cota_requisicoes": round(l["chamadas"] / COTA_REQUISICOES_DIA, 3),
              "cota_tokens": round(l["tokens"] / COTA_TOKENS_DIA, 3)} for l in linhas]
+
+
+def _milhar(n: int) -> str:
+    return f"{n:,}".replace(",", ".")
+
+
+def _porcento(fracao: float) -> str:
+    return f"{fracao * 100:.1f}%".replace(".", ",")
+
+
+def tabela(linhas: list[dict]) -> str:
+    """Texto do `python cli.py uso-ia`: uma linha por dia e modelo, com a % da cota diária."""
+    if not linhas:
+        return "Nenhuma chamada ao Groq registrada no período."
+    cab = ("Dia", "Modelo", "Chamadas", "% req", "Tokens", "% tokens", "")
+    corpo = [(l["dia"], l["modelo"], _milhar(l["chamadas"]), _porcento(l["cota_requisicoes"]),
+              _milhar(l["tokens"]), _porcento(l["cota_tokens"]),
+              "ALERTA" if max(l["cota_requisicoes"], l["cota_tokens"]) >= ALERTA else "") for l in linhas]
+    larg = [max(len(str(c)) for c in col) for col in zip(cab, *corpo)]
+    fmt = lambda r: "  ".join(str(c).ljust(w) if i < 2 else str(c).rjust(w)
+                              for i, (c, w) in enumerate(zip(r, larg))).rstrip()
+    rodape = (f"Cota diária por modelo: {_milhar(COTA_REQUISICOES_DIA)} requisições e "
+              f"{_milhar(COTA_TOKENS_DIA)} tokens; ALERTA a partir de {_porcento(ALERTA)}.")
+    return "\n".join([fmt(cab), *map(fmt, corpo), "", rodape])
