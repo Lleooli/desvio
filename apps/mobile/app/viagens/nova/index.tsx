@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { buscarCidades, criarViagem, mensagemDeErro, type Cidade, type Veiculo } from "@/api";
+import { buscarCidades, criarViagem, mensagemDeErro, obterPerfilGosto, type Cidade, type Veiculo } from "@/api";
 import { Button } from "@/componentes/Button";
 import { Ceu } from "@/componentes/Ceu";
 import { categorias, Chip, type Categoria } from "@/componentes/Chip";
@@ -10,6 +10,7 @@ import { Destaque } from "@/componentes/Destaque";
 import { Icon } from "@/componentes/Icon";
 import { Segmented } from "@/componentes/Segmented";
 import { TextField } from "@/componentes/TextField";
+import { INTERVALO_PADRAO, INTERVALOS } from "@/intervalos";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, useCores } from "@/tema";
 
 // Só por terra (PRD, HU06): carro, moto ou bicicleta.
@@ -18,9 +19,6 @@ const MODOS: { valor: Veiculo; label: string; icon: "car" | "moto" | "bike" }[] 
   { valor: "moto", label: "Moto", icon: "moto" },
   { valor: "bicicleta", label: "Bicicleta", icon: "bike" },
 ];
-const INTERVALOS = [150, 200, 300].map((km) => ({ valor: km, label: `${km} km` }));
-// O perfil ainda não guarda um intervalo próprio; quando guardar, ele entra aqui no lugar do 200.
-const INTERVALO_PADRAO = 200;
 const CATEGORIAS_PADRAO: Categoria[] = ["turismo", "restaurante", "posto"];
 
 // O mesmo mínimo de GET /cidades (cidades.MINIMO_LETRAS no coletor).
@@ -117,10 +115,29 @@ export default function NovaViagem() {
   const [origem, setOrigem] = useState<Campo>({ texto: "" });
   const [destino, setDestino] = useState<Campo>({ texto: "" });
   const [intervalo, setIntervalo] = useState(INTERVALO_PADRAO);
+  const [mexeuNoIntervalo, setMexeuNoIntervalo] = useState(false);
   const [escolhidas, setEscolhidas] = useState<Categoria[]>(CATEGORIAS_PADRAO);
   const [avisoCategoria, setAvisoCategoria] = useState(false);
   const [erro, setErro] = useState<string>();
   const [ocupado, setOcupado] = useState(false);
+
+  // O intervalo padrão do perfil; se não carregar, fica o do app. Não desfaz a escolha da pessoa.
+  useEffect(() => {
+    if (mexeuNoIntervalo) return;
+    let valendo = true;
+    obterPerfilGosto().then(
+      (perfil) => valendo && perfil.intervalo_km !== null && setIntervalo(perfil.intervalo_km),
+      () => {},
+    );
+    return () => {
+      valendo = false;
+    };
+  }, [mexeuNoIntervalo]);
+
+  function escolherIntervalo(km: number) {
+    setMexeuNoIntervalo(true);
+    setIntervalo(km);
+  }
 
   function alternar(categoria: Categoria) {
     const ligada = escolhidas.includes(categoria);
@@ -191,7 +208,7 @@ export default function NovaViagem() {
         <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
         <View style={s.secao}>
           <Text style={rotuloSecao}>Parar a cada</Text>
-          <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={setIntervalo} />
+          <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={escolherIntervalo} />
         </View>
         <View style={s.secao}>
           <Text style={rotuloSecao}>O que procurar no caminho</Text>

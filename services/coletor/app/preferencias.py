@@ -171,13 +171,34 @@ def guardar_triagem(usuario: str, email: str | None, respostas: list, resumo: st
         con.execute("update usuario set perfil_gosto = %s where id = %s", (Jsonb(base), usuario))
 
 
+def ajustar(usuario: str, email: str | None, mudancas: dict) -> None:
+    """Grava o que a pessoa mudou no perfil: `tema`, `intervalo_km` e `resumo` da triagem.
+
+    Args:
+        usuario: Id da pessoa.
+        email: E-mail do token, para criar a linha em `usuario` se faltar.
+        mudancas: Só as chaves enviadas; as que faltam ficam como estão.
+    """
+    with banco.conectar() as con:
+        banco.garantir_usuario(usuario, email, con)
+        for coluna in ("tema", "intervalo_km"):
+            if coluna in mudancas:
+                con.execute(f"update usuario set {coluna} = %s where id = %s", (mudancas[coluna], usuario))
+        if "resumo" in mudancas:
+            # a pessoa corrige o que a IA entendeu; as respostas da triagem ficam
+            resumo = mudancas["resumo"].strip() or None
+            con.execute("update usuario set perfil_gosto = coalesce(perfil_gosto, '{}'::jsonb) "
+                        "|| jsonb_build_object('resumo', %s::text) where id = %s", (resumo, usuario))
+
+
 def perfil(usuario: str) -> dict:
     with banco.conectar() as con:
         # o card que a própria pessoa viu; decisões de antes do #61 não têm e usam o lugar
         rs = con.execute("select d.tipo, coalesce(d.card, l.dados) as dados from decisao d "
                          "join lugar l on l.id = d.lugar where d.usuario = %s", (usuario,)).fetchall()
-        gosto = _gosto((con.execute("select perfil_gosto from usuario where id = %s", (usuario,)).fetchone()
-                        or {}).get("perfil_gosto"))
+        u = con.execute("select perfil_gosto, tema, intervalo_km from usuario where id = %s",
+                        (usuario,)).fetchone() or {}
+    gosto = _gosto(u.get("perfil_gosto"))
     # (aceite, categoria, tipo, faixa_preco, nota); favorito conta como aceite, igual ao bora
     linhas = [(ACEITE.get(r["tipo"], 0), r["dados"].get("categoria"), r["dados"].get("tipo"),
                r["dados"].get("faixa_preco"), _nota(r["dados"].get("nota"))) for r in rs]
@@ -195,7 +216,8 @@ def perfil(usuario: str) -> dict:
     return {"total_swipes": len(linhas), "aceitos": sum(l[0] for l in linhas),
             "nota_media_aceitos": round(sum(notas) / len(notas), 2) if notas else None, **taxa,
             "resumo": gosto.get("resumo"), "respostas": gosto.get("respostas") or [],
-            "pulou": bool(gosto.get("pulou"))}
+            "pulou": bool(gosto.get("pulou")), "tema": u.get("tema") or "sistema",
+            "intervalo_km": u.get("intervalo_km")}
 
 
 def ja_vistos(usuario: str) -> set[str]:

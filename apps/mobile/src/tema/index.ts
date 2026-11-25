@@ -1,7 +1,9 @@
 import { createContext, createElement, useContext, type ReactNode } from "react";
 import { useColorScheme, type TextStyle } from "react-native";
+import { useEscolhaTema } from "./escolha";
 import { cores, espaco, raio, sombras, tipografia, type Cor, type Tema } from "./tokens.gerado";
 
+export { definirTema, useEscolhaTema } from "./escolha";
 export { espaco, raio, tipografia };
 export type { Cor, Tema };
 
@@ -84,6 +86,10 @@ export const medida = {
   seloIa: 32,
   cantoBalao: 6,
   barraTriagem: 8,
+  // Perfil: cada linha do gosto é rótulo, barra da taxa e porcentagem (canvas Perfil)
+  gostoRotulo: 120,
+  gostoBarra: 10,
+  gostoPorcentagem: 44,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
@@ -107,15 +113,21 @@ export function estiloTexto(nome: keyof typeof tipografia): TextStyle {
 
 const TemaForcado = createContext<Tema | null>(null);
 
-/** Força um tema para tudo dentro dele (catálogo de componentes; depois, a escolha do perfil). */
+/** Força um tema para tudo dentro dele (catálogo de componentes). */
 export function TemaProvider({ tema, children }: { tema: Tema; children: ReactNode }) {
   return createElement(TemaForcado.Provider, { value: tema }, children);
 }
 
-/** Cores e sombras do tema atual: o do TemaProvider mais próximo ou, sem ele, o do sistema. */
+/**
+ * Cores e sombras do tema atual: o do TemaProvider mais próximo; sem ele, o escolhido no
+ * perfil; e, com "sistema", o do aparelho.
+ */
 export function useCores() {
   const forcado = useContext(TemaForcado);
+  const { escolha } = useEscolhaTema();
   const esquema = useColorScheme();
-  const tema: Tema = forcado ?? (esquema === "dark" ? "dark" : "light");
+  const doSistema: Tema = esquema === "dark" ? "dark" : "light";
+  const escolhido: Tema = escolha === "claro" ? "light" : escolha === "escuro" ? "dark" : doSistema;
+  const tema: Tema = forcado ?? escolhido;
   return { tema, c: cores[tema], sombra: sombras[tema] };
 }
