@@ -3,6 +3,8 @@
 Guarda o que é caro e muda pouco: lugares do OpenStreetMap e do Google Maps por
 (cidade, UF, categoria), geocodificação do Nominatim, cidades no caminho e rotas
 do OSRM. É o que leva o primeiro card a menos de 60 s quando a rota já foi feita.
+Desde o #93 também o Instagram por lugar e o roteiro da IA; os cards de cada cidade
+já coletada ficam na tabela parada_cidade (app/parada_cidade.py), pela mesma conexão.
 
 Um erro no cache (ou banco não configurado) nunca derruba a coleta: vira um
 "não tinha" e segue para a fonte.
@@ -32,6 +34,7 @@ _ERROS = psycopg.Error
 
 _con: psycopg.Connection | None = None
 _desligado = False  # a conexão falhou neste job: segue sem cache até o fim dele
+_em_sessao = False  # fora de um job (a API, para o roteiro e o GET da viagem) não desliga de vez
 
 
 def _fechar() -> None:
@@ -47,12 +50,13 @@ def _fechar() -> None:
 @asynccontextmanager
 async def sessao() -> AsyncIterator[None]:
     """Um job da coleta: no fim fecha a conexão e religa o cache para o próximo."""
-    global _desligado
+    global _desligado, _em_sessao
+    _em_sessao = True
     try:
         yield
     finally:
         _fechar()
-        _desligado = False
+        _desligado = _em_sessao = False
 
 
 def _conexao() -> psycopg.Connection | None:
@@ -72,7 +76,8 @@ def _conexao() -> psycopg.Connection | None:
 def _desligar(ao: str) -> None:
     global _desligado
     log.warning("cache indisponível ao %s; sigo sem cache até o fim do job", ao, exc_info=True)
-    _desligado = True
+    # na API não há "fim do job" que religue: lá a próxima chamada só tenta conectar de novo
+    _desligado = _em_sessao
     _fechar()
 
 
@@ -101,6 +106,19 @@ def guardar(chave: str, valor: Any) -> None:
                     (chave, Jsonb(valor)))
     except _ERROS:
         _desligar(f"gravar {chave}")
+
+
+def consultar(sql: str, params: tuple = (), ao: str = "consultar") -> list[dict] | None:
+    """Uma consulta na conexão do job (app/parada_cidade.py); None sem banco ou se falhar."""
+    con = _conexao()
+    if con is None:
+        return None
+    try:
+        cur = con.execute(sql, params)
+        return cur.fetchall() if cur.description else []
+    except _ERROS:
+        _desligar(ao)
+        return None
 
 
 def apagar_vencidos(dias: float | None = None) -> int:

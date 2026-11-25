@@ -2,6 +2,8 @@
 
 Fluxo pensado para o front (estilo Tinder):
 1. POST /viagem (carro, moto ou bicicleta)  → job_id e viagem_id (202); a coleta roda no worker
+                                              (cidade já coletada há menos de 30 dias sai de parada_cidade;
+                                               "forcar": true coleta de novo)
    GET  /jobs/{id}                          → status; quando "pronto", paradas com cards
    GET  /viagens                            → as viagens da pessoa, a mais recente primeiro
    GET  /viagens/{id}                       → paradas e cards ainda não avaliados, pelo gosto
@@ -68,6 +70,7 @@ class Viagem(BaseModel):
     por_categoria: int = Field(5, ge=1, le=20)
     usar_google_maps: bool = False
     buscar_instagram: bool = True
+    forcar: bool = Field(False, description="Coleta as cidades de novo, sem usar as já guardadas, para trazer lugares novos")
 
 
 class Card(BaseModel):
