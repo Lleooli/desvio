@@ -199,7 +199,10 @@ def test_fluxo_carro_com_places_api(mock_http, monkeypatch):
     r = asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True,
                                             progresso=lambda *a: etapas.append(a)))
     assert _handler.keywords is None  # o gosom nem foi chamado
-    assert len(_handler.places) == 3 * len(r["paradas"])  # uma Text Search por parada e categoria
+    # uma Text Search por parada e categoria, mais "hotéis" na cidade de pernoite (13,9 h: 1 noite)
+    estadias = [p for p in r["paradas"] if p["tipo"] == "estadia"]
+    assert len(estadias) == 1 and estadias[0]["dia"] == 1
+    assert len(_handler.places) == 3 * len(r["paradas"]) + len(estadias)
     rest = [c for c in r["paradas"][1]["cards"] if c["categoria"] == "restaurante"]
     g = rest[0]
     assert g["fonte"] == "google_maps" and g["id"].startswith("gmaps:PL") and g["nota"] == 4.8
