@@ -81,8 +81,13 @@ _limitadores: dict[str, Limitador] = {}
 
 
 async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, dados: dict,
-                      schema: dict, nome: str, max_tokens: int = 1024, timeout: float = 10.0) -> dict:
-    """Chama o Groq. `timeout` é o prazo total: espera no limitador + requisição HTTP."""
+                      schema: dict, nome: str, max_tokens: int = 1024, timeout: float = 10.0,
+                      espera_max: float | None = None) -> dict:
+    """Chama o Groq. `timeout` é o prazo total: espera no limitador + requisição HTTP.
+
+    Com `espera_max` (só no worker, onde ninguém espera na tela), a fila do limitador
+    pode esperar até `espera_max` segundos, e `timeout` vale só para a requisição HTTP.
+    """
     chave = os.getenv("GROQ_API_KEY")
     if not chave:
         raise IAIndisponivel("GROQ_API_KEY não configurada")
@@ -90,13 +95,14 @@ async def chamar_json(client: httpx.AsyncClient, *, modelo: str, sistema: str, d
     conteudo = json.dumps(dados, ensure_ascii=False)
     tokens = estimar_tokens(sistema + conteudo) + max_tokens
     lim = _limitadores.setdefault(modelo, Limitador())
+    prazo_fila = timeout if espera_max is None else espera_max
     try:
-        await asyncio.wait_for(lim.reservar(tokens, timeout), timeout)
+        await asyncio.wait_for(lim.reservar(tokens, prazo_fila), prazo_fila)
     except TimeoutError as e:
-        raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {timeout:g}s") from e
+        raise IAIndisponivel(f"limite do Groq: fila de {modelo} passou do prazo de {prazo_fila:g}s") from e
     except RuntimeError as e:  # lock preso a outro event loop (vários asyncio.run): plano B, não 500
         raise IAIndisponivel(f"limite do Groq indisponível: {e}") from e
-    restante = timeout - (time.monotonic() - inicio)
+    restante = timeout - (time.monotonic() - inicio) if espera_max is None else timeout
     if restante <= 0:
         raise IAIndisponivel(f"Groq: prazo de {timeout:g}s esgotado na fila")
     corpo = {
@@ -264,6 +270,74 @@ async def _ranquear_pela_ia(client: httpx.AsyncClient, cards: list[dict], resumo
     return _reordenar(topo, r["ids"]) + resto
 
 
+# Ranqueamento no worker (issue #95): uma parada por chamada esgotava os 8 mil tokens por
+# minuto na sétima parada e o resto caía no plano B. Agora as paradas vão juntas, até
+# LOTE_TOKENS de entrada por chamada, com os cards numerados (número gasta menos token que
+# o id), e a fila do limitador espera até ESPERA_LOTE_S pela vaga em vez de desistir em 10 s.
+LOTE_TOKENS = int(os.getenv("PV_RANQUE_LOTE_TOKENS", "3000"))
+ESPERA_LOTE_S = float(os.getenv("PV_RANQUE_ESPERA_S", "70"))
+_SCHEMA_RANQUEAR_LOTE = {
+    "type": "object", "additionalProperties": False, "required": ["paradas"],
+    "properties": {"paradas": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False, "required": ["parada", "ordem"],
+        "properties": {"parada": {"type": "integer"},
+                       "ordem": {"type": "array", "items": {"type": "integer"}}}}}},
+}
+_SISTEMA_RANQUEAR_LOTE = (
+    "Você ordena lugares de várias paradas de uma viagem pelo gosto da pessoa. Recebe o resumo do "
+    "gosto e, para cada parada, os cards numerados (n). Para cada parada, devolva todos os n dela, "
+    "do mais recomendado ao menos, sem inventar números.")
+
+
+def _parada_do_lote(i: int, topo: list[dict]) -> dict:
+    # sem o id (vai o número), sem campo vazio e com descrição curta: cada token conta no
+    # limite por minuto, e 12 paradas de 15 cards já passam dele
+    cards = [{"n": n, **{k: v for k, v in {**_card_enxuto(c), "descricao": (c.get("descricao") or "")[:60],
+                                            "sobre": (c.get("sobre") or [])[:3]}.items()
+                         if k != "id" and v not in (None, "", [])}}
+             for n, c in enumerate(topo)]
+    return {"parada": i, "cards": cards}
+
+
+def _lotes(topos: list[list[dict]]) -> list[list[int]]:
+    """Índices das paradas agrupados para caber em LOTE_TOKENS de entrada por chamada."""
+    lotes: list[list[int]] = []
+    soma = 0
+    for i, topo in enumerate(topos):
+        t = estimar_tokens(json.dumps(_parada_do_lote(i, topo), ensure_ascii=False))
+        if lotes and soma + t <= LOTE_TOKENS:
+            lotes[-1].append(i)
+            soma += t
+        else:
+            lotes.append([i])
+            soma = t
+    return lotes
+
+
+async def _ranquear_lote_pela_ia(client: httpx.AsyncClient, topos: list[list[dict]],
+                                 resumo: str) -> list[list[dict] | None]:
+    """Os cards de cada parada ordenados pelo Groq, em poucas chamadas; None na parada sem resposta."""
+    saida: list[list[dict] | None] = [None] * len(topos)
+    for lote in _lotes(topos):
+        n_cards = sum(len(topos[i]) for i in lote)
+        try:
+            r = await chamar_json(client, modelo=MODELO_RAPIDO, sistema=_SISTEMA_RANQUEAR_LOTE,
+                                  dados={"gosto": resumo, "paradas": [_parada_do_lote(i, topos[i]) for i in lote]},
+                                  schema=_SCHEMA_RANQUEAR_LOTE, nome="ranqueamento",
+                                  max_tokens=min(2000, 300 + 8 * n_cards), espera_max=ESPERA_LOTE_S)
+        except IAIndisponivel:
+            continue  # plano B deste lote; o próximo ainda tenta
+        for p in r["paradas"]:
+            i = p.get("parada") if isinstance(p, dict) else None
+            if i not in lote or saida[i] is not None:
+                continue
+            ids = [topos[i][n]["id"] for n in p.get("ordem") or []
+                   if isinstance(n, int) and 0 <= n < len(topos[i])]
+            if ids:
+                saida[i] = _reordenar(topos[i], ids)
+    return saida
+
+
 async def ranquear(client: httpx.AsyncClient, cards: list[dict], resumo: str) -> list[dict]:
     """Os cards ordenados pelo gosto; sem IA, na ordem em que vieram."""
     return await _ranquear_pela_ia(client, cards, resumo) or cards
@@ -325,28 +399,35 @@ async def ranquear_paradas(paradas: list[dict], resumo: str | None) -> None:
 
     A ordem de quem chamou (a estatística) vale para o resto e para o plano B.
     Sem resumo, não chama a IA. Cidade e categoria já ranqueadas com o mesmo
-    resumo saem do cache e não vão ao Groq de novo.
+    resumo saem do cache e não vão ao Groq de novo. As outras vão juntas, em lotes
+    (_ranquear_lote_pela_ia); o lote que falha fica com a ordem estatística.
     """
     if not resumo:
         return
+    pendentes = []
+    for parada in paradas:
+        cards = parada.get("cards") or []
+        topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
+        if len(topo) < 2:
+            continue
+        ordem = _ordem_em_cache(parada, resumo)
+        if ordem:
+            parada["cards"] = _reordenar(topo, ordem) + resto
+        else:
+            pendentes.append(parada)
+    if not pendentes:
+        return
+    topos = [p["cards"][:MAX_RANQUEAR] for p in pendentes]
     async with httpx.AsyncClient() as client:
-        for parada in paradas:
-            cards = parada.get("cards") or []
-            topo, resto = cards[:MAX_RANQUEAR], cards[MAX_RANQUEAR:]
-            if len(topo) < 2:
-                continue
-            ordem = _ordem_em_cache(parada, resumo)
-            if ordem:
-                parada["cards"] = _reordenar(topo, ordem) + resto
-                continue
-            ordenados = await _ranquear_pela_ia(client, topo, resumo)
-            if ordenados is None:
-                continue  # plano B: fica a ordem estatística, e nada vai ao cache como se fosse da IA
-            ordem = [c["id"] for c in ordenados]
-            cidade = parada.get("nome") or ""
-            for cat in _categorias_do_topo(topo):
-                cache.guardar(chave_ranque(cidade, cat, resumo), ordem)
-            parada["cards"] = ordenados + resto
+        respostas = await _ranquear_lote_pela_ia(client, topos, resumo)
+    for parada, topo, ordenados in zip(pendentes, topos, respostas):
+        if ordenados is None:
+            continue  # plano B: fica a ordem estatística, e nada vai ao cache como se fosse da IA
+        ordem = [c["id"] for c in ordenados]
+        cidade = parada.get("nome") or ""
+        for cat in _categorias_do_topo(topo):
+            cache.guardar(chave_ranque(cidade, cat, resumo), ordem)
+        parada["cards"] = ordenados + parada["cards"][MAX_RANQUEAR:]
 
 
 # --- Roteiro -----------------------------------------------------------------
