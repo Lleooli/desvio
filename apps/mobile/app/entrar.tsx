@@ -2,8 +2,8 @@ import type { Session } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/componentes/Button";
 import { Ceu } from "@/componentes/Ceu";
@@ -44,6 +44,25 @@ export default function Entrar() {
   const [erro, setErro] = useState<string>();
   const [linkEnviado, setLinkEnviado] = useState(false);
   const [ocupado, setOcupado] = useState(false);
+  const rolagem = useRef<ScrollView>(null);
+  const tecladoAberto = useRef(false);
+
+  // Com o teclado aberto, o campo de e-mail e o botão do link (no fim da tela) sobem para cima dele.
+  // No Android o padding do KeyboardAvoidingView só chega num layout depois do evento, então a
+  // rolagem se repete no onLayout do ScrollView, já com a área encolhida.
+  useEffect(() => {
+    const abriu = Keyboard.addListener("keyboardDidShow", () => {
+      tecladoAberto.current = true;
+      rolagem.current?.scrollToEnd();
+    });
+    const fechou = Keyboard.addListener("keyboardDidHide", () => {
+      tecladoAberto.current = false;
+    });
+    return () => {
+      abriu.remove();
+      fechou.remove();
+    };
+  }, []);
 
   async function seguir(entrada: () => Promise<Session | null>) {
     setErro(undefined);
@@ -99,85 +118,93 @@ export default function Entrar() {
       rotulo
     );
 
+  // "padding" também no Android: com a tela de ponta a ponta (Expo 57), a janela não encolhe sozinha com o teclado.
   return (
-    <ScrollView
-      style={{ backgroundColor: c["surface-100"] }}
-      contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Ceu serra>
-        <View style={{ paddingTop: margens.top }}>
-          <Pressable
-            onPress={fechar}
-            accessibilityRole="button"
-            accessibilityLabel="Voltar"
-            style={s.fechar}
-          >
-            <Icon name="x" size={tamanhoIcone.nav} color={c.ink} />
-          </Pressable>
-          <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
-            Entre para guardar suas <Destaque>viagens</Destaque>
-          </Text>
-          <Text style={[estiloTexto("body"), s.texto, { color: c["ink-muted"] }]}>
-            Seus roteiros e o que você curte ficam salvos em qualquer celular.
+    <KeyboardAvoidingView style={[s.janela, { backgroundColor: c["surface-100"] }]} behavior="padding">
+      <ScrollView
+        ref={rolagem}
+        style={{ backgroundColor: c["surface-100"] }}
+        contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
+        keyboardShouldPersistTaps="handled"
+        onLayout={() => {
+          if (tecladoAberto.current) rolagem.current?.scrollToEnd();
+        }}
+      >
+        <Ceu serra>
+          <View style={{ paddingTop: margens.top }}>
+            <Pressable
+              onPress={fechar}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar"
+              style={s.fechar}
+            >
+              <Icon name="x" size={tamanhoIcone.nav} color={c.ink} />
+            </Pressable>
+            <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
+              Entre para guardar suas <Destaque>viagens</Destaque>
+            </Text>
+            <Text style={[estiloTexto("body"), s.texto, { color: c["ink-muted"] }]}>
+              Seus roteiros e o que você curte ficam salvos em qualquer celular.
+            </Text>
+          </View>
+        </Ceu>
+
+        <View style={s.opcoes}>
+          <Button block variant="secondary" disabled={ocupado} onPress={() => seguir(entrarComGoogle)}>
+            Continuar com Google
+          </Button>
+          <Button block variant="secondary" disabled={ocupado} onPress={() => seguir(entrarComApple)}>
+            Continuar com Apple
+          </Button>
+          <View style={s.divisor}>
+            <View style={[s.linha, { backgroundColor: c.line }]} />
+            <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>ou com e-mail</Text>
+            <View style={[s.linha, { backgroundColor: c.line }]} />
+          </View>
+          <TextField
+            label="Qual é o seu e-mail?"
+            icon="at"
+            value={email}
+            onChangeText={(texto) => {
+              setEmail(texto);
+              setLinkEnviado(false);
+            }}
+            onSubmitEditing={receberLink}
+            placeholder="voce@email.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            hint={
+              linkEnviado
+                ? "Mandamos o link para o seu e-mail. Abra no celular em até 15 minutos."
+                : "Mandamos um link de acesso, sem senha."
+            }
+            erro={erroEmail}
+          />
+        </View>
+
+        <View style={s.rodape}>
+          {erro ? (
+            <Text accessibilityRole="alert" style={[estiloTexto("body-s"), s.centro, { color: c.perigo }]}>
+              {erro}
+            </Text>
+          ) : null}
+          <Button block disabled={ocupado} onPress={receberLink}>
+            {linkEnviado ? "Mandar outro link" : "Receber link de acesso"}
+          </Button>
+          <Text style={[estiloTexto("body-s"), s.centro, { color: c["ink-muted"] }]}>
+            Ao continuar, você aceita os {linkLegal("Termos de uso", LINK_TERMOS)} e a{" "}
+            {linkLegal("Política de privacidade", LINK_PRIVACIDADE)}.
           </Text>
         </View>
-      </Ceu>
-
-      <View style={s.opcoes}>
-        <Button block variant="secondary" disabled={ocupado} onPress={() => seguir(entrarComGoogle)}>
-          Continuar com Google
-        </Button>
-        <Button block variant="secondary" disabled={ocupado} onPress={() => seguir(entrarComApple)}>
-          Continuar com Apple
-        </Button>
-        <View style={s.divisor}>
-          <View style={[s.linha, { backgroundColor: c.line }]} />
-          <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>ou com e-mail</Text>
-          <View style={[s.linha, { backgroundColor: c.line }]} />
-        </View>
-        <TextField
-          label="Qual é o seu e-mail?"
-          icon="at"
-          value={email}
-          onChangeText={(texto) => {
-            setEmail(texto);
-            setLinkEnviado(false);
-          }}
-          onSubmitEditing={receberLink}
-          placeholder="voce@email.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          autoCorrect={false}
-          hint={
-            linkEnviado
-              ? "Mandamos o link para o seu e-mail. Abra no celular em até 15 minutos."
-              : "Mandamos um link de acesso, sem senha."
-          }
-          erro={erroEmail}
-        />
-      </View>
-
-      <View style={s.rodape}>
-        {erro ? (
-          <Text accessibilityRole="alert" style={[estiloTexto("body-s"), s.centro, { color: c.perigo }]}>
-            {erro}
-          </Text>
-        ) : null}
-        <Button block disabled={ocupado} onPress={receberLink}>
-          {linkEnviado ? "Mandar outro link" : "Receber link de acesso"}
-        </Button>
-        <Text style={[estiloTexto("body-s"), s.centro, { color: c["ink-muted"] }]}>
-          Ao continuar, você aceita os {linkLegal("Termos de uso", LINK_TERMOS)} e a{" "}
-          {linkLegal("Política de privacidade", LINK_PRIVACIDADE)}.
-        </Text>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
+  janela: { flex: 1 },
   tela: { flexGrow: 1 },
   fechar: {
     width: espaco.touch,
