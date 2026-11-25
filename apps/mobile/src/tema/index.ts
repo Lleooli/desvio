@@ -80,6 +80,10 @@ export const medida = {
   roteiroEstradaRecorte: 40,
   roteiroEstradaLargura: 40,
   roteiroNumero: 32,
+  // Triagem: o selo "IA" ao lado do balão, o canto do balão e a barra de progresso (canvas Triagem)
+  seloIa: 32,
+  cantoBalao: 6,
+  barraTriagem: 8,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
