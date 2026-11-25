@@ -1,12 +1,13 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { buscarCidades, criarViagem, mensagemDeErro, obterPerfilGosto, type Cidade, type Veiculo } from "@/api";
 import { Button } from "@/componentes/Button";
 import { Ceu } from "@/componentes/Ceu";
 import { categorias, Chip, type Categoria } from "@/componentes/Chip";
 import { Destaque } from "@/componentes/Destaque";
+import { FaixaDoStatus } from "@/componentes/FaixaDoStatus";
 import { Icon } from "@/componentes/Icon";
 import { Segmented } from "@/componentes/Segmented";
 import { TextField } from "@/componentes/TextField";
@@ -92,6 +93,7 @@ function CampoCidade({ label, campo, onChange }: { label: string; campo: Campo; 
               onPress={() => {
                 onChange({ texto: cidade.rotulo });
                 setSugestoes([]);
+                Keyboard.dismiss(); // cidade escolhida: o teclado não fica cobrindo o resto do formulário
               }}
               accessibilityRole="button"
               accessibilityLabel={cidade.rotulo}
@@ -185,62 +187,65 @@ export default function NovaViagem() {
   const rotuloSecao = [estiloTexto("body-strong"), { color: c.ink }];
 
   return (
-    <ScrollView
-      style={{ backgroundColor: c["surface-100"] }}
-      contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Ceu serra>
-        <View style={{ paddingTop: margens.top }}>
-          <Pressable onPress={fechar} accessibilityRole="button" accessibilityLabel="Voltar para suas viagens" style={s.fechar}>
-            <Icon name="x" size={tamanhoIcone.nav} color={c.ink} />
-          </Pressable>
-          <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
-            Para onde a <Destaque>estrada</Destaque> te leva?
-          </Text>
-        </View>
-      </Ceu>
-
-      <View style={s.formulario}>
-        <Segmented block rotulo="Como você vai?" opcoes={MODOS} valor={modo} onChange={setModo} />
-
-        <CampoCidade label="De onde você sai?" campo={origem} onChange={setOrigem} />
-        <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
-        <View style={s.secao}>
-          <Text style={rotuloSecao}>Parar a cada</Text>
-          <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={escolherIntervalo} />
-        </View>
-        <View style={s.secao}>
-          <Text style={rotuloSecao}>O que procurar no caminho</Text>
-          <View style={s.chips}>
-            {(Object.keys(categorias) as Categoria[]).map((categoria) => (
-              <Chip
-                key={categoria}
-                categoria={categoria}
-                selected={escolhidas.includes(categoria)}
-                onPress={() => alternar(categoria)}
-              />
-            ))}
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ backgroundColor: c["surface-100"] }}
+        contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Ceu serra>
+          <View style={{ paddingTop: margens.top }}>
+            <Pressable onPress={fechar} accessibilityRole="button" accessibilityLabel="Voltar para suas viagens" style={s.fechar}>
+              <Icon name="x" size={tamanhoIcone.nav} color={c.ink} />
+            </Pressable>
+            <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
+              Para onde a <Destaque>estrada</Destaque> te leva?
+            </Text>
           </View>
-          {avisoCategoria ? (
-            <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
-              Deixe pelo menos uma categoria ligada.
+        </Ceu>
+
+        <View style={s.formulario}>
+          <Segmented block rotulo="Como você vai?" opcoes={MODOS} valor={modo} onChange={setModo} />
+
+          <CampoCidade label="De onde você sai?" campo={origem} onChange={setOrigem} />
+          <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
+          <View style={s.secao}>
+            <Text style={rotuloSecao}>Parar a cada</Text>
+            <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={escolherIntervalo} />
+          </View>
+          <View style={s.secao}>
+            <Text style={rotuloSecao}>O que procurar no caminho</Text>
+            <View style={s.chips}>
+              {(Object.keys(categorias) as Categoria[]).map((categoria) => (
+                <Chip
+                  key={categoria}
+                  categoria={categoria}
+                  selected={escolhidas.includes(categoria)}
+                  onPress={() => alternar(categoria)}
+                />
+              ))}
+            </View>
+            {avisoCategoria ? (
+              <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>
+                Deixe pelo menos uma categoria ligada.
+              </Text>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={s.rodape}>
+          {erro ? (
+            <Text accessibilityRole="alert" style={[estiloTexto("body-s"), s.centro, { color: c.perigo }]}>
+              {erro}
             </Text>
           ) : null}
+          <Button block disabled={ocupado} onPress={buscarParadas}>
+            Buscar paradas
+          </Button>
         </View>
-      </View>
-
-      <View style={s.rodape}>
-        {erro ? (
-          <Text accessibilityRole="alert" style={[estiloTexto("body-s"), s.centro, { color: c.perigo }]}>
-            {erro}
-          </Text>
-        ) : null}
-        <Button block disabled={ocupado} onPress={buscarParadas}>
-          Buscar paradas
-        </Button>
-      </View>
-    </ScrollView>
+      </ScrollView>
+      <FaixaDoStatus cor="ceu-base" />
+    </View>
   );
 }
 

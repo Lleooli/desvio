@@ -1,3 +1,4 @@
+import { duracao } from "@/duracao";
 import { Image, Linking, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector, type GestureType } from "react-native-gesture-handler";
 import { medida, espaco, estiloTexto, fontes, raio, tamanhoIcone, useCores } from "@/tema";
@@ -48,11 +49,11 @@ export function handleInstagram(instagram?: string | null): string | null {
   return /^[A-Za-z0-9_.]{1,30}$/.test(handle) ? handle : null;
 }
 
-/** "KM 512" e "+6,8H" (ou "+27H"), no padrão brasileiro. */
+/** "KM 512" e "+6H48" (ou "+27H", "+45 MIN"): horas e minutos, nunca décimo de hora. */
 export function textoKm(km: number, horas?: number | null) {
   return {
     km: `KM ${numero(km)}`,
-    horas: horas != null ? `+${numero(horas, horas % 1 ? 1 : 0)}H` : null,
+    horas: horas != null ? `+${duracao(horas)}` : null,
   };
 }
 

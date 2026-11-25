@@ -42,32 +42,43 @@ export function FundoCeu({ variante = "faixa" }: { variante?: VarianteCeu }) {
   // O useId do React traz caracteres que não valem dentro de url(#…).
   const prefixo = "ceu" + useId().replace(/[^a-zA-Z0-9]/g, "");
   const lista = brilhos[variante];
+  // Em pixels, não em objectBoundingBox: no Android o react-native-svg corta o gradiente
+  // em linha reta quando a caixa não é quadrada e há gradientTransform.
+  const [caixa, setCaixa] = useState<{ w: number; h: number } | null>(null);
   return (
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" aria-hidden>
-      <Defs>
-        {lista.map((b, i) => (
-          // Elipse no canto: o raio 1 da caixa vira rx × ry pela transformação.
-          <RadialGradient
-            key={b.cor}
-            id={`${prefixo}${i}`}
-            gradientUnits="objectBoundingBox"
-            cx={0}
-            cy={0}
-            fx={0}
-            fy={0}
-            r={1}
-            gradientTransform={`translate(${b.x} ${b.y}) scale(${b.rx} ${b.ry})`}
-          >
-            <Stop offset={0} stopColor={c[b.cor]} stopOpacity={1} />
-            <Stop offset={b.fim} stopColor={c[b.cor]} stopOpacity={0} />
-          </RadialGradient>
-        ))}
-      </Defs>
-      <Rect width="100%" height="100%" fill={c["ceu-base"]} />
-      {lista.map((b, i) => (
-        <Rect key={b.cor} width="100%" height="100%" fill={`url(#${prefixo}${i})`} />
-      ))}
-    </Svg>
+    <View
+      style={[StyleSheet.absoluteFill, { backgroundColor: c["ceu-base"] }]}
+      aria-hidden
+      onLayout={(e) => {
+        const { width: w, height: h } = e.nativeEvent.layout;
+        if (!caixa || caixa.w !== w || caixa.h !== h) setCaixa({ w, h });
+      }}
+    >
+      {caixa ? (
+        <Svg width={caixa.w} height={caixa.h}>
+          <Defs>
+            {lista.map((b, i) => (
+              // Elipse no canto: o raio 1 vira rx × ry da caixa pela transformação.
+              <RadialGradient
+                key={b.cor}
+                id={`${prefixo}${i}`}
+                gradientUnits="userSpaceOnUse"
+                cx={0}
+                cy={0}
+                r={1}
+                gradientTransform={`translate(${b.x * caixa.w} ${b.y * caixa.h}) scale(${b.rx * caixa.w} ${b.ry * caixa.h})`}
+              >
+                <Stop offset={0} stopColor={c[b.cor]} stopOpacity={1} />
+                <Stop offset={b.fim} stopColor={c[b.cor]} stopOpacity={0} />
+              </RadialGradient>
+            ))}
+          </Defs>
+          {lista.map((b, i) => (
+            <Rect key={b.cor} width={caixa.w} height={caixa.h} fill={`url(#${prefixo}${i})`} />
+          ))}
+        </Svg>
+      ) : null}
+    </View>
   );
 }
 

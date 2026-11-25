@@ -1,12 +1,12 @@
 import { Link, router, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ajustarPerfil,
   apagarMinhaConta,
-  exportarMeusDados,
+  linkParaExportar,
   mensagemDeErro,
   obterPerfilGosto,
   type AjustePerfil,
@@ -18,6 +18,7 @@ import { Aviso } from "@/componentes/Aviso";
 import { Button } from "@/componentes/Button";
 import { categorias, type Categoria } from "@/componentes/Chip";
 import { Destaque } from "@/componentes/Destaque";
+import { FaixaDoStatus } from "@/componentes/FaixaDoStatus";
 import { FolhaApagarConta } from "@/componentes/FolhaApagarConta";
 import { Icon } from "@/componentes/Icon";
 import { Segmented } from "@/componentes/Segmented";
@@ -51,8 +52,9 @@ function SeusDados() {
     setExportando(true);
     setErroExportar(undefined);
     try {
-      const dados = await exportarMeusDados();
-      await Share.share({ title: "Seus dados do Desvio", message: JSON.stringify(dados, null, 2) });
+      // O navegador baixa o arquivo pelo link de uso único; o JSON não cabe no compartilhar
+      // do Android quando há viagens longas (passa de 1 MB).
+      await WebBrowser.openBrowserAsync(await linkParaExportar());
     } catch (e) {
       setErroExportar(mensagemDeErro(e));
     } finally {
@@ -233,67 +235,70 @@ export default function Perfil() {
   const resumoMudou = resumo.trim() !== (perfil?.resumo ?? "");
 
   return (
-    <ScrollView
-      style={{ backgroundColor: c["surface-100"] }}
-      contentContainerStyle={[s.tela, { paddingTop: margens.top + espaco["space-8"] }]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={s.cabecalho}>
-        <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
-          O que você <Destaque>curte</Destaque>
-        </Text>
-        <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
-          {aprendeu
-            ? `Aprendido com ${lugares(total)} que você deslizou. Usamos isso para ordenar os próximos cards.`
-            : `Ainda estamos aprendendo seu gosto. Você avaliou ${lugares(total)}; a partir de ${MINIMO_DECISOES}, mostramos aqui o que você mais aceita.`}
-        </Text>
-        <Link href={{ pathname: "/triagem", params: { refazer: "1" } }} style={[estiloTexto("body-strong"), s.link, { color: c.placa }]}>
-          Refazer as perguntas
-        </Link>
-      </View>
-
-      {perfil && aprendeu ? <GostoAprendido perfil={perfil} /> : null}
-
-      <View style={s.secao}>
-        <TextField
-          label="O que a IA entendeu de você"
-          hint="Corrija se não for bem assim. A IA usa esse texto para ordenar os cards."
-          placeholder="Conte como você gosta de viajar"
-          value={resumo}
-          onChangeText={setResumo}
-          multiline
-          maxLength={1000}
-        />
-        {resumoMudou ? (
-          <Button size="sm" disabled={salvando} onPress={salvarResumo}>
-            Salvar
-          </Button>
-        ) : null}
-      </View>
-
-      <View style={s.secao}>
-        <Text accessibilityRole="header" style={[estiloTexto("title"), { color: c.ink }]}>
-          Preferências
-        </Text>
-        <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Parar a cada</Text>
-        <Segmented
-          block
-          rotulo="Distância padrão entre paradas"
-          opcoes={INTERVALOS}
-          valor={perfil?.intervalo_km ?? INTERVALO_PADRAO}
-          onChange={escolherIntervalo}
-        />
-        <Text style={[estiloTexto("body-strong"), s.rotuloTema, { color: c.ink }]}>Tema</Text>
-        <Segmented block rotulo="Tema" opcoes={TEMAS} valor={escolha} onChange={escolherTema} />
-        {erroAjuste ? (
-          <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c.perigo }]}>
-            {erroAjuste}
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ backgroundColor: c["surface-100"] }}
+        contentContainerStyle={[s.tela, { paddingTop: margens.top + espaco["space-8"] }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={s.cabecalho}>
+          <Text accessibilityRole="header" style={[estiloTexto("display-xl"), { color: c.ink }]}>
+            O que você <Destaque>curte</Destaque>
           </Text>
-        ) : null}
-      </View>
+          <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
+            {aprendeu
+              ? `Aprendido com ${lugares(total)} que você deslizou. Usamos isso para ordenar os próximos cards.`
+              : `Ainda estamos aprendendo seu gosto. Você avaliou ${lugares(total)}; a partir de ${MINIMO_DECISOES}, mostramos aqui o que você mais aceita.`}
+          </Text>
+          <Link href={{ pathname: "/triagem", params: { refazer: "1" } }} style={[estiloTexto("body-strong"), s.link, { color: c.placa }]}>
+            Refazer as perguntas
+          </Link>
+        </View>
 
-      <SeusDados />
-    </ScrollView>
+        {perfil && aprendeu ? <GostoAprendido perfil={perfil} /> : null}
+
+        <View style={s.secao}>
+          <TextField
+            label="O que a IA entendeu de você"
+            hint="Corrija se não for bem assim. É o que suas respostas às perguntas disseram sobre você."
+            placeholder="Conte como você gosta de viajar"
+            value={resumo}
+            onChangeText={setResumo}
+            multiline
+            maxLength={1000}
+          />
+          {resumoMudou ? (
+            <Button size="sm" disabled={salvando} onPress={salvarResumo}>
+              Salvar
+            </Button>
+          ) : null}
+        </View>
+
+        <View style={s.secao}>
+          <Text accessibilityRole="header" style={[estiloTexto("title"), { color: c.ink }]}>
+            Preferências
+          </Text>
+          <Text style={[estiloTexto("body-strong"), { color: c.ink }]}>Parar a cada</Text>
+          <Segmented
+            block
+            rotulo="Distância padrão entre paradas"
+            opcoes={INTERVALOS}
+            valor={perfil?.intervalo_km ?? INTERVALO_PADRAO}
+            onChange={escolherIntervalo}
+          />
+          <Text style={[estiloTexto("body-strong"), s.rotuloTema, { color: c.ink }]}>Tema</Text>
+          <Segmented block rotulo="Tema" opcoes={TEMAS} valor={escolha} onChange={escolherTema} />
+          {erroAjuste ? (
+            <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c.perigo }]}>
+              {erroAjuste}
+            </Text>
+          ) : null}
+        </View>
+
+        <SeusDados />
+      </ScrollView>
+      <FaixaDoStatus />
+    </View>
   );
 }
 
