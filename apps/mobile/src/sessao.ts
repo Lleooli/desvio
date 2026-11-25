@@ -179,6 +179,14 @@ export async function pedirLinkPorEmail(email: string): Promise<void> {
 }
 
 /**
+ * Sai da conta neste aparelho. `local` porque, depois de apagar a conta, o token já não vale
+ * no Supabase e a saída global falharia; a sessão some do aparelho de qualquer jeito.
+ */
+export async function sair(): Promise<void> {
+  await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+}
+
+/**
  * Para onde ir depois de entrar: o primeiro login da conta vai para a triagem, os seguintes
  * para Minhas viagens. Marca a conta na primeira vez.
  */

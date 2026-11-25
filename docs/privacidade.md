@@ -1,6 +1,6 @@
 # Política de privacidade do Desvio
 
-Versão de 13 de novembro de 2026. Rascunho para o beta fechado; antes do lançamento público, uma pessoa com conhecimento jurídico precisa revisar este texto.
+Versão de 25 de novembro de 2026. Rascunho para o beta fechado; antes do lançamento público, uma pessoa com conhecimento jurídico precisa revisar este texto.
 
 O Desvio monta viagens por terra: você informa de onde sai e para onde vai, o app sugere lugares no caminho, você desliza **Bora** ou **Passo**, e a IA ordena o roteiro. Para isso, guardamos o mínimo possível sobre você. Esta página explica o que guardamos, por que guardamos, com quem compartilhamos e como você pede uma cópia ou apaga tudo, conforme a Lei Geral de Proteção de Dados (LGPD, Lei 13.709/2018).
 
@@ -11,9 +11,10 @@ O Desvio monta viagens por terra: você informa de onde sai e para onde vai, o a
 | Seu e-mail e o jeito que você entrou (Google, Apple ou link por e-mail) | Do login | Identificar sua conta e permitir que você entre de novo |
 | Suas viagens: origem, destino, veículo, distância entre paradas, categorias, as cidades de parada e os lugares sugeridos | Do que você preenche ao criar a viagem | Mostrar suas viagens e retomar uma viagem antiga |
 | Suas decisões: Bora, Passo ou Favorito em cada lugar, e quando você decidiu | Dos seus swipes | Não mostrar de novo o que você já viu e montar o roteiro |
-| Seu perfil de gosto: quais categorias, tipos e faixas de preço você costuma aceitar, e o resumo do questionário de gosto | Calculado a partir das suas decisões; o resumo vem do questionário | Ordenar os próximos lugares pelo que você gosta |
+| Seu perfil de gosto: quais categorias, tipos e faixas de preço você costuma aceitar, e o resumo do questionário de gosto | Calculado a partir das suas decisões; o resumo vem do questionário, e você pode corrigir no perfil | Ordenar os próximos lugares pelo que você gosta |
 | O roteiro de cada viagem | Montado pelo app, com ou sem IA | Mostrar a ordem das paradas |
-| Sua preferência de tema (claro, escuro ou do sistema) | Do perfil | Mostrar o app do jeito que você escolheu |
+| Sua preferência de tema (claro, escuro ou do sistema) e a distância padrão entre paradas | Do perfil | Mostrar o app do jeito que você escolheu e já preencher a próxima viagem |
+| Suas buscas: a origem e o destino que você digitou e o resultado de cada uma | Do pedido de cada viagem | Montar a viagem enquanto você espera |
 
 As respostas do questionário de gosto passam pelo servidor só para a IA fazer a próxima pergunta; delas fica guardado apenas o resumo do gosto.
 
@@ -59,9 +60,9 @@ O resultado dessas consultas fica no nosso cache por **30 dias** e depois é apa
 
 Pela LGPD, você pode, a qualquer momento:
 
-- **saber o que guardamos e ter uma cópia (acesso e portabilidade).** No perfil do app, use "Exportar meus dados". Você recebe um arquivo JSON com a sua conta, o seu perfil de gosto, as suas viagens (com paradas, lugares e roteiro) e as suas decisões. Quem programa pode chamar `GET /eu/exportar`.
-- **corrigir seus dados.** As viagens, decisões e o tema você muda no próprio app. Deslizar de novo um lugar troca a decisão.
-- **apagar sua conta e seus dados.** No perfil do app, use "Apagar conta" e confirme. As suas viagens, decisões, perfil, roteiros e buscas são apagados na hora. A conta de login é apagada logo em seguida; se o serviço de login estiver fora do ar, tentamos de novo sozinhos, e a exclusão termina em **até 15 dias**. Depois disso, se você entrar de novo com o mesmo e-mail, o Desvio cria uma conta nova e vazia. Quem programa pode chamar `DELETE /eu` com `{"confirmar": "APAGAR"}`.
+- **saber o que guardamos e ter uma cópia (acesso e portabilidade).** No perfil do app, na seção "Seus dados", use "Exportar meus dados". O app abre o compartilhar do celular com um JSON que traz a sua conta (com tema e distância padrão entre paradas), o seu perfil de gosto (com o resumo do questionário), as suas viagens (com paradas, lugares e roteiro), as suas decisões e as suas buscas. Você escolhe onde salvar ou para quem mandar. Quem programa pode chamar `GET /eu/exportar`.
+- **corrigir seus dados.** As viagens, decisões, o tema, a distância padrão e o resumo do seu gosto você muda no próprio app. Deslizar de novo um lugar troca a decisão.
+- **apagar sua conta e seus dados.** No perfil do app, na seção "Seus dados", use "Apagar conta" e confirme digitando APAGAR. As suas viagens, decisões, perfil, roteiros e buscas são apagados na hora, o app apaga do celular as decisões que ainda não tinham sido enviadas e sai da sua conta. A conta de login é apagada logo em seguida; se o serviço de login estiver fora do ar, tentamos de novo sozinhos, e a exclusão termina em **até 15 dias**. Depois disso, se você entrar de novo com o mesmo e-mail, o Desvio cria uma conta nova e vazia. Quem programa pode chamar `DELETE /eu` com `{"confirmar": "APAGAR"}`.
 - **saber com quem compartilhamos.** A lista está acima.
 - **reclamar na Autoridade Nacional de Proteção de Dados (ANPD)**, em [gov.br/anpd](https://www.gov.br/anpd).
 
