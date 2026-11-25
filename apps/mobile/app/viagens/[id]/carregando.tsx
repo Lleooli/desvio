@@ -2,7 +2,7 @@ import { Redirect, router, useFocusEffect, useLocalSearchParams } from "expo-rou
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { criarViagem, mensagemDeErro, obterJob, obterViagem, type EtapaBusca, type Job, type Viagem } from "@/api";
+import { criarViagem, mensagemDeErro, obterJob, obterViagem, registrarEvento, type EtapaBusca, type Job, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { Aviso } from "@/componentes/Aviso";
 import { Button } from "@/componentes/Button";
@@ -113,8 +113,18 @@ function Acompanhar({ viagem }: { viagem: Viagem }) {
   const margens = useSafeAreaInsets();
   const { job, erro, tentarDeNovo } = useAcompanharBusca(viagem.job_id);
   const vistas = useRef<Partial<Record<EtapaBusca, { titulo: string; detalhe: string }>>>({});
+  const inicioBusca = useRef(Date.now());
+  const avisouCard = useRef(false);
   const [erroNovaBusca, setErroNovaBusca] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    if (avisouCard.current) return;
+    const lista = (job?.resultado ?? job?.parcial)?.paradas;
+    if (!lista?.some((p) => p.cards.length > 0)) return;
+    avisouCard.current = true;
+    registrarEvento({ evento: "primeiro_card", viagem: viagem.id, tempo_ms: Date.now() - inicioBusca.current });
+  }, [job, viagem.id]);
 
   if (job?.progresso) vistas.current[job.progresso.etapa] = { titulo: job.progresso.titulo, detalhe: job.progresso.detalhe };
 

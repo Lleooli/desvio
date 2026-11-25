@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import uuid
 from datetime import date
 
 import httpx
@@ -43,7 +44,7 @@ from typing import Literal
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import banco, cidades, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
+from . import banco, cidades, conta, fila, gmaps, ia, metricas, preferencias, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -162,6 +163,7 @@ def viagem(req: Viagem, eu: Usuario = Depends(usuario_atual)):
         vid = viagens.criar(con, eu.id, entrada)
         jid = fila.criar("viagem", {**entrada, "usuario": eu.id, "viagem": vid}, usuario=eu.id, con=con)
         viagens.ligar_job(con, vid, jid)
+    metricas.registrar(eu.id, "viagem_criada", vid)
     return {"job_id": jid, "viagem_id": vid, "status": "pendente"}
 
 
@@ -256,6 +258,7 @@ def swipe(req: Swipe, eu: Usuario = Depends(usuario_atual)):
         raise HTTPException(404, str(e)) from None
     except ValueError as e:
         raise HTTPException(422, str(e)) from None
+    metricas.registrar(eu.id, "swipe", req.viagem, {"tipo": req.tipo})
     return {"ok": True}
 
 
@@ -310,11 +313,7 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
         raise HTTPException(404, "Viagem não encontrada")
     plano = await run_in_threadpool(viagens.planejamento, viagem_id) or {}
     estadias = plano.get("estadias") or []
-    if r["fonte"] == "pessoa":
-        # a ordem que a pessoa escolheu não volta para a IA, nem é regravada: só o PUT a
-        # grava, e regravar aqui desfaria um PUT que chegasse entre a leitura e a escrita
-        return _com_noites(r, estadias)
-    if req.usar_ia:
+    if r["fonte"] != "pessoa" and req.usar_ia:
         contexto = req.contexto.model_dump(mode="json", exclude_none=True)
         for chave in ("saida", "data"):
             if chave not in contexto and plano.get(chave):
@@ -322,9 +321,11 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
         veiculo = contexto.get("veiculo") or plano.get("veiculo")
         async with httpx.AsyncClient() as client:
             r = await ia.ajustar_roteiro(client, r["itens"], contexto, veiculo, estadias)
-    if not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
+    if r["fonte"] != "pessoa" and not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
         # a pessoa editou enquanto a IA respondia: vale a ordem dela
         r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
+    # a ordem que a pessoa escolheu não volta para a IA, nem é regravada: só o PUT a grava
+    metricas.registrar(eu.id, "roteiro_montado", viagem_id)
     return _com_noites(r, estadias)
 
 
@@ -351,11 +352,13 @@ async def triagem(req: Triagem, eu: Usuario = Depends(usuario_atual)):
     if req.pular:
         # Pular não chama a IA: guarda as respostas até aqui e segue sem resumo
         preferencias.guardar_triagem(eu.id, eu.email, req.respostas, None, pulou=True)
+        metricas.registrar(eu.id, "triagem_pulada")
         return {"pergunta": None, "opcoes": [], "fim": True, "resumo": None, "fonte": "fixa", "pulou": True}
     async with httpx.AsyncClient() as client:
         r = await ia.triagem(client, req.respostas)
     if r.get("fim"):
         preferencias.guardar_triagem(eu.id, eu.email, req.respostas, r.get("resumo"), pulou=False)
+        metricas.registrar(eu.id, "triagem_concluida")
     return r
 
 
@@ -377,11 +380,61 @@ async def foto(nome: str, l: int = Query(gmaps.LARGURA_FOTO, ge=100, le=1600), a
     return RedirectResponse(destino, status_code=302, headers={"Cache-Control": "private, max-age=3600"})
 
 
-@app.get("/uso/ia", include_in_schema=False)
-def uso_da_ia(dias: int = Query(7, ge=1, le=90), x_admin_token: str | None = Header(None)):
-    """Uso diário do Groq por modelo (painel da #41). Só com PV_ADMIN_TOKEN; sem ele, 404."""
+class EventoCliente(BaseModel):
+    """O que só o app vê: abrir o mapa e o instante em que o primeiro card apareceu."""
+    model_config = ConfigDict(extra="forbid")
+    evento: Literal["roteiro_aberto_mapa", "primeiro_card"]
+    viagem: str
+    tempo_ms: int | None = Field(None, ge=0, le=3_600_000)
+    app: Literal["google", "waze"] | None = None
+
+    @model_validator(mode="after")
+    def confere(self):
+        if self.evento == "roteiro_aberto_mapa" and self.app is None:
+            raise ValueError("Informe o app de mapas")
+        if self.evento == "primeiro_card" and self.tempo_ms is None:
+            raise ValueError("Informe o tempo até o primeiro card")
+        return self
+
+
+def _viagem_da_pessoa(usuario: str, viagem: str) -> str:
+    try:
+        viagem = str(uuid.UUID(viagem))
+    except ValueError:
+        raise HTTPException(422, "Viagem inválida") from None
+    with banco.conectar() as con:
+        if not con.execute("select 1 from viagem where id = %s and usuario = %s", (viagem, usuario)).fetchone():
+            raise HTTPException(404, "Viagem não encontrada")
+    return viagem
+
+
+@app.post("/eventos")
+def eventos(req: EventoCliente, eu: Usuario = Depends(usuario_atual)):
+    """Evento que só acontece no celular. O corpo não aceita campo além dos técnicos."""
+    viagem = _viagem_da_pessoa(eu.id, req.viagem)
+    if req.evento == "roteiro_aberto_mapa":
+        metricas.registrar(eu.id, req.evento, viagem, {"app": req.app})
+    else:
+        metricas.registrar(eu.id, req.evento, viagem, {"origem": "app", "tempo_ms": req.tempo_ms})
+    return {"ok": True}
+
+
+def _painel_admin(x_admin_token: str | None) -> None:
     esperado = os.getenv("PV_ADMIN_TOKEN")
     if not esperado or not x_admin_token or not secrets.compare_digest(x_admin_token, esperado):
         raise HTTPException(404, "Não encontrado")
+
+
+@app.get("/metricas", include_in_schema=False)
+def metricas_do_produto(x_admin_token: str | None = Header(None)):
+    """As seis metas do PRD. Só com PV_ADMIN_TOKEN; sem ele, 404, como /uso/ia."""
+    _painel_admin(x_admin_token)
+    return metricas.painel()
+
+
+@app.get("/uso/ia", include_in_schema=False)
+def uso_da_ia(dias: int = Query(7, ge=1, le=90), x_admin_token: str | None = Header(None)):
+    """Uso diário do Groq por modelo (painel da #41). Só com PV_ADMIN_TOKEN; sem ele, 404."""
+    _painel_admin(x_admin_token)
     return {"cota_requisicoes_dia": uso_ia.COTA_REQUISICOES_DIA, "cota_tokens_dia": uso_ia.COTA_TOKENS_DIA,
             "dias": uso_ia.resumo(dias)}

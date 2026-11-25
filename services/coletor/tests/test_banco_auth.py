@@ -86,7 +86,9 @@ def test_swipe_grava_em_uma_conexao_e_uma_transacao(pg, monkeypatch):
         return con
     monkeypatch.setattr(banco, "conectar", contando)
     assert TestClient(app).post("/swipe", json={"card": CARD, "gostou": True}, headers=cab).status_code == 200
-    assert len(conexoes) == 1
+    # a decisão segue numa conexão só; a segunda é o evento de métrica, depois do commit,
+    # para uma falha de métrica não desfazer o swipe
+    assert len(conexoes) == 2
     with psycopg.connect(pg) as con:
         assert con.execute("select count(*) from usuario where id = %s", (a,)).fetchone()[0] == 1
         assert con.execute("select count(*) from decisao where usuario = %s", (a,)).fetchone()[0] == 1

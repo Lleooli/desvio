@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, preferencias, viagens
+from . import cache, coletor, conta, fila, geo, metricas, preferencias, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -41,7 +41,9 @@ async def processar(job: dict) -> dict:
                 except Exception:  # sem o parcial na viagem, a pessoa só espera o final
                     log.warning("não consegui gravar o parcial na viagem %s", viagem, exc_info=True)
             fila.parcial(job["id"], preferencias.personalizar(resultado, usuario))
+            metricas.primeiro_card_servidor(usuario, viagem, job["id"], resultado)
         r = await coletor.planejar_viagem(**e, progresso=progresso, parcial=parcial, forcar=forcar)
+        metricas.primeiro_card_servidor(usuario, viagem, job["id"], r)
         if viagem:
             viagens.gravar_resultado(viagem, r)  # antes do personalizar, que tira os já avaliados
     else:

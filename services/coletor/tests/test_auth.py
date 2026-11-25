@@ -23,6 +23,7 @@ VIAGEM = {"origem": "A, RS", "destino": "B, BA", "intervalo_km": 100}
     ("post", "/triagem", {"respostas": []}),
     ("post", "/roteiro", {"cards": []}),
     ("post", "/cards/ranquear", {"cards": []}),
+    ("post", "/eventos", {"evento": "roteiro_aberto_mapa", "viagem": UID, "app": "google"}),
 ])
 def test_sem_token_da_401(metodo, rota, corpo):
     r = getattr(TestClient(app), metodo)(rota, **({"json": corpo} if corpo is not None else {}))

@@ -7,6 +7,7 @@ import {
   editarRoteiroDaViagem,
   mensagemDeErro,
   montarRoteiroDaViagem,
+  registrarEvento,
   type Card,
   type Noite,
   type Roteiro,
@@ -387,8 +388,12 @@ function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
   const trechos = trechosGoogleMaps(viagem.origem, viagem.destino, itens, viagem.veiculo);
   const indiceWaze = Math.min(proxima, itens.length - 1);
   const lugarWaze = itens[indiceWaze];
+  const abrirNoMapa = (app: "google" | "waze", url: string) => {
+    registrarEvento({ evento: "roteiro_aberto_mapa", viagem: viagem.id, app });
+    Linking.openURL(url);
+  };
   const abrirWaze = () => {
-    Linking.openURL(linkWaze(lugarWaze));
+    abrirNoMapa("waze", linkWaze(lugarWaze));
     setProxima(indiceWaze + 1);
   };
 
@@ -406,7 +411,7 @@ function AbrirNoMapa({ viagem, itens, visivel, onFechar }: PropsMapa) {
           </Text>
         ) : null}
         {trechos.map((trecho) => (
-          <Button key={trecho.numero} block variant="secondary" onPress={() => Linking.openURL(trecho.url)}>
+          <Button key={trecho.numero} block variant="secondary" onPress={() => abrirNoMapa("google", trecho.url)}>
             {trechos.length > 1
               ? `Trecho ${trecho.numero}: ${trecho.de.split(",")[0]} → ${trecho.ate.split(",")[0]}`
               : "Abrir a rota"}

@@ -115,3 +115,12 @@ export const linkParaExportar = async (): Promise<string> => {
 /** LGPD: apaga os dados e a conta. */
 export const apagarMinhaConta = () =>
   chamar<ContaApagada>("/eu", { metodo: "DELETE", corpo: { confirmar: "APAGAR" } });
+
+/** Evento de produto que só o celular vê. Falha de rede não chega na tela. */
+export function registrarEvento(
+  evento:
+    | { evento: "roteiro_aberto_mapa"; viagem: string; app: "google" | "waze" }
+    | { evento: "primeiro_card"; viagem: string; tempo_ms: number },
+): void {
+  void chamar<{ ok: true }>("/eventos", { metodo: "POST", corpo: evento }).catch(() => {});
+}
