@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Card, ParadaDaViagem, Viagem } from "@/api";
 import { abrirFolhaDoLugar } from "@/folhaDoLugar";
@@ -10,7 +10,7 @@ import { Button } from "./Button";
 import { categorias, Chip, type Categoria } from "./Chip";
 import { useFoco } from "./foco";
 import { Icon } from "./Icon";
-import { naOrdemDaEstrada } from "./ParadasDaViagem";
+import { AindaBuscando, naOrdemDaEstrada } from "./ParadasDaViagem";
 import { PilhaSwipe } from "./PilhaSwipe";
 import { numero } from "./Rating";
 import type { CardLugar, Decisao } from "./SwipeCard";
@@ -37,6 +37,22 @@ function paraCardLugar(card: Card): CardLugar {
     instagram: card.instagram,
     instagramProvavel: card.instagram_origem === "busca",
   };
+}
+
+/**
+ * Junta à pilha os cards da parada que ela ainda não tem, no fim e na ordem em que vieram.
+ * Fica de fora o que já está na pilha e o que está em `fora` (já decidido), então nenhum
+ * card aparece duas vezes, nem quando a viagem chega de novo com os lugares do Google.
+ * Sem nada novo, devolve a mesma pilha.
+ */
+export function juntarNaPilha(pilha: Card[], daParada: Card[], fora: ReadonlySet<string>): Card[] {
+  const vistos = new Set([...fora, ...pilha.map((card) => card.id)]);
+  const novos = daParada.filter((card) => {
+    if (vistos.has(card.id)) return false;
+    vistos.add(card.id);
+    return true;
+  });
+  return novos.length > 0 ? [...pilha, ...novos] : pilha;
 }
 
 type Props = {
@@ -76,10 +92,18 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
   // Vazio mostra todas as categorias.
   const [filtro, setFiltro] = useState<ReadonlySet<Categoria>>(new Set());
 
+  // Os lugares decididos nesta pilha. Uma viagem buscada antes de a decisão chegar ao
+  // coletor ainda traz o card; com este conjunto ele não volta.
+  const decididos = useRef(new Set<string>());
+
+  // A viagem chega de novo a cada 10 s enquanto a busca roda: os cards novos (do Google)
+  // entram no fim da pilha, sem mexer na ordem nem no card do topo.
   useEffect(() => {
     let valendo = true;
     lugaresDecididosNaFila().then((naFila) => {
-      if (valendo) setCards(parada.cards.filter((card) => !naFila.has(card.id)));
+      if (!valendo) return;
+      const fora = new Set([...naFila, ...decididos.current]);
+      setCards((atuais) => juntarNaPilha(atuais ?? [], parada.cards, fora));
     });
     return () => {
       valendo = false;
@@ -96,6 +120,7 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
     const card = cards?.find((outro) => outro.id === lugar.id);
     if (!card) return;
     setCards((atuais) => atuais?.filter((outro) => outro.id !== card.id) ?? null);
+    decididos.current.add(card.id);
     registrarDecisao(card, decisao, { viagem: viagem.id, parada: parada.ordem });
     if (decisao === "passo") {
       setUltima(null);
@@ -108,7 +133,8 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
   const desfazer = () => {
     if (!ultima) return;
     desfazerRegistro(ultima.card.id);
-    setCards((atuais) => [ultima.card, ...(atuais ?? [])]);
+    decididos.current.delete(ultima.card.id);
+    setCards((atuais) => [ultima.card, ...(atuais ?? []).filter((outro) => outro.id !== ultima.card.id)]);
     setAceitos((n) => Math.max(0, n - 1));
     setUltima(null);
   };
@@ -190,8 +216,11 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
         ) : (
           <View style={s.fim}>
             <Text style={[estiloTexto("body"), s.textoFim, { color: c.ink }]}>
-              {`Você viu todos os lugares de ${parada.nome}.`}
+              {viagem.status === "buscando"
+                ? `Você viu os lugares que já chegaram de ${parada.nome}.`
+                : `Você viu todos os lugares de ${parada.nome}.`}
             </Text>
+            {viagem.status === "buscando" ? <AindaBuscando /> : null}
             {proxima ? (
               <Button icon="route" onPress={irParaProxima}>
                 Próxima parada

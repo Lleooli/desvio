@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { criarViagem, mensagemDeErro, obterJob, obterViagem, type EtapaBusca, type Job, type Viagem } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { Aviso } from "@/componentes/Aviso";
+import { Button } from "@/componentes/Button";
 import { Ceu } from "@/componentes/Ceu";
 import { Destaque } from "@/componentes/Destaque";
 import { Estrada } from "@/componentes/Estrada";
@@ -138,6 +139,9 @@ function Acompanhar({ viagem }: { viagem: Viagem }) {
   const paradas = (job?.resultado ?? job?.parcial)?.paradas;
   const cidades = [semUf(viagem.origem), ...(paradas?.map((p) => p.nome) ?? [semUf(viagem.destino)])];
   const percentual = job?.status === "pronto" ? 100 : (job?.progresso?.percentual ?? 0);
+  // O parcial (só OpenStreetMap) chegou: as paradas e o swipe já abrem, e o Google chega depois.
+  const temParcial = job?.status === "rodando" && !!job.parcial?.paradas.some((p) => p.cards.length > 0);
+  const verParadas = () => router.replace({ pathname: "/viagens/[id]/paradas", params: { id: viagem.id } });
 
   return (
     <View style={[s.tela, { backgroundColor: c["surface-100"], paddingBottom: margens.bottom + espaco["space-6"] }]}>
@@ -171,9 +175,20 @@ function Acompanhar({ viagem }: { viagem: Viagem }) {
         </View>
       </View>
 
-      <Text style={[estiloTexto("body-s"), s.aviso, { color: c["ink-muted"] }]}>
-        Pode fechar o app. A busca continua, e a viagem fica em Minhas viagens.
-      </Text>
+      {temParcial ? (
+        <View style={s.parcial}>
+          <Text style={[estiloTexto("body"), s.textoParcial, { color: c.ink }]}>
+            Os primeiros lugares chegaram. Pode começar a escolher; os outros entram sozinhos.
+          </Text>
+          <Button block icon="route" onPress={verParadas}>
+            Ver paradas
+          </Button>
+        </View>
+      ) : (
+        <Text style={[estiloTexto("body-s"), s.aviso, { color: c["ink-muted"] }]}>
+          Pode fechar o app. A busca continua, e a viagem fica em Minhas viagens.
+        </Text>
+      )}
     </View>
   );
 }
@@ -246,4 +261,6 @@ const s = StyleSheet.create({
   pendente: { borderWidth: medida.foco },
   textoEtapa: { flex: 1 },
   aviso: { marginTop: "auto", textAlign: "center", paddingHorizontal: espaco["space-4"] },
+  parcial: { marginTop: "auto", gap: espaco["space-3"], paddingHorizontal: espaco["space-4"] },
+  textoParcial: { textAlign: "center" },
 });

@@ -32,6 +32,13 @@ async def processar(job: dict) -> dict:
             fila.progresso(job["id"], etapa, titulo, detalhe, percentual)
 
         def parcial(resultado: dict) -> None:
+            # Primeiro na viagem (o app abre as paradas e o swipe com ela), depois no job, que
+            # avisa a tela Carregando; o personalizar muda `resultado`, então vem por último.
+            if viagem:
+                try:
+                    viagens.gravar_parcial(viagem, resultado)
+                except Exception:  # sem o parcial na viagem, a pessoa só espera o final
+                    log.warning("não consegui gravar o parcial na viagem %s", viagem, exc_info=True)
             fila.parcial(job["id"], preferencias.personalizar(resultado, usuario))
         r = await coletor.planejar_viagem(**e, progresso=progresso, parcial=parcial)
         if viagem:

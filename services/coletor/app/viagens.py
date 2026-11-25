@@ -3,9 +3,11 @@
 Ciclo de vida:
 1. `POST /viagem` cria a viagem com status `buscando` junto com o job (mesma transação),
    e ela já aparece em `GET /viagens`.
-2. O worker termina a coleta e chama `gravar_resultado`: paradas, lugares e a ligação
+2. Com o Google ligado, o worker grava antes o parcial só com OpenStreetMap
+   (`gravar_parcial`): a viagem segue `buscando`, mas já tem paradas e cards para o swipe.
+3. O worker termina a coleta e chama `gravar_resultado`: paradas, lugares e a ligação
    entre eles, e a viagem passa a `pronta`. Se a coleta quebra, `marcar_falha` (`falhou`).
-3. Depois do swipe, `lugares_aceitos` traz os lugares de Bora ou Favorito pelo km; a API
+4. Depois do swipe, `lugares_aceitos` traz os lugares de Bora ou Favorito pelo km; a API
    ordena (pelo km ou pela IA) e `guardar_roteiro` guarda em `roteiro`.
 
 `lugar` é compartilhado entre pessoas. O /swipe nunca reescreve um lugar (o card vem do
@@ -48,32 +50,57 @@ def gravar_resultado(viagem: str, resultado: dict) -> None:
     """Grava paradas, lugares e cards da coleta e marca a viagem como `pronta`.
 
     Numa transação só; não mexe em `resultado`. Rodar de novo (job que voltou para
-    a fila) troca as paradas antigas pelas novas.
+    a fila) troca as paradas antigas pelas novas, inclusive as do parcial.
     """
     with banco.conectar() as con:
-        con.execute("delete from parada where viagem = %s", (viagem,))  # cascata em parada_lugar
-        for ordem, p in enumerate(resultado.get("paradas", [])):
-            extra = {k: v for k, v in p.items() if k not in _PARADA_COLUNAS}
-            con.execute("insert into parada (viagem, ordem, cidade, uf, km, horas_desde_saida, dados) "
-                        "values (%s, %s, %s, %s, %s, %s, %s)",
-                        (viagem, ordem, p.get("nome") or "", p.get("uf"), p.get("km_na_rota"),
-                         p.get("horas_desde_saida"), Jsonb(extra)))
-            vistos: set[str] = set()
-            for pos, c in enumerate(p.get("cards", [])):
-                if not isinstance(c.get("id"), str) or c["id"] in vistos:
-                    continue
-                vistos.add(c["id"])
-                dados = {k: v for k, v in c.items() if k not in _DA_ROTA}
-                con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) "
-                            "on conflict (id) do update set dados = excluded.dados, fonte = excluded.fonte, "
-                            "coletado_em = now()",
-                            (c["id"], Jsonb(dados), c.get("fonte")))
-                con.execute("insert into parada_lugar (viagem, parada, lugar, posicao, km_na_rota, "
-                            "horas_desde_saida) values (%s, %s, %s, %s, %s, %s)",
-                            (viagem, ordem, c["id"], pos, c.get("km_na_rota"), c.get("horas_desde_saida")))
+        _gravar_paradas(con, viagem, resultado)
         rota = resultado.get("rota") or {}
         con.execute("update viagem set status = 'pronta', polilinha = %s, atualizado_em = now() where id = %s",
                     (json.dumps(rota["polilinha"]) if rota.get("polilinha") else None, viagem))
+
+
+def gravar_parcial(viagem: str, resultado: dict) -> bool:
+    """Grava as paradas do resultado parcial (só OpenStreetMap) com a viagem ainda `buscando`.
+
+    Assim `GET /viagens/{id}` já traz paradas e cards, e o swipe registra decisões nessas
+    paradas, enquanto o Google não chega. Depois `gravar_resultado` troca estas paradas
+    pelas finais; o coletor garante que o final contém os cards do parcial, com os mesmos
+    ids, então nenhum card some nem aparece duas vezes. Não mexe em `resultado`.
+
+    Returns:
+        False se a viagem não está mais `buscando` (o final já chegou ou a busca falhou).
+    """
+    with banco.conectar() as con:
+        if not con.execute("select 1 from viagem where id = %s and status = 'buscando' for update",
+                           (viagem,)).fetchone():
+            return False
+        _gravar_paradas(con, viagem, resultado)
+        con.execute("update viagem set atualizado_em = now() where id = %s", (viagem,))
+        return True
+
+
+def _gravar_paradas(con: psycopg.Connection, viagem: str, resultado: dict) -> None:
+    """Troca as paradas da viagem pelas de `resultado`, com os lugares e a ligação entre eles."""
+    con.execute("delete from parada where viagem = %s", (viagem,))  # cascata em parada_lugar
+    for ordem, p in enumerate(resultado.get("paradas", [])):
+        extra = {k: v for k, v in p.items() if k not in _PARADA_COLUNAS}
+        con.execute("insert into parada (viagem, ordem, cidade, uf, km, horas_desde_saida, dados) "
+                    "values (%s, %s, %s, %s, %s, %s, %s)",
+                    (viagem, ordem, p.get("nome") or "", p.get("uf"), p.get("km_na_rota"),
+                     p.get("horas_desde_saida"), Jsonb(extra)))
+        vistos: set[str] = set()
+        for pos, c in enumerate(p.get("cards", [])):
+            if not isinstance(c.get("id"), str) or c["id"] in vistos:
+                continue
+            vistos.add(c["id"])
+            dados = {k: v for k, v in c.items() if k not in _DA_ROTA}
+            con.execute("insert into lugar (id, dados, fonte) values (%s, %s, %s) "
+                        "on conflict (id) do update set dados = excluded.dados, fonte = excluded.fonte, "
+                        "coletado_em = now()",
+                        (c["id"], Jsonb(dados), c.get("fonte")))
+            con.execute("insert into parada_lugar (viagem, parada, lugar, posicao, km_na_rota, "
+                        "horas_desde_saida) values (%s, %s, %s, %s, %s, %s)",
+                        (viagem, ordem, c["id"], pos, c.get("km_na_rota"), c.get("horas_desde_saida")))
 
 
 def marcar_falha(viagem: str) -> None:

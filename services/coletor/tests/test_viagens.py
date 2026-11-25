@@ -181,3 +181,75 @@ def test_resultado_do_job_continua_igual(pg, monkeypatch):
     assert [c["id"] for c in j["resultado"]["paradas"][0]["cards"]] == ["osm:node/1"]
     with psycopg.connect(pg) as con:
         assert con.execute("select count(*) from parada_lugar").fetchone()[0] == 2
+
+
+def gmaps(i: int, **extra) -> dict:
+    return {**card(i, **extra), "id": f"gmaps:P{i}", "fonte": "google_maps"}
+
+
+def test_parcial_abre_o_swipe_com_a_viagem_buscando_e_final_nao_repete(pg, monkeypatch):
+    """#33: os cards do OpenStreetMap aparecem na viagem antes do Google; nenhum aparece duas vezes."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    resp = cli.post("/viagem", json=PEDIDO, headers=cab).json()
+    vid = resp["viagem_id"]
+    enquanto: list[dict] = []
+
+    async def falso(progresso=None, parcial=None, **kw):
+        parcial(resultado([card(1), card(2)], [card(3)]))
+        d = cli.get(f"/viagens/{vid}", headers=cab).json()
+        enquanto.append(d)
+        # a pessoa desliza um card do parcial, com a viagem e a parada, enquanto o Google não chega
+        r = cli.post("/swipe", json={"card": d["paradas"][0]["cards"][0], "tipo": "bora",
+                                     "viagem": vid, "parada": 0}, headers=cab)
+        assert r.status_code == 200, r.text
+        enquanto.append(cli.get(f"/viagens/{vid}", headers=cab).json())
+        # o final contém os cards do parcial (mesmos ids) mais os do Google
+        return resultado([card(1), gmaps(7), card(2)], [card(3), gmaps(8)])
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
+    assert asyncio.run(worker.rodar_uma_vez()) is True
+
+    antes, depois_do_swipe = enquanto
+    assert antes["status"] == "buscando"
+    assert [[c["id"] for c in p["cards"]] for p in antes["paradas"]] == [["osm:node/1", "osm:node/2"], ["osm:node/3"]]
+    assert antes["progresso"] == {"decididos": 0, "total": 3}
+    assert [[c["id"] for c in p["cards"]] for p in depois_do_swipe["paradas"]] == [["osm:node/2"], ["osm:node/3"]]
+    assert depois_do_swipe["paradas"][0]["progresso"] == {"aceitos": 1, "total": 2}
+
+    final = cli.get(f"/viagens/{vid}", headers=cab).json()
+    assert final["status"] == "pronta"
+    ids = [c["id"] for p in final["paradas"] for c in p["cards"]]
+    assert sorted(ids) == ["gmaps:P7", "gmaps:P8", "osm:node/2", "osm:node/3"]  # sem o já decidido
+    assert len(ids) == len(set(ids))
+    assert final["paradas"][0]["progresso"] == {"aceitos": 1, "total": 3}  # a decisão do parcial vale no final
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from parada_lugar where viagem = %s", (vid,)).fetchone()[0] == 5
+
+
+def test_parcial_atrasado_nao_troca_as_paradas_finais(pg, monkeypatch):
+    from app import viagens
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = criar_e_coletar(cli, cab, monkeypatch, resultado([card(1), gmaps(7)], [card(3)]))
+    assert viagens.gravar_parcial(vid, resultado([card(1)], [])) is False
+    d = cli.get(f"/viagens/{vid}", headers=cab).json()
+    assert d["status"] == "pronta"
+    assert [[c["id"] for c in p["cards"]] for p in d["paradas"]] == [["osm:node/1", "gmaps:P7"], ["osm:node/3"]]
+
+
+def test_erro_ao_gravar_parcial_na_viagem_nao_derruba_a_coleta(pg, monkeypatch):
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+
+    def quebra(*a):
+        raise psycopg.OperationalError("connection refused")
+    monkeypatch.setattr(worker.viagens, "gravar_parcial", quebra)
+
+    async def falso(progresso=None, parcial=None, **kw):
+        parcial(resultado([card(1)], []))
+        return resultado([card(1), gmaps(7)], [])
+    resp = cli.post("/viagem", json=PEDIDO, headers=cab).json()
+    monkeypatch.setattr(worker.coletor, "planejar_viagem", falso)
+    asyncio.run(worker.rodar_uma_vez())
+    assert cli.get(f"/viagens/{resp['viagem_id']}", headers=cab).json()["status"] == "pronta"
+    assert cli.get(f"/jobs/{resp['job_id']}", headers=cab).json()["status"] == "pronto"

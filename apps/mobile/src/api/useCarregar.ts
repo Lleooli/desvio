@@ -2,7 +2,7 @@
  * Carrega um dado da API para uma tela, com o erro já em texto para a pessoa e um jeito
  * de tentar de novo.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErroApi, mensagemDeErro, type TipoErro } from "./cliente";
 
 export type Carregamento<T> = {
@@ -13,6 +13,11 @@ export type Carregamento<T> = {
   tipoErro: TipoErro | null;
   carregando: boolean;
   tentarDeNovo: () => void;
+  /**
+   * Busca de novo sem mostrar carregando nem erro: troca o dado só se a resposta chegar.
+   * Para atualizar a tela de tempos em tempos sem piscar nem perder o que já está nela.
+   */
+  atualizar: () => void;
 };
 
 /**
@@ -47,5 +52,20 @@ export function useCarregar<T>(chave: string | null, carregar: (chave: string) =
   }, [chave, tentativa]);
 
   const tentarDeNovo = useCallback(() => setTentativa((t) => t + 1), []);
-  return { dados, erro, tipoErro, carregando, tentarDeNovo };
+
+  const chaveAtual = useRef(chave);
+  chaveAtual.current = chave;
+  const carregarAtual = useRef(carregar);
+  carregarAtual.current = carregar;
+  const atualizar = useCallback(() => {
+    const pedida = chaveAtual.current;
+    if (pedida === null) return;
+    carregarAtual.current(pedida).then(
+      (novo) => {
+        if (chaveAtual.current === pedida) setDados(novo);
+      },
+      () => {}, // falhou: fica o que já estava na tela, e a próxima atualização tenta de novo
+    );
+  }, []);
+  return { dados, erro, tipoErro, carregando, tentarDeNovo, atualizar };
 }
