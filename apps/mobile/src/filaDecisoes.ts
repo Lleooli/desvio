@@ -110,6 +110,18 @@ export function desfazerRegistro(lugarId: string): void {
 }
 
 /**
+ * Joga fora as decisões que ainda não chegaram ao coletor, na memória e no aparelho.
+ * Depois de apagar a conta, elas não podem ir para a conta nova de quem entrar.
+ */
+export async function esvaziarFilaDeDecisoes(): Promise<void> {
+  await carregada;
+  if (relogio) clearTimeout(relogio);
+  relogio = null;
+  fila = [];
+  await AsyncStorage.removeItem(CHAVE).catch(() => {});
+}
+
+/**
  * Os lugares com decisão que ainda não chegou ao coletor. `GET /viagens/{id}` ainda
  * traz esses cards; a tela tira eles da pilha para não aparecerem de novo.
  */

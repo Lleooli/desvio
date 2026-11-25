@@ -34,10 +34,11 @@ _transporte: httpx.BaseTransport | None = None  # os testes trocam por um httpx.
 # --- Exportar ----------------------------------------------------------------
 
 def exportar(usuario: str) -> dict:
-    """Tudo o que é da pessoa: conta, perfil de gosto, viagens (com paradas, cards e roteiro), decisões e buscas."""
+    """Tudo o que é da pessoa: conta (com tema e intervalo padrão), perfil de gosto (com o resumo),
+    viagens (com paradas, cards e roteiro), decisões e buscas."""
     with banco.conectar() as con:
-        u = con.execute("select email, provedor, perfil_gosto, tema, criado_em from usuario where id = %s",
-                        (usuario,)).fetchone()
+        u = con.execute("select email, provedor, perfil_gosto, tema, intervalo_km, criado_em from usuario "
+                        "where id = %s", (usuario,)).fetchone()
         viagens = con.execute(
             "select v.id, v.origem, v.destino, v.veiculo, v.intervalo_km, v.categorias, v.status, "
             "v.criado_em, v.atualizado_em, r.itens as roteiro_itens, r.explicacao as roteiro_explicacao, "

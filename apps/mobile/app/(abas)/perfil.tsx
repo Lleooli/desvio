@@ -1,9 +1,12 @@
-import { Link, useFocusEffect } from "expo-router";
+import { Link, router, useFocusEffect } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ajustarPerfil,
+  apagarMinhaConta,
+  exportarMeusDados,
   mensagemDeErro,
   obterPerfilGosto,
   type AjustePerfil,
@@ -15,14 +18,110 @@ import { Aviso } from "@/componentes/Aviso";
 import { Button } from "@/componentes/Button";
 import { categorias, type Categoria } from "@/componentes/Chip";
 import { Destaque } from "@/componentes/Destaque";
+import { FolhaApagarConta } from "@/componentes/FolhaApagarConta";
 import { Icon } from "@/componentes/Icon";
 import { Segmented } from "@/componentes/Segmented";
 import { TextField } from "@/componentes/TextField";
+import { esvaziarFilaDeDecisoes } from "@/filaDecisoes";
 import { INTERVALO_PADRAO, INTERVALOS } from "@/intervalos";
+import { sair } from "@/sessao";
 import { definirTema, espaco, estiloTexto, medida, raio, tamanhoIcone, useCores, useEscolhaTema } from "@/tema";
+import { esquecerViagemAtiva } from "@/viagemAtiva";
 
 /** HU16: a taxa por categoria só aparece a partir de tantas decisões. */
 const MINIMO_DECISOES = 20;
+
+/** A política de privacidade (docs/privacidade.md); o .env pode apontar para a versão publicada. */
+const LINK_PRIVACIDADE =
+  process.env.EXPO_PUBLIC_PRIVACIDADE_URL || "https://github.com/Lleooli/desvio/blob/main/docs/privacidade.md";
+
+/**
+ * HU19 (LGPD): exportar os dados em JSON pela folha de compartilhar do sistema, apagar a conta
+ * com confirmação e ler a política de privacidade.
+ */
+function SeusDados() {
+  const { c } = useCores();
+  const [exportando, setExportando] = useState(false);
+  const [erroExportar, setErroExportar] = useState<string>();
+  const [folhaAberta, setFolhaAberta] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const [erroApagar, setErroApagar] = useState<string>();
+
+  async function exportar() {
+    setExportando(true);
+    setErroExportar(undefined);
+    try {
+      const dados = await exportarMeusDados();
+      await Share.share({ title: "Seus dados do Desvio", message: JSON.stringify(dados, null, 2) });
+    } catch (e) {
+      setErroExportar(mensagemDeErro(e));
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  async function apagar() {
+    setApagando(true);
+    setErroApagar(undefined);
+    try {
+      await apagarMinhaConta();
+    } catch (e) {
+      setErroApagar(mensagemDeErro(e));
+      setApagando(false);
+      return;
+    }
+    // Os dados já sumiram no servidor; o que ficou no aparelho também sai, e a sessão junto.
+    await esvaziarFilaDeDecisoes();
+    esquecerViagemAtiva();
+    definirTema("sistema"); // o tema escolhido era da conta apagada
+    await sair();
+    setFolhaAberta(false);
+    router.replace("/boas-vindas");
+  }
+
+  function abrirFolha() {
+    setErroApagar(undefined);
+    setFolhaAberta(true);
+  }
+
+  return (
+    <View style={s.secao}>
+      <Text accessibilityRole="header" style={[estiloTexto("title"), { color: c.ink }]}>
+        Seus dados
+      </Text>
+      <Text style={[estiloTexto("body"), { color: c["ink-muted"] }]}>
+        Guardamos seu e-mail, suas viagens, suas decisões e o perfil de gosto. Você pode levar uma cópia ou apagar tudo.
+      </Text>
+      <View style={s.botoes}>
+        <Button size="sm" variant="secondary" disabled={exportando} onPress={exportar}>
+          {exportando ? "Exportando..." : "Exportar meus dados"}
+        </Button>
+        <Button size="sm" variant="secondary" disabled={apagando} onPress={abrirFolha}>
+          Apagar conta
+        </Button>
+      </View>
+      {erroExportar ? (
+        <Text accessibilityRole="alert" style={[estiloTexto("body-s"), { color: c.perigo }]}>
+          {erroExportar}
+        </Text>
+      ) : null}
+      <Text
+        accessibilityRole="link"
+        style={[estiloTexto("body-strong"), s.link, { color: c.placa }]}
+        onPress={() => WebBrowser.openBrowserAsync(LINK_PRIVACIDADE)}
+      >
+        Política de privacidade
+      </Text>
+      <FolhaApagarConta
+        visivel={folhaAberta}
+        apagando={apagando}
+        erro={erroApagar}
+        onApagar={apagar}
+        onFechar={() => setFolhaAberta(false)}
+      />
+    </View>
+  );
+}
 
 const TEMAS: { valor: EscolhaTema; label: string }[] = [
   { valor: "claro", label: "Claro" },
@@ -192,6 +291,8 @@ export default function Perfil() {
           </Text>
         ) : null}
       </View>
+
+      <SeusDados />
     </ScrollView>
   );
 }
@@ -208,4 +309,5 @@ const s = StyleSheet.create({
   porcentagem: { width: medida.gostoPorcentagem, textAlign: "right" },
   secao: { gap: espaco["space-2"] },
   rotuloTema: { marginTop: espaco["space-2"] },
+  botoes: { flexDirection: "row", flexWrap: "wrap", gap: espaco["space-2"] },
 });
