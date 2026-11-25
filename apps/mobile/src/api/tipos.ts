@@ -111,7 +111,20 @@ export type PerfilGosto = {
   categoria: TaxaAceite;
   tipo: TaxaAceite;
   faixa_preco: TaxaAceite;
+  /** O que a IA entendeu da triagem, ou o que a pessoa corrigiu; null sem triagem concluída. */
+  resumo: string | null;
+  respostas: RespostaTriagem[];
+  pulou: boolean;
+  tema: EscolhaTema;
+  /** Distância padrão entre paradas; null enquanto a pessoa não escolheu. */
+  intervalo_km: number | null;
 };
+
+/** O tema que a pessoa escolhe no perfil; "sistema" segue o aparelho. */
+export type EscolhaTema = "claro" | "escuro" | "sistema";
+
+/** O que o PATCH /perfil grava; só as chaves enviadas mudam. Resumo vazio apaga. */
+export type AjustePerfil = Partial<{ tema: EscolhaTema; intervalo_km: number; resumo: string }>;
 
 export type RespostaTriagem = { pergunta: string; resposta: string };
 

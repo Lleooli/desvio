@@ -4,6 +4,7 @@
  */
 import { chamar } from "./cliente";
 import type {
+  AjustePerfil,
   Card,
   Cidade,
   ContaApagada,
@@ -58,8 +59,12 @@ export const decidir = (card: Card, tipo: TipoDecisao, onde: { viagem?: string; 
 export const desfazerDecisao = (lugarId: string) =>
   chamar<{ ok: true }>(`/swipe/${id(lugarId)}`, { metodo: "DELETE" });
 
-/** Taxas de aceite por categoria, tipo e faixa de preço. */
+/** Taxas de aceite por categoria, tipo e faixa de preço, resumo da triagem e preferências. */
 export const obterPerfilGosto = () => chamar<PerfilGosto>("/perfil");
+
+/** Grava tema, intervalo padrão ou resumo da triagem; devolve o perfil inteiro. */
+export const ajustarPerfil = (ajuste: AjustePerfil) =>
+  chamar<PerfilGosto>("/perfil", { metodo: "PATCH", corpo: ajuste });
 
 /** Próxima pergunta da triagem, ou `fim` com o resumo do gosto. */
 export const responderTriagem = (respostas: RespostaTriagem[]) =>
