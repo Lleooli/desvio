@@ -1,0 +1,49 @@
+name: eas
+
+# Build no EAS. Não roda em pull request: o typecheck não precisa de EXPO_TOKEN.
+# Manual: perfil preview (APK interno do beta) ou production.
+# Tag v* (v0.1.0): production nas duas plataformas.
+on:
+  workflow_dispatch:
+    inputs:
+      perfil:
+        description: Perfil do eas.json
+        required: true
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
+      plataforma:
+        description: Plataforma
+        required: true
+        type: choice
+        default: android
+        options:
+          - android
+          - ios
+          - all
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - name: eas build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: >-
+          npx eas-cli build --non-interactive --no-wait
+          --profile ${{ github.event_name == 'push' && 'production' || inputs.perfil }}
+          --platform ${{ github.event_name == 'push' && 'all' || inputs.plataforma }}

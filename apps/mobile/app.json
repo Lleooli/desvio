@@ -5,14 +5,24 @@
     "scheme": "desvio",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B6B45"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.desvio",
       "usesAppleSignIn": true
     },
     "android": {
-      "package": "app.desvio"
+      "package": "app.desvio",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B6B45"
+      }
     },
     "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-apple-authentication"],
     "experiments": {
