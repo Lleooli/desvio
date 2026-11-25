@@ -1,5 +1,6 @@
 import { Image, Linking, StyleSheet, Text, View } from "react-native";
 import { medida, espaco, estiloTexto, fontes, raio, tamanhoIcone, useCores } from "@/tema";
+import { FundoCeu } from "./Ceu";
 import { categorias, Chip, type Categoria } from "./Chip";
 import { Icon } from "./Icon";
 import { numero, Rating } from "./Rating";
@@ -116,7 +117,8 @@ export function SwipeCard({ card, stamp, atras = false }: Props) {
             <Text
               accessibilityRole="link"
               accessibilityLabel={`Instagram ${handle}${card.instagramProvavel ? ", provável" : ""}`}
-              onPress={() => Linking.openURL(`https://instagram.com/${handle}`)}
+              // Sem app nem navegador para abrir o link, o toque não faz nada em vez de rejeitar a promise.
+              onPress={() => Linking.openURL(`https://instagram.com/${handle}`).catch(() => {})}
               style={[estiloTexto("body-s"), s.instagram, { color: c["on-scrim"] }]}
             >
               @{handle}
@@ -133,24 +135,11 @@ export function SwipeCard({ card, stamp, atras = false }: Props) {
 function SemFoto({ categoria }: { categoria?: Categoria }) {
   const { c } = useCores();
   const placa = categoria === "natureza" || categoria === "posto";
-  // Os mesmos quatro brilhos do Céu no design system (bundle.css, .dv-ceu).
-  const ceu = [
-    `radial-gradient(64% 74% at 0% 0%, ${c["ceu-azul"]} 0%, transparent 64%)`,
-    placa
-      ? `radial-gradient(56% 66% at 100% 0%, ${c["ceu-placa"]} 0%, transparent 64%)`
-      : `radial-gradient(54% 64% at 100% 0%, ${c["ceu-claro"]} 0%, transparent 62%)`,
-    `radial-gradient(62% 70% at 0% 100%, ${c["ceu-sol"]} 0%, transparent 66%)`,
-    placa
-      ? `radial-gradient(52% 62% at 100% 100%, ${c["ceu-claro"]} 0%, transparent 62%)`
-      : `radial-gradient(56% 66% at 100% 100%, ${c["ceu-faixa"]} 0%, transparent 64%)`,
-  ].join(", ");
   const icone = categoria ? categorias[categoria].icon : "pin";
 
   return (
-    <View
-      aria-hidden
-      style={[StyleSheet.absoluteFill, s.semFoto, { backgroundColor: c["ceu-base"], experimental_backgroundImage: ceu }]}
-    >
+    <View aria-hidden style={[StyleSheet.absoluteFill, s.semFoto]}>
+      <FundoCeu variante={placa ? "placa" : "faixa"} />
       <View style={s.iconeSemFoto}>
         <Icon name={icone} size={tamanhoIconeSemFoto} color={c.ink} />
       </View>
@@ -196,7 +185,7 @@ const s = StyleSheet.create({
   },
   recorte: { flex: 1, borderRadius: raio["radius-lg"], overflow: "hidden" },
   semFoto: { alignItems: "center" },
-  iconeSemFoto: { position: "absolute", top: "38%", opacity: 0.35, transform: [{ translateY: -tamanhoIconeSemFoto / 2 }] },
+  iconeSemFoto: { position: "absolute", top: "38%", opacity: medida.cardIconeSemFotoOpacidade, transform: [{ translateY: -tamanhoIconeSemFoto / 2 }] },
   topo: {
     position: "absolute",
     top: espaco["space-4"],
@@ -228,7 +217,7 @@ const s = StyleSheet.create({
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: espaco["space-3"], rowGap: espaco["space-2"] },
   lugar: { flexDirection: "row", alignItems: "center", gap: espaco["space-1"] },
   instagram: { fontFamily: fontes.sansForte, textDecorationLine: "underline", alignSelf: "flex-start" },
-  provavel: { fontFamily: fontes.sans, opacity: 0.85 },
+  provavel: { fontFamily: fontes.sans, opacity: medida.cardProvavelOpacidade },
   faixaCarimbo: { position: "absolute", top: medida.cardCarimboTopo, left: espaco["space-4"], right: espaco["space-4"], flexDirection: "row" },
   carimbo: {
     paddingVertical: espaco["space-1"],

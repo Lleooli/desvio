@@ -28,7 +28,10 @@ type Props = {
   /** Cidades da rota, na ordem. */
   cidades: string[];
   variante?: keyof typeof caminhos;
-  /** px por segundo, padrão 36. */
+  /**
+   * Unidades do viewBox 400x200 por segundo, padrão 36. Como o SVG escala com a largura,
+   * a velocidade na tela cresce em aparelhos mais largos. 0 ou menos deixa o texto parado.
+   */
   velocidade?: number;
   /** Congela o texto; ele também congela sozinho com "reduzir movimento" ligado. */
   parado?: boolean;
@@ -62,7 +65,7 @@ export function Estrada({
   useEffect(() => {
     cancelAnimation(deslocamento);
     deslocamento.value = 0;
-    if (parado || reduzirMovimento || ciclo <= 0) return;
+    if (parado || reduzirMovimento || ciclo <= 0 || velocidade <= 0) return;
     deslocamento.value = withRepeat(
       withTiming(-ciclo, { duration: (ciclo / velocidade) * 1000, easing: Easing.linear }),
       -1,

@@ -5,7 +5,8 @@ Fluxo pensado para o front (estilo Tinder):
    GET  /jobs/{id}                          → status; quando "pronto", paradas com cards
    GET  /viagens                            → as viagens da pessoa, a mais recente primeiro
    GET  /viagens/{id}                       → paradas e cards ainda não avaliados, pelo gosto
-2. POST /swipe (um por card deslizado)      → guarda a decisão
+2. POST /swipe (um por card decidido)       → guarda a decisão (bora, passo, favorito)
+   DELETE /swipe/{lugar_id}                 → desfaz a decisão e devolve o card à parada
 3. POST /roteiro                            → ordem de visita dos aceitos, pelo km na rota
 4. GET  /perfil                            → resumo do gosto, para a IA
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
@@ -31,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import banco, cidades, conta, fila, gmaps, ia, preferencias, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
@@ -78,8 +79,20 @@ def _dicts(cards: list[Card]) -> list[dict]:
 
 
 class Swipe(BaseModel):
+    """Decisão sobre um card. `tipo` é o contrato; `gostou` fica para quem ainda manda bool."""
     card: Card
-    gostou: bool
+    tipo: Literal["bora", "passo", "favorito"] | None = None
+    gostou: bool | None = None
+    viagem: str | None = None
+    parada: int | None = Field(None, ge=0, description="Ordem da parada nesta viagem")
+
+    @model_validator(mode="after")
+    def completa_tipo(self):
+        if self.tipo is None:
+            if self.gostou is None:
+                raise ValueError("Informe o tipo da decisão: bora, passo ou favorito")
+            self.tipo = "bora" if self.gostou else "passo"
+        return self
 
 
 class Roteiro(BaseModel):
@@ -161,7 +174,26 @@ def apagar_minha_conta(req: ApagarConta, eu: Usuario = Depends(usuario_atual)):
 def swipe(req: Swipe, eu: Usuario = Depends(usuario_atual)):
     if not preferencias.ID_VALIDO.fullmatch(req.card.id):
         raise HTTPException(422, "Card sem id válido")
-    preferencias.registrar(eu.id, req.card.model_dump(exclude_unset=True), req.gostou, eu.email)  # uma transação, com garantir_usuario
+    try:
+        # uma transação, com garantir_usuario; viagem e parada só se forem desta pessoa
+        preferencias.registrar(eu.id, req.card.model_dump(exclude_unset=True), req.tipo, eu.email,
+                               viagem=req.viagem, parada=req.parada)
+    except preferencias.NaoEncontrado as e:
+        raise HTTPException(404, str(e)) from None
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {"ok": True}
+
+
+@app.delete("/swipe/{lugar_id:path}")
+def desfazer_swipe(lugar_id: str, eu: Usuario = Depends(usuario_atual)):
+    """Tira a decisão desta pessoa sobre o lugar. O card volta para a fila da parada."""
+    try:
+        achou = preferencias.desfazer(eu.id, lugar_id, eu.email)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    if not achou:
+        raise HTTPException(404, "Decisão não encontrada")
     return {"ok": True}
 
 
