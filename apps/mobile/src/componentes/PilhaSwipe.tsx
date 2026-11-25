@@ -21,6 +21,8 @@ type Props = {
   cards: CardLugar[];
   /** Chamada quando o card termina de sair, pelo gesto ou pelo botão. */
   onDecisao: (card: CardLugar, decisao: Decisao) => void;
+  /** Toque no card do topo: abre o detalhe do lugar. */
+  onAbrir?: (card: CardLugar) => void;
 };
 
 // Movimento do swipe em docs/design/DESIGN-SYSTEM.md (Movimento) e bundle.css (--t-folha, --ease-folha).
@@ -48,7 +50,7 @@ export function decisaoDoArrasto(x: number, y: number, largura: number): Decisao
 }
 
 /** A pilha do swipe: card do topo com gesto, o próximo já carregado atrás e os botões embaixo. */
-export function PilhaSwipe({ cards, onDecisao }: Props) {
+export function PilhaSwipe({ cards, onDecisao, onAbrir }: Props) {
   const { width } = useWindowDimensions();
   const largura = Math.min(width - 2 * espaco["space-4"], medida.cardLarguraMaxima);
   const topo = useRef<{ decidir: (decisao: Decisao) => void }>(null);
@@ -88,6 +90,7 @@ export function PilhaSwipe({ cards, onDecisao }: Props) {
           onSaida={() => setSaindo(true)}
           onVolta={() => setSaindo(false)}
           onDecisao={decidir}
+          onToque={() => onAbrir?.(atual)}
         />
       </View>
       <SwipeActions
@@ -107,11 +110,12 @@ type CardDoTopoProps = {
   /** O card voltou ao centro porque quem usa não o tirou da lista (ex.: o swipe falhou). */
   onVolta: () => void;
   onDecisao: (card: CardLugar, decisao: Decisao) => void;
+  onToque: () => void;
   ref: Ref<{ decidir: (decisao: Decisao) => void }>;
 };
 
 /** Montado de novo a cada card (key = id), então o deslocamento sempre começa em zero. */
-function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, ref }: CardDoTopoProps) {
+function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, onToque, ref }: CardDoTopoProps) {
   const menosMovimento = useReducedMotion();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
@@ -156,7 +160,7 @@ function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, ref }: CardDoT
 
   useImperativeHandle(ref, () => ({ decidir: (decisao: Decisao) => sair(decisao) }));
 
-  const gesto = Gesture.Pan()
+  const arrasto = Gesture.Pan()
     .onUpdate((e) => {
       if (saiu.value) return; // agarrar o card saindo não interrompe a saída
       x.value = e.translationX;
@@ -176,6 +180,12 @@ function CardDoTopo({ card, largura, onSaida, onVolta, onDecisao, ref }: CardDoT
         y.value = withSpring(0);
       }
     });
+
+  // Toque sem arrasto abre o detalhe; o arrasto que começa cancela o toque.
+  const toque = Gesture.Tap().onEnd((_e, terminou) => {
+    if (terminou && !saiu.value) runOnJS(onToque)();
+  });
+  const gesto = Gesture.Race(arrasto, toque);
 
   const movimento = useAnimatedStyle(() => ({
     transform: [
