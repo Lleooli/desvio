@@ -72,6 +72,9 @@ class Viagem(BaseModel):
     por_categoria: int = Field(5, ge=1, le=20)
     usar_google_maps: bool = False
     buscar_instagram: bool = True
+    saida: str = Field("07:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$", examples=["07:00"],
+                       description="Hora de saída, HH:MM; decide onde cada dia acaba e onde a pessoa dorme")
+    data: date | None = Field(None, examples=["2026-12-20"], description="Dia da saída, opcional")
     forcar: bool = Field(False, description="Coleta as cidades de novo, sem usar as já guardadas, para trazer lugares novos")
 
 
@@ -153,7 +156,7 @@ class Ranquear(BaseModel):
 
 @app.post("/viagem", status_code=202)
 def viagem(req: Viagem, eu: Usuario = Depends(usuario_atual)):
-    entrada = req.model_dump()
+    entrada = req.model_dump(mode="json")  # a data vira "AAAA-MM-DD", que vai no JSON do job
     with banco.conectar() as con:  # viagem e job na mesma transação: a viagem aparece já "buscando"
         banco.garantir_usuario(eu.id, eu.email, con)
         vid = viagens.criar(con, eu.id, entrada)
@@ -296,24 +299,38 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
     Pelo km; com `usar_ia`, ajustado pela IA à hora de saída e aos dias do `contexto`,
     com uma explicação por lugar. Se a IA falhar, volta a ordem pelo km (`fonte` "geometria").
     Depois que a pessoa edita (PUT), fica a ordem dela, sem os lugares que ela tirou.
+
+    Sem `saida` ou `data` no contexto, valem as da viagem (Nova viagem). Os dias acabam
+    nas estadias que a coleta planejou, e `noites` traz o hotel aceito em cada uma, ou o
+    aviso de que falta escolher onde dormir (issue #104).
     """
     req = req or RoteiroDaViagem()
     r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
     if r is None:  # viagem de outra pessoa: 404, como se não existisse
         raise HTTPException(404, "Viagem não encontrada")
+    plano = await run_in_threadpool(viagens.planejamento, viagem_id) or {}
+    estadias = plano.get("estadias") or []
     if r["fonte"] == "pessoa":
         # a ordem que a pessoa escolheu não volta para a IA, nem é regravada: só o PUT a
         # grava, e regravar aqui desfaria um PUT que chegasse entre a leitura e a escrita
-        return r
+        return _com_noites(r, estadias)
     if req.usar_ia:
         contexto = req.contexto.model_dump(mode="json", exclude_none=True)
-        veiculo = contexto.get("veiculo") or await run_in_threadpool(viagens.veiculo, viagem_id)
+        for chave in ("saida", "data"):
+            if chave not in contexto and plano.get(chave):
+                contexto[chave] = plano[chave]
+        veiculo = contexto.get("veiculo") or plano.get("veiculo")
         async with httpx.AsyncClient() as client:
-            r = await ia.ajustar_roteiro(client, r["itens"], contexto, veiculo)
+            r = await ia.ajustar_roteiro(client, r["itens"], contexto, veiculo, estadias)
     if not await run_in_threadpool(viagens.guardar_roteiro, viagem_id, r):
         # a pessoa editou enquanto a IA respondia: vale a ordem dela
         r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
-    return r
+    return _com_noites(r, estadias)
+
+
+def _com_noites(r: dict, estadias: list[dict]) -> dict:
+    """O roteiro com `noites`: uma por estadia, com o hotel aceito ou o aviso do que falta."""
+    return {**r, "noites": roteiro.noites(r["itens"], estadias)}
 
 
 @app.put("/viagens/{viagem_id}/roteiro")
@@ -325,7 +342,7 @@ def roteiro_editado(viagem_id: str, req: EdicaoDoRoteiro, eu: Usuario = Depends(
         raise HTTPException(422, "Esse lugar não está no roteiro desta viagem.")
     if r is None:  # viagem de outra pessoa: 404, como se não existisse
         raise HTTPException(404, "Viagem não encontrada")
-    return r
+    return _com_noites(r, (viagens.planejamento(viagem_id) or {}).get("estadias") or [])
 
 
 @app.post("/triagem")

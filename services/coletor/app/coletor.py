@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import cache, fronteira, geo, gmaps, ia, instagram, osm, parada_cidade
+from . import cache, fronteira, geo, gmaps, ia, instagram, osm, parada_cidade, pernoite
 
 log = logging.getLogger("desvio.coletor")
 
@@ -418,16 +418,63 @@ async def _ordens_genericas(client: httpx.AsyncClient,
     return saida
 
 
+async def _cidade_no_ponto(client: httpx.AsyncClient, ponto: tuple[float, float], so_brasil: bool,
+                           raio_km: float) -> dict | None:
+    """A cidade da rota perto do ponto, com UF; None fora do Brasil numa viagem só no Brasil."""
+    cidade = await _cidade_proxima_com_cache(client, ponto)
+    if not cidade or (so_brasil and not fronteira.no_brasil((cidade["lat"], cidade["lon"]))):
+        return None
+    _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
+    if so_brasil and pais not in (None, "br"):
+        return None
+    return {**cidade, "uf": uf, "raio_km": raio_km}
+
+
+async def _planejar_pernoites(client: httpx.AsyncClient, paradas: list[dict], rota: dict, pontos: list,
+                              acc: list[float], veiculo: str, saida: str | None, intervalo_km: float,
+                              so_brasil: bool, raio_km: float, vistas: set[str],
+                              com_hotel: Callable[[], list[dict]]) -> None:
+    """Uma parada de estadia onde cada dia de estrada acaba (issue #104); muda `paradas`.
+
+    `com_hotel` dá as cidades perto da rota que já têm hospedagem em parada_cidade (#93):
+    dentro da folga, elas ganham, e o hotel delas sai da tabela, sem Overpass, Google nem IA.
+    """
+    noites = pernoite.pontos(rota["duracao_h"], acc[-1], veiculo, saida)
+    if not noites:
+        return
+    for p in paradas:
+        p["km_na_rota"] = geo.km_na_rota(pontos, acc, (p["lat"], p["lon"]))
+    feitas = [{"nome": f["nome"], "uf": f["uf"], "lat": f["lat"], "lon": f["lon"], "km": f["km"],
+               "raio_km": raio_km} for f in com_hotel()
+              if not so_brasil or fronteira.no_brasil((f["lat"], f["lon"]))]
+
+    async def achar(ponto: tuple[float, float]) -> dict | None:
+        return await _cidade_no_ponto(client, ponto, so_brasil, raio_km)
+
+    # a origem e o destino não viram estadia; as paradas já escolhidas podem virar
+    excluir = vistas - {_norm(p["nome"]) for p in paradas}
+    await pernoite.planejar(paradas, noites, intervalo_km=intervalo_km,
+                            ponto_do_km=lambda km: pernoite.ponto_no_km(pontos, acc, km),
+                            km_do_ponto=lambda pt: geo.km_na_rota(pontos, acc, pt),
+                            achar_cidade=achar, excluir=excluir, com_hotel=feitas)
+    vistas.update(_norm(p["nome"]) for p in paradas)
+    for p in paradas:
+        p.pop("km_na_rota", None)  # o km final sai em `resultado`, pela mesma conta das outras
+
+
 async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           categorias: list[str] | None = None, por_categoria: int = 5,
                           usar_google_maps: bool = False, buscar_instagram: bool = True,
-                          veiculo: str = "carro",
+                          veiculo: str = "carro", saida: str | None = None, data: str | None = None,
                           raio_parada_km: float = 8, raio_destino_km: float = 15,
                           progresso: Progresso | None = None,
                           parcial: Callable[[dict], None] | None = None,
                           forcar: bool = False) -> dict:
     """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
 
+    `saida` (HH:MM, 07:00 sem ela) decide onde cada dia acaba: lá a viagem tem uma parada
+    de estadia, com hotéis (pernoite.py, issue #104); a cidade que já tem hospedagem em
+    parada_cidade dentro da folga ganha. `data` vem da viagem e não muda a coleta.
     `progresso` recebe as etapas na ordem: rota, cidades, lugares, instagram.
     `parcial` recebe, com o Google ligado, o resultado só com OpenStreetMap antes do
     gosom (minutos); o resultado final contém todos os cards do parcial, com os mesmos ids.
@@ -483,29 +530,36 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                 continue
             paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km, "_km": km})
         paradas.sort(key=lambda p: p.pop("_km"))  # a cidade feita pode estar um pouco antes ou depois
+        await _planejar_pernoites(
+            client, paradas, rota, pontos, acc, veiculo, saida, intervalo_km, so_brasil, raio_parada_km, vistas,
+            lambda: [] if forcar else _cidades_feitas(pontos, acc, ["hospedagem"], var_parada))
         paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
                         "tipo": "destino", "raio_km": raio_destino_km})
         _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
 
-        # o que cada cidade já tem, por categoria; só as categorias que faltam vão para a coleta
+        # o que cada cidade já tem, por categoria; só as categorias que faltam vão para a coleta.
+        # Na estadia, hospedagem entra sempre, como categoria própria (#104)
+        cats = [pernoite.categorias_da_parada(p, categorias) for p in paradas]
         chaves = [(parada_cidade.id_cidade(p["nome"], p.get("uf")),
                    parada_cidade.variante(p["raio_km"], por_categoria, usar_google_maps)) for p in paradas]
         por_cat: list[dict[str, dict]] = []
-        for cidade_id, var in chaves:
-            linhas = {} if forcar else parada_cidade.obter(cidade_id, categorias, var)
+        for i, (cidade_id, var) in enumerate(chaves):
+            linhas = {} if forcar else parada_cidade.obter(cidade_id, cats[i], var)
             por_cat.append({cat: {"cards": l["cards"], "ordem": l["ordem_ia"], "completa": l["completa"],
                                   "salva": True} for cat, l in linhas.items()})
-        faltam = [[cat for cat in categorias if cat not in feitas_i] for feitas_i in por_cat]
+        faltam = [[cat for cat in cats[i] if cat not in feitas_i] for i, feitas_i in enumerate(por_cat)]
         novas = [i for i, f in enumerate(faltam) if f]
 
         def juntar(i: int, coletados: list[dict] | None = None) -> list[dict]:
-            """Os cards da parada: as categorias intercaladas, na ordem pedida."""
+            """Os cards da parada: as categorias intercaladas, na ordem pedida (na estadia, hotéis primeiro)."""
             listas = []
-            for cat in categorias:
+            for cat in cats[i]:
                 if cat in por_cat[i]:
                     listas.append(por_cat[i][cat]["cards"])
                 elif coletados:
                     listas.append([c for c in coletados if c.get("categoria") == cat])
+            if paradas[i].get("tipo") == "estadia":
+                return pernoite.hoteis_primeiro([{"tipo": "estadia", "cards": _intercalar(listas)}])[0]["cards"]
             return _intercalar(listas)
 
         def resultado(com_cards: list[dict]) -> dict:

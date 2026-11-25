@@ -39,13 +39,20 @@ export type Card = {
    * o horário de hoje não é conhecido. Só vem em `GET /viagens/{id}`.
    */
   horario_hoje?: string[] | null;
+  /** Só nos itens do roteiro: o dia da viagem, a hora de chegada e se a pessoa dorme ali. */
+  dia?: number;
+  chegada?: string;
+  pernoite?: boolean;
 };
 
 export type Parada = {
   ordem: number;
   nome: string;
   uf: string | null;
+  /** "estadia": a cidade onde a pessoa dorme no fim do dia `dia`, com hotéis primeiro. */
   tipo: TipoParada;
+  /** Só na estadia: a noite do dia N. */
+  dia?: number;
   km_na_rota: number | null;
   horas_desde_saida?: number | null;
   cards: Card[];
@@ -66,6 +73,10 @@ export type NovaViagem = {
   por_categoria?: number;
   usar_google_maps?: boolean;
   buscar_instagram?: boolean;
+  /** Hora de saída, "HH:MM" (07:00 sem ela); decide onde cada dia acaba. */
+  saida?: string;
+  /** Dia da saída, "AAAA-MM-DD". */
+  data?: string;
 };
 
 export type ViagemCriada = { job_id: string; viagem_id: string; status: StatusJob };
@@ -77,6 +88,10 @@ export type ResumoViagem = {
   veiculo: Veiculo;
   intervalo_km: number;
   categorias: CategoriaLugar[];
+  /** Hora de saída escolhida na Nova viagem; null nas viagens de antes dela. */
+  saida: string | null;
+  /** Dia da saída, "AAAA-MM-DD", se a pessoa informou. */
+  data: string | null;
   status: StatusViagem;
   job_id: string | null;
   criado_em: string;
@@ -160,6 +175,8 @@ export type ContextoRoteiro = {
   saida?: string;
   /** Dias de viagem, de 1 em diante. */
   dias?: number;
+  /** Dia da saída, "AAAA-MM-DD"; sem ele, vale o da viagem. */
+  data?: string;
 };
 
 export type PedidoRoteiroDaViagem = {
@@ -173,6 +190,20 @@ export type Roteiro = {
   explicacoes: Record<string, string>;
   /** "pessoa" depois que ela reordena ou tira lugares: a ordem dela, sem IA. */
   fonte: "ia" | "geometria" | "pessoa";
+  /** Uma por cidade de estadia: o hotel aceito nela ou o aviso de que falta escolher. */
+  noites?: Noite[];
+};
+
+/** Uma noite da viagem, na cidade de estadia que a busca planejou. */
+export type Noite = {
+  dia: number;
+  cidade: string;
+  uf: string | null;
+  /** A ordem da parada de estadia, para abrir o swipe dela. */
+  parada: number | null;
+  hotel: { id: string; nome: string | null } | null;
+  /** "Falta escolher onde dormir em …" quando ainda não tem hotel. */
+  aviso: string | null;
 };
 
 export type ContaApagada = { dados: "apagados"; conta: "apagada" | "pendente" };

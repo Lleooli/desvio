@@ -8,17 +8,19 @@ import {
   mensagemDeErro,
   montarRoteiroDaViagem,
   type Card,
+  type Noite,
   type Roteiro,
   type Viagem,
 } from "@/api";
 import { useCarregar } from "@/api/useCarregar";
 import { LIMITE_PARADAS_GOOGLE, linkWaze, trechosGoogleMaps } from "@/mapas";
-import { espaco, estiloTexto, fontes, medida, raio, useCores } from "@/tema";
+import { espaco, estiloTexto, fontes, medida, raio, tamanhoIcone, useCores } from "@/tema";
 import { Aviso } from "./Aviso";
 import { Button } from "./Button";
 import { Ceu } from "./Ceu";
 import { Destaque } from "./Destaque";
 import { Estrada } from "./Estrada";
+import { Icon } from "./Icon";
 import { numero } from "./Rating";
 import { Toast } from "./Toast";
 
@@ -51,6 +53,26 @@ function horaEstimada(saida: number, horasDeEstrada: number): string {
   const dia = Math.floor(total / MINUTOS_NO_DIA);
   const texto = `~${hora(total % MINUTOS_NO_DIA)}`;
   return dia > 0 ? `${texto} do dia ${dia + 1}` : texto;
+}
+
+/** "07:30" em minutos desde a meia-noite; undefined fora do formato. */
+function minutosDe(hhmm: string | null | undefined): number | undefined {
+  const partes = hhmm ? /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm) : null;
+  return partes ? Number(partes[1]) * 60 + Number(partes[2]) : undefined;
+}
+
+/**
+ * As noites do coletor conferidas com os itens que estão na tela: tirar o hotel do
+ * roteiro (ou desfazer) muda a noite na hora, sem esperar o coletor.
+ */
+function noitesNaTela(noites: Noite[], itens: Card[]): Noite[] {
+  return noites.map((noite) => {
+    const hoteis = itens.filter((item) => item.categoria === "hospedagem" && item.cidade === noite.cidade);
+    const hotel = hoteis.find((item) => item.pernoite) ?? hoteis[0];
+    return hotel
+      ? { ...noite, hotel: { id: hotel.id, nome: hotel.nome ?? null }, aviso: null }
+      : { ...noite, hotel: null, aviso: `Falta escolher onde dormir em ${noite.cidade}` };
+  });
 }
 
 /** A lista com o item de `de` levado `passos` posições para baixo (negativo: para cima). */
@@ -95,8 +117,10 @@ type Props = {
  */
 export function RoteiroDaViagem({ viagem, recarregar }: Props) {
   const { c } = useCores();
-  const [saida, setSaida] = useState(SAIDA_PADRAO);
-  const [saidaPedida, setSaidaPedida] = useState(SAIDA_PADRAO);
+  // Começa na hora de saída da Nova viagem; viagens de antes dela começam às 7h.
+  const saidaDaViagem = minutosDe(viagem.saida) ?? SAIDA_PADRAO;
+  const [saida, setSaida] = useState(saidaDaViagem);
+  const [saidaPedida, setSaidaPedida] = useState(saidaDaViagem);
   const [mapaAberto, setMapaAberto] = useState(false);
   const destino = viagem.paradas.find((p) => p.tipo === "destino");
 
@@ -112,7 +136,11 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
   const { dados, erro, tentarDeNovo } = useCarregar(`${viagem.id}@${saidaPedida}@${decisoes}`, () =>
     montarRoteiroDaViagem(viagem.id, {
       usar_ia: true,
-      contexto: { saida: horaHHMM(saidaPedida), dias: diasDeViagem(saidaPedida, destino?.horas_desde_saida) },
+      contexto: {
+        saida: horaHHMM(saidaPedida),
+        dias: diasDeViagem(saidaPedida, destino?.horas_desde_saida),
+        ...(viagem.data ? { data: viagem.data } : {}),
+      },
     }),
   );
 
@@ -143,6 +171,7 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
 
   const roteiro = editado ?? dados;
   const itens = roteiro?.itens ?? [];
+  const noites = noitesNaTela(dados?.noites ?? [], itens);
   const totalKm = destino?.km_na_rota ?? null;
   const cidades = [viagem.origem, ...viagem.paradas.map((p) => p.nome)].map((cidade) => cidade.split(",")[0]);
   // Enquanto a IA monta, ainda não há lugares para contar: "0 lugares" e "pronto" seriam falsos.
@@ -260,6 +289,7 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
               {erroEdicao}
             </Text>
           ) : null}
+          {noites.length > 0 ? <NoitesDaViagem viagemId={viagem.id} noites={noites} /> : null}
           {itens.map((item, i) => (
             <ItemRoteiro
               key={item.id}
@@ -302,6 +332,42 @@ export function RoteiroDaViagem({ viagem, recarregar }: Props) {
         visivel={mapaAberto}
         onFechar={() => setMapaAberto(false)}
       />
+    </View>
+  );
+}
+
+/**
+ * Onde a pessoa dorme em cada noite (issue #104): o hotel aceito na cidade de estadia, ou
+ * o aviso de que falta escolher, com o atalho para o swipe dessa parada.
+ */
+function NoitesDaViagem({ viagemId, noites }: { viagemId: string; noites: Noite[] }) {
+  const { c } = useCores();
+  const escolher = (parada: number) =>
+    router.push({ pathname: "/viagens/[id]/paradas/[paradaId]", params: { id: viagemId, paradaId: String(parada) } });
+  return (
+    <View style={[s.noites, { backgroundColor: c["surface-200"] }]}>
+      <Text accessibilityRole="header" style={[estiloTexto("body-strong"), { color: c.ink }]}>
+        Onde você dorme
+      </Text>
+      {noites.map((noite) => (
+        <View key={noite.dia} style={s.noite}>
+          <Icon name="bed" size={tamanhoIcone.padrao} color={noite.hotel ? c.placa : c.perigo} />
+          <View style={s.info}>
+            <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>{`Dia ${noite.dia} · ${noite.cidade}`}</Text>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[estiloTexto(noite.hotel ? "body-strong" : "body"), { color: c.ink }]}
+            >
+              {noite.hotel ? (noite.hotel.nome ?? "Hotel escolhido") : noite.aviso}
+            </Text>
+          </View>
+          {!noite.hotel && noite.parada != null ? (
+            <Button size="sm" variant="secondary" onPress={() => escolher(noite.parada as number)}>
+              Escolher
+            </Button>
+          ) : null}
+        </View>
+      ))}
     </View>
   );
 }
@@ -408,7 +474,15 @@ function ItemRoteiro({ item, posicao, total, saida, porque, onMover, onTirar }: 
   const arrastando = useSharedValue(false);
   const altura = useSharedValue(0);
   const nome = item.nome ?? "Lugar";
-  const quando = [item.cidade, item.horas_desde_saida != null ? horaEstimada(saida, item.horas_desde_saida) : null]
+  // A agenda do coletor (dia e chegada) vale mais que a conta da tela, que não sabe dos pernoites.
+  const chegada = minutosDe(item.chegada);
+  const estimada =
+    chegada != null && item.dia
+      ? `~${hora(chegada)} do dia ${item.dia}`
+      : item.horas_desde_saida != null
+        ? horaEstimada(saida, item.horas_desde_saida)
+        : null;
+  const quando = [item.cidade, estimada, item.pernoite ? "pernoite" : null]
     .filter(Boolean)
     .join(" · ");
   const km = item.km_na_rota != null ? `KM ${numero(item.km_na_rota)}` : "";
@@ -513,6 +587,8 @@ const s = StyleSheet.create({
   centro: { flex: 1, justifyContent: "center", alignItems: "center", padding: espaco["space-6"] },
   vazio: { textAlign: "center" },
   lista: { gap: espaco["space-2"], paddingHorizontal: espaco["space-4"], paddingBottom: espaco["space-4"] },
+  noites: { gap: espaco["space-2"], padding: espaco["space-3"], borderRadius: raio["radius-md"] },
+  noite: { flexDirection: "row", alignItems: "center", gap: espaco["space-3"] },
   item: {
     gap: espaco["space-2"],
     padding: espaco["space-3"],

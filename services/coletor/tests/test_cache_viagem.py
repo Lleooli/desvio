@@ -161,7 +161,10 @@ def test_outra_origem_pelas_mesmas_cidades_nao_coleta_nem_chama_o_groq(mock_http
     with psycopg.connect(pg) as con:
         linhas = con.execute("select cidade, categoria, ordem_ia from parada_cidade").fetchall()
     assert len({l[0] for l in linhas}) == len(primeira["resultado"]["paradas"])
-    assert len(linhas) == 3 * len(primeira["resultado"]["paradas"])  # uma linha por categoria
+    # uma linha por categoria, mais a hospedagem da cidade de pernoite (#104: 13,9 h, uma noite)
+    estadias = [p for p in primeira["resultado"]["paradas"] if p["tipo"] == "estadia"]
+    assert len(estadias) == 1
+    assert len(linhas) == 3 * len(primeira["resultado"]["paradas"]) + len(estadias)
     assert all(l[2] is not None for l in linhas)
     assert any(l[0].startswith("nome:cidade") for l in linhas)  # cidade fora da lista do IBGE
 
@@ -231,7 +234,10 @@ def test_cidade_feita_com_mais_categorias_atende_viagem_com_menos(mock_http, mon
     for p1, p2 in zip(primeira["resultado"]["paradas"], segunda["resultado"]["paradas"]):
         assert p1["nome"] == p2["nome"]
         cats = [c["categoria"] for c in p2["cards"]]
-        assert set(cats) <= {"turismo", "restaurante"} and cats[0] == "turismo"
+        if p2["tipo"] == "estadia":  # na cidade de pernoite (#104), os hotéis vêm antes
+            assert cats[0] == "hospedagem" and set(cats) <= {"hospedagem", "turismo", "restaurante"}
+        else:
+            assert set(cats) <= {"turismo", "restaurante"} and cats[0] == "turismo"
         assert [c["id"] for c in p2["cards"]] == [c["id"] for c in p1["cards"] if c["categoria"] != "posto"]
 
 
@@ -250,7 +256,8 @@ def test_categoria_nova_na_mesma_cidade_coleta_e_ranqueia_so_ela(mock_http, monk
     assert cards_na_ia and all(c["nome"].startswith("Hotel") for c in cards_na_ia)
     for p1, p2 in zip(primeira["resultado"]["paradas"], segunda["resultado"]["paradas"]):
         cats = [c["categoria"] for c in p2["cards"]]
-        assert cats[:2] == ["turismo", "hospedagem"]  # intercaladas, na ordem pedida
+        # intercaladas, na ordem pedida; na cidade de pernoite (#104), os hotéis antes
+        assert cats[:2] == (["hospedagem", "hospedagem"] if p2["tipo"] == "estadia" else ["turismo", "hospedagem"])
         assert [c["id"] for c in p2["cards"] if c["categoria"] == "turismo"] == \
                [c["id"] for c in p1["cards"] if c["categoria"] == "turismo"]
         assert sorted(c["nome"] for c in p2["cards"] if c["categoria"] == "hospedagem") == ["Hotel 1", "Hotel 2"]
@@ -483,5 +490,43 @@ def test_chave_do_roteiro():
               ia.chave_roteiro([{**base[0], "horas_desde_saida": 0.7}, base[1]],
                                {"saida": "07:00", "veiculo": "carro", "dias": 1})]
     assert len({chave, *outras}) == 6
+
+
+def test_pernoite_na_cidade_com_hotel_ja_feita_nao_busca_hotel_nem_chama_a_ia(mock_http, monkeypatch, pg):
+    """#104: a cidade de pernoite que já tem hospedagem em parada_cidade ganha dentro da folga,
+    e o hotel dela sai da tabela: zero Overpass, Google e IA para hotéis."""
+    from app import pernoite
+    from test_offline import _handler
+
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(gmaps.asyncio, "sleep", lambda s: real_sleep(0))
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    groq = _groq_falso(monkeypatch)
+    cont = _contar_chamadas(monkeypatch)
+    pedidas = _pois_contando(monkeypatch)
+    _handler.keywords = None
+    primeira = _viajar(cli, cab, usar_google_maps=True, saida="07:00")
+    [noite1] = [p for p in primeira["resultado"]["paradas"] if p["tipo"] == "estadia"]
+    assert any("hotéis em " + noite1["nome"] in k for k in _handler.keywords)
+    assert noite1["cards"][0]["categoria"] == "hospedagem"
+
+    # saindo às 13h30, o dia 1 acaba uns 36 km antes, quase em cima de uma parada sem hotel;
+    # com a folga de 25% (50 km), a cidade com hotel guardado também cabe, e ganha
+    assert noite1['km_na_rota'] - 600 > 30  # na primeira (folga de 10%), a noite foi numa cidade nova
+    monkeypatch.setattr(pernoite, "FOLGA_PCT", 25.0)
+    _zerar(cont)
+    groq.clear()
+    pedidas.clear()
+    _handler.keywords = None
+    segunda = _viajar(cli, cab, usar_google_maps=True, saida="13:30")
+    [noite2] = [p for p in segunda["resultado"]["paradas"] if p["tipo"] == "estadia"]
+    assert (noite2["nome"], noite2["dia"]) == (noite1["nome"], 1)
+    assert all("hospedagem" not in p for p in pedidas)  # nada de hotel no Overpass
+    assert _handler.keywords is None or not any(k.startswith("hotéis") for k in _handler.keywords)  # nem no Google
+    assert not [c for pedido in groq for p in pedido["paradas"] for c in p["cards"] if c["nome"].startswith("Hotel")]
+    assert [c["id"] for c in noite2["cards"] if c["categoria"] == "hospedagem"] == \
+           [c["id"] for c in noite1["cards"] if c["categoria"] == "hospedagem"]
+    assert noite2["cards"][0]["categoria"] == "hospedagem"
 
 

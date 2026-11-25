@@ -14,7 +14,7 @@ from collections import defaultdict
 
 from psycopg.types.json import Jsonb
 
-from . import banco
+from . import banco, pernoite
 
 
 # Campos do card que entram no perfil; ficam na decisão de cada pessoa (#61)
@@ -255,4 +255,5 @@ def personalizar(resultado: dict, usuario: str | None, perfil_pronto: dict | Non
     for parada in resultado["paradas"]:
         parada["cards"] = pontuar([c for c in parada["cards"] if c["id"] not in vistos], p,
                                   bool(parada.get("ranqueada")))
+    pernoite.hoteis_primeiro(resultado["paradas"])  # na estadia, os hotéis antes do gosto
     return resultado

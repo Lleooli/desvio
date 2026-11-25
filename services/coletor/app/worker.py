@@ -48,6 +48,7 @@ async def processar(job: dict) -> dict:
         raise ValueError(f"Tipo de job desconhecido: {job['tipo']}")
     # a ordem genérica da IA por cidade já veio da coleta (parada_cidade, #93); o gosto de
     # cada pessoa entra aqui, sem IA: um gosto diferente não gera chamada nova ao Groq
+    # (na estadia, personalizar põe os hotéis no topo)
     return preferencias.personalizar(r, usuario)
 
 

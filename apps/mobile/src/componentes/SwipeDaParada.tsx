@@ -55,6 +55,21 @@ export function juntarNaPilha(pilha: Card[], daParada: Card[], fora: ReadonlySet
   return novos.length > 0 ? [...pilha, ...novos] : pilha;
 }
 
+/**
+ * Os cards da parada na ordem da pilha: na estadia (a cidade onde a pessoa dorme), os de
+ * hospedagem primeiro, sem mudar a ordem entre eles; nas outras, como vieram.
+ */
+export function naOrdemDaPilha(parada: Pick<ParadaDaViagem, "tipo" | "cards">): Card[] {
+  if (parada.tipo !== "estadia") return parada.cards;
+  const hotel = (card: Card) => (card.categoria === "hospedagem" ? 0 : 1);
+  return [...parada.cards].sort((a, b) => hotel(a) - hotel(b));
+}
+
+/** "Onde dormir no dia 2": o selo da parada de estadia. */
+export function ondeDormir(parada: Pick<ParadaDaViagem, "dia">): string {
+  return parada.dia ? `Onde dormir no dia ${parada.dia}` : "Onde dormir";
+}
+
 type Props = {
   viagem: Viagem;
   /** A ordem da parada na viagem (o `:paradaId` da rota). */
@@ -67,7 +82,8 @@ type Props = {
  * Desfazer por 4 s, que devolve o card ao topo. No fim da pilha, volta às paradas ou
  * segue para a próxima parada com lugares. Os chips do topo filtram a pilha por categoria
  * (HU12); o filtro mora na pilha, que é montada de novo a cada parada, então trocar de
- * parada limpa o filtro.
+ * parada limpa o filtro. Na cidade de estadia, os hotéis vêm primeiro, com o selo "Onde
+ * dormir no dia N" (issue #104).
  */
 export function SwipeDaParada({ viagem, ordem }: Props) {
   const parada = viagem.paradas.find((p) => p.ordem === ordem);
@@ -105,7 +121,7 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
     lugaresDecididosNaFila().then((naFila) => {
       if (!valendo) return;
       const fora = new Set([...naFila, ...decididos.current]);
-      setCards((atuais) => juntarNaPilha(atuais ?? [], parada.cards, fora));
+      setCards((atuais) => juntarNaPilha(atuais ?? [], naOrdemDaPilha(parada), fora));
     });
     return () => {
       valendo = false;
@@ -188,6 +204,12 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
           <Text style={[estiloTexto("km"), s.km, { color: c["ink-muted"] }]}>
             {parada.km_na_rota != null ? `KM ${numero(parada.km_na_rota)} · ${contagem}` : contagem}
           </Text>
+          {parada.tipo === "estadia" ? (
+            <View style={[s.selo, { backgroundColor: c.faixa }]}>
+              <Icon name="bed" size={tamanhoIcone.padrao} color={c["on-faixa"]} />
+              <Text style={[estiloTexto("label"), { color: c["on-faixa"] }]}>{ondeDormir(parada)}</Text>
+            </View>
+          ) : null}
         </View>
         <Button variant="ghost" size="sm" onPress={() => voltarAsParadas(viagem.id)}>
           Pronto
@@ -285,7 +307,15 @@ const s = StyleSheet.create({
     justifyContent: "center",
     borderRadius: raio["radius-pill"],
   },
-  titulo: { flexShrink: 1, alignItems: "center" },
+  titulo: { flexShrink: 1, alignItems: "center", gap: espaco["space-1"] },
+  selo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: espaco["space-1"],
+    paddingHorizontal: espaco["space-2"],
+    paddingVertical: espaco["space-1"],
+    borderRadius: raio["radius-pill"],
+  },
   km: { textTransform: "uppercase" },
   filtros: { flexGrow: 0 },
   filtrosConteudo: { gap: espaco["space-2"], paddingHorizontal: espaco["space-4"], paddingTop: espaco["space-1"], paddingBottom: espaco["space-3"] },

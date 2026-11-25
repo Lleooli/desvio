@@ -21,6 +21,39 @@ const MODOS: { valor: Veiculo; label: string; icon: "car" | "moto" | "bike" }[] 
   { valor: "bicicleta", label: "Bicicleta", icon: "bike" },
 ];
 const CATEGORIAS_PADRAO: Categoria[] = ["turismo", "restaurante", "posto"];
+// Hora de saída: começa às 7h e anda de 30 em 30 minutos (a mesma do Roteiro).
+const SAIDA_PADRAO = 7 * 60;
+const PASSO_SAIDA = 30;
+const MINUTOS_NO_DIA = 24 * 60;
+const DATA_INVALIDA = "Use o formato DD/MM/AAAA, com uma data que existe.";
+
+/** "7h", "13h30": a hora no formato brasileiro. */
+function hora(minutos: number): string {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+}
+
+/** "07:00": a hora no formato que o coletor recebe. */
+function horaHHMM(minutos: number): string {
+  return `${String(Math.floor(minutos / 60)).padStart(2, "0")}:${String(minutos % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A data que a pessoa digitou (DD/MM/AAAA) no formato do coletor (AAAA-MM-DD).
+ *
+ * @returns undefined com o campo vazio; null quando não é uma data que existe.
+ */
+function dataDaSaida(texto: string): string | null | undefined {
+  const limpo = texto.trim();
+  if (!limpo) return undefined;
+  const partes = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(limpo);
+  if (!partes) return null;
+  const [dia, mes, ano] = [Number(partes[1]), Number(partes[2]), Number(partes[3])];
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  if (data.getUTCFullYear() !== ano || data.getUTCMonth() !== mes - 1 || data.getUTCDate() !== dia) return null;
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
 
 // O mesmo mínimo de GET /cidades (cidades.MINIMO_LETRAS no coletor).
 const MINIMO_LETRAS = 3;
@@ -108,7 +141,11 @@ function CampoCidade({ label, campo, onChange }: { label: string; campo: Campo; 
   );
 }
 
-/** Nova viagem por terra (canvas NovaViagem): origem, destino, intervalo e categorias, e daí a busca. */
+/**
+ * Nova viagem por terra (canvas NovaViagem): origem, destino, hora de saída, data opcional,
+ * intervalo e categorias, e daí a busca. A saída decide onde cada dia acaba e em que
+ * cidades a busca procura onde dormir.
+ */
 export default function NovaViagem() {
   const { c } = useCores();
   const router = useRouter();
@@ -120,6 +157,8 @@ export default function NovaViagem() {
   const [mexeuNoIntervalo, setMexeuNoIntervalo] = useState(false);
   const [escolhidas, setEscolhidas] = useState<Categoria[]>(CATEGORIAS_PADRAO);
   const [avisoCategoria, setAvisoCategoria] = useState(false);
+  const [saida, setSaida] = useState(SAIDA_PADRAO);
+  const [data, setData] = useState<Campo>({ texto: "" });
   const [erro, setErro] = useState<string>();
   const [ocupado, setOcupado] = useState(false);
 
@@ -153,6 +192,11 @@ export default function NovaViagem() {
 
   async function buscarParadas() {
     setErro(undefined);
+    const dataIso = dataDaSaida(data.texto);
+    if (dataIso === null) {
+      setData({ texto: data.texto, erro: DATA_INVALIDA });
+      return;
+    }
     setOcupado(true);
     try {
       const [rotuloOrigem, rotuloDestino] = await Promise.all([
@@ -170,6 +214,8 @@ export default function NovaViagem() {
         veiculo: modo,
         intervalo_km: intervalo,
         categorias: escolhidas,
+        saida: horaHHMM(saida),
+        ...(dataIso ? { data: dataIso } : {}),
       });
       router.replace({ pathname: "/viagens/[id]/carregando", params: { id: criada.viagem_id } });
     } catch (e) {
@@ -185,6 +231,7 @@ export default function NovaViagem() {
   }
 
   const rotuloSecao = [estiloTexto("body-strong"), { color: c.ink }];
+  const mudarSaida = (delta: number) => setSaida((atual) => (atual + delta + MINUTOS_NO_DIA) % MINUTOS_NO_DIA);
 
   return (
     <View style={{ flex: 1 }}>
@@ -209,6 +256,31 @@ export default function NovaViagem() {
 
           <CampoCidade label="De onde você sai?" campo={origem} onChange={setOrigem} />
           <CampoCidade label="Para onde vai?" campo={destino} onChange={setDestino} />
+          <View style={s.saida}>
+            <Text style={rotuloSecao}>Hora de saída</Text>
+            <View style={s.seletor}>
+              <BotaoHora rotulo="−" leitura="30 minutos mais cedo" onPress={() => mudarSaida(-PASSO_SAIDA)} />
+              <Text
+                accessibilityLabel={`Saída às ${hora(saida)}`}
+                accessibilityLiveRegion="polite"
+                style={[estiloTexto("km"), s.horaSaida, { color: c.ink }]}
+              >
+                {hora(saida)}
+              </Text>
+              <BotaoHora rotulo="+" leitura="30 minutos mais tarde" onPress={() => mudarSaida(PASSO_SAIDA)} />
+            </View>
+          </View>
+          <TextField
+            label="Quando você sai?"
+            icon="clock"
+            placeholder="DD/MM/AAAA"
+            hint="Opcional. Com a data, o roteiro confere se os lugares abrem nesse dia."
+            value={data.texto}
+            onChangeText={(texto) => setData({ texto })}
+            keyboardType="numbers-and-punctuation"
+            maxLength={10}
+            erro={data.erro}
+          />
           <View style={s.secao}>
             <Text style={rotuloSecao}>Parar a cada</Text>
             <Segmented block rotulo="Distância entre paradas" opcoes={INTERVALOS} valor={intervalo} onChange={escolherIntervalo} />
@@ -249,8 +321,33 @@ export default function NovaViagem() {
   );
 }
 
+/** Botão redondo de − e + da hora de saída. */
+function BotaoHora({ rotulo, leitura, onPress }: { rotulo: string; leitura: string; onPress: () => void }) {
+  const { c } = useCores();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={leitura}
+      style={({ pressed }) => [s.botaoHora, { backgroundColor: pressed ? c["surface-300"] : c["surface-200"] }]}
+    >
+      <Text style={[estiloTexto("title"), { color: c.ink }]}>{rotulo}</Text>
+    </Pressable>
+  );
+}
+
 const s = StyleSheet.create({
   tela: { flexGrow: 1 },
+  saida: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  seletor: { flexDirection: "row", alignItems: "center", gap: espaco["space-3"] },
+  horaSaida: { minWidth: espaco.touch, textAlign: "center" },
+  botaoHora: {
+    width: espaco.touch,
+    height: espaco.touch,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: raio["radius-pill"],
+  },
   fechar: {
     width: espaco.touch,
     height: espaco.touch,
