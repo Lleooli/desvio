@@ -17,8 +17,8 @@ def banco(pg):
 
 def test_textos_na_voz_do_design_system():
     assert coletor.texto_rota(2731.4, 35.2, "carro") == "2.731 km, uns 35h de estrada"
-    assert coletor.texto_rota(90, 6.1, "bicicleta") == "90 km, uns 6h de pedal"
-    assert coletor.texto_rota(12, 0.3, "moto") == "12 km, menos de 1h de estrada"
+    assert coletor.texto_rota(90, 6.1, "bicicleta") == "90 km, uns 6h10 de pedal"
+    assert coletor.texto_rota(12, 0.3, "moto") == "12 km, uns 20 min de estrada"
     assert coletor.texto_cidades(5, 200) == ("5 cidades para parar", "Uma a cada 200 km, mais o destino")
     assert coletor.texto_cidades(1, 1500)[0] == "1 cidade para parar"
     assert coletor.texto_cidades(1, 1500)[1] == "Uma a cada 1.500 km, mais o destino"
@@ -96,3 +96,8 @@ def test_erro_ao_gravar_progresso_nao_derruba_a_coleta():
         raise psycopg.OperationalError("connection refused")
     coletor._avisar(quebra, "rota", "t", "d", 20)  # não levanta
 
+
+
+def test_duracao_em_horas_e_minutos_nunca_decimal():
+    assert coletor.texto_rota(144, 1.8, "carro") == "144 km, uns 1h50 de estrada"
+    assert coletor.texto_rota(200, 2.0, "carro") == "200 km, uns 2h de estrada"

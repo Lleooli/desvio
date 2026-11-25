@@ -42,8 +42,13 @@ def id_cidade(nome: str, uf: str | None) -> str:
     return f"nome:{_norm(nome)}|{uf or ''}"
 
 
+# Sobe quando muda como os cards são montados, para as cidades guardadas com a regra
+# antiga serem coletadas de novo (2: Instagram do site só se combina com o lugar).
+VERSAO = 2
+
+
 def variante(raio_km: float, por_categoria: int, usar_google_maps: bool) -> str:
-    return f"r{float(raio_km):g}|n{por_categoria}|{'google' if usar_google_maps else 'osm'}"
+    return f"v{VERSAO}|r{float(raio_km):g}|n{por_categoria}|{'google' if usar_google_maps else 'osm'}"
 
 
 def _validade() -> tuple[float, float]:
