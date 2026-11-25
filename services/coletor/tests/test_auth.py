@@ -18,6 +18,7 @@ VIAGEM = {"origem": "A, RS", "destino": "B, BA", "intervalo_km": 100}
     ("post", "/viagem", VIAGEM),
     ("get", "/jobs/qualquer", None),
     ("post", "/swipe", {"card": {"id": "osm:node/1"}, "gostou": True}),
+    ("delete", "/swipe/osm:node/1", None),
     ("get", "/perfil", None),
     ("post", "/triagem", {"respostas": []}),
     ("post", "/roteiro", {"cards": []}),

@@ -41,7 +41,7 @@ export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false
 
   return (
     <View accessible accessibilityLabel={leitura} style={s.linha}>
-      <Text style={[estiloTexto("km"), s.km, { color: ativo ? c.ink : c["ink-muted"] }]}>{rotuloKm}</Text>
+      <Text numberOfLines={1} style={[estiloTexto("km"), s.km, { color: ativo ? c.ink : c["ink-muted"] }]}>{rotuloKm}</Text>
       <View style={s.trilho}>
         <View style={[s.linhaTrilho, { backgroundColor: c["surface-300"] }]} />
         <View style={[s.ponto, ponto]} />
@@ -52,7 +52,7 @@ export function StopItem({ cidade, uf, km, horas, tipo = "parada", ativo = false
           <Text style={[estiloTexto("body-s"), { color: c["ink-muted"] }]}>{detalhes.join(" · ")}</Text>
         ) : null}
       </View>
-      {contagem ? <Text style={[estiloTexto("body-s"), s.contagem, { color: c.placa }]}>{contagem}</Text> : null}
+      {contagem ? <Text numberOfLines={1} style={[estiloTexto("body-s"), s.contagem, { color: c.placa }]}>{contagem}</Text> : null}
     </View>
   );
 }

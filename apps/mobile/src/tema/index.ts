@@ -70,6 +70,8 @@ export const medida = {
   cardCarimboLinha: 38,
   cardHorasTexto: 13,
   cardHorasLinha: 16,
+  cardIconeSemFotoOpacidade: 0.35,
+  cardProvavelOpacidade: 0.85,
   // Tela Carregando: docs/design/telas/Carregando.dc.html
   barraBusca: 10,
   marcaEtapa: 28,
