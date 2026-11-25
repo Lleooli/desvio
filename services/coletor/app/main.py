@@ -103,6 +103,7 @@ class Roteiro(BaseModel):
 
 class Triagem(BaseModel):
     respostas: list[dict] = []
+    pular: bool = False
 
 
 class Ranquear(BaseModel):
@@ -211,8 +212,16 @@ async def roteiro_da_viagem(req: Roteiro, eu: Usuario = Depends(usuario_atual)):
 
 @app.post("/triagem")
 async def triagem(req: Triagem, eu: Usuario = Depends(usuario_atual)):
+    """Pergunta seguinte, ou o fim. Concluir e Pular gravam em `usuario.perfil_gosto`."""
+    if req.pular:
+        # Pular não chama a IA: guarda as respostas até aqui e segue sem resumo
+        preferencias.guardar_triagem(eu.id, eu.email, req.respostas, None, pulou=True)
+        return {"pergunta": None, "opcoes": [], "fim": True, "resumo": None, "fonte": "fixa", "pulou": True}
     async with httpx.AsyncClient() as client:
-        return await ia.triagem(client, req.respostas)
+        r = await ia.triagem(client, req.respostas)
+    if r.get("fim"):
+        preferencias.guardar_triagem(eu.id, eu.email, req.respostas, r.get("resumo"), pulou=False)
+    return r
 
 
 @app.post("/cards/ranquear")

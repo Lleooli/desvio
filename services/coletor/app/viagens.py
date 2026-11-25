@@ -19,7 +19,7 @@ import uuid
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import banco, preferencias
+from . import banco, ia, preferencias
 
 # Campos do card que dependem da rota desta viagem; não entram no `lugar` compartilhado
 _DA_ROTA = ("km_na_rota", "horas_desde_saida")
@@ -130,5 +130,6 @@ def obter(usuario: str, viagem: str) -> dict | None:
                               "km_na_rota": p["km"], "horas_desde_saida": p["horas_desde_saida"],
                               "cards": por_parada.get(p["ordem"], [])} for p in paradas]}
     preferencias.personalizar(resultado, usuario)  # tira os já avaliados e ordena pelo gosto
+    ia.reaplicar_cache(resultado["paradas"], preferencias.perfil(usuario).get("resumo"))
     return {**_resumo(v), "polilinha": json.loads(v["polilinha"]) if v["polilinha"] else None,
             "paradas": resultado["paradas"]}

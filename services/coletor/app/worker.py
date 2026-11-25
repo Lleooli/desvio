@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, preferencias, viagens
+from . import cache, coletor, conta, fila, geo, ia, preferencias, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -38,7 +38,13 @@ async def processar(job: dict) -> dict:
             viagens.gravar_resultado(viagem, r)  # antes do personalizar, que tira os já avaliados
     else:
         raise ValueError(f"Tipo de job desconhecido: {job['tipo']}")
-    return preferencias.personalizar(r, usuario)
+    perfil = preferencias.perfil(usuario) if usuario else None
+    r = preferencias.personalizar(r, usuario, perfil)  # ordem estatística; o ranque da IA vem depois
+    resumo = (perfil or {}).get("resumo") or ""
+    if resumo:
+        async with cache.sessao():  # segunda viagem na mesma cidade reusa o cache e não chama o Groq
+            await ia.ranquear_paradas(r["paradas"], resumo)
+    return r
 
 
 async def rodar_uma_vez() -> bool:
