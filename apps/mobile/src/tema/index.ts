@@ -70,6 +70,8 @@ export const medida = {
   cardCarimboLinha: 38,
   cardHorasTexto: 13,
   cardHorasLinha: 16,
+  cardIconeSemFotoOpacidade: 0.35,
+  cardProvavelOpacidade: 0.85,
 } as const;
 
 /** Converte um estilo de tipografia do DS no estilo de texto do React Native. */
