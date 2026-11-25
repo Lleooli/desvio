@@ -11,11 +11,13 @@ from app.main import app
 
 SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}},
           "required": ["ok"], "additionalProperties": False}
+SEM_BANCO = {"test_sem_banco_nao_derruba_a_ia", "test_tabela_formata_em_portugues_e_marca_alerta",
+             "test_tabela_vazia"}
 
 
 @pytest.fixture(autouse=True)
 def banco(request, monkeypatch):
-    if request.node.name != "test_sem_banco_nao_derruba_a_ia":
+    if request.node.name not in SEM_BANCO:
         request.getfixturevalue("pg")
     monkeypatch.setenv("GROQ_API_KEY", "teste")
     ia._limitadores.clear()
@@ -102,3 +104,30 @@ def test_consulta_exige_token_de_admin(monkeypatch):
     assert r.status_code == 200
     assert r.json()["dias"][0]["modelo"] == "m" and r.json()["cota_tokens_dia"] == 200000
     assert "/uso/ia" not in json.dumps(api.get("/openapi.json").json())
+
+
+def test_tabela_formata_em_portugues_e_marca_alerta():
+    linhas = [{"dia": "2026-11-24", "modelo": "openai/gpt-oss-20b", "chamadas": 120, "tokens": 170000,
+               "cota_requisicoes": 0.12, "cota_tokens": 0.85},
+              {"dia": "2026-11-24", "modelo": "openai/gpt-oss-120b", "chamadas": 10, "tokens": 41000,
+               "cota_requisicoes": 0.01, "cota_tokens": 0.205}]
+    texto = uso_ia.tabela(linhas)
+    l20, l120 = texto.splitlines()[1:3]
+    assert "170.000" in l20 and "85,0%" in l20 and l20.endswith("ALERTA")
+    assert "41.000" in l120 and "20,5%" in l120 and "ALERTA" not in l120
+    assert "1.000 requisições e 200.000 tokens" in texto
+
+
+def test_tabela_vazia():
+    assert "Nenhuma chamada" in uso_ia.tabela([])
+
+
+def test_cli_uso_ia(monkeypatch, capsys):
+    import sys
+
+    import cli
+    uso_ia.registrar("openai/gpt-oss-20b", 2000)
+    monkeypatch.setattr(sys, "argv", ["cli.py", "uso-ia", "--dias", "3"])
+    cli.main()
+    saida = capsys.readouterr().out
+    assert "openai/gpt-oss-20b" in saida and "2.000" in saida and "1,0%" in saida
