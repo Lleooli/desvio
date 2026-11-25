@@ -1,12 +1,13 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Card, ParadaDaViagem, Viagem } from "@/api";
 import { abrirFolhaDoLugar } from "@/folhaDoLugar";
 import { desfazerRegistro, lugaresDecididosNaFila, registrarDecisao } from "@/filaDecisoes";
 import { espaco, estiloTexto, medida, raio, tamanhoIcone, tipografia, useCores } from "@/tema";
 import { Aviso } from "./Aviso";
 import { Button } from "./Button";
+import { categorias, Chip, type Categoria } from "./Chip";
 import { useFoco } from "./foco";
 import { Icon } from "./Icon";
 import { naOrdemDaEstrada } from "./ParadasDaViagem";
@@ -48,7 +49,9 @@ type Props = {
  * O swipe de uma parada (HU09, HU10): a pilha dos cards ainda sem decisão. Cada decisão
  * entra na fila do aparelho e vai ao coletor; Bora e Favorito mostram um toast com
  * Desfazer por 4 s, que devolve o card ao topo. No fim da pilha, volta às paradas ou
- * segue para a próxima parada com lugares.
+ * segue para a próxima parada com lugares. Os chips do topo filtram a pilha por categoria
+ * (HU12); o filtro mora na pilha, que é montada de novo a cada parada, então trocar de
+ * parada limpa o filtro.
  */
 export function SwipeDaParada({ viagem, ordem }: Props) {
   const parada = viagem.paradas.find((p) => p.ordem === ordem);
@@ -70,6 +73,8 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
   const [cards, setCards] = useState<Card[] | null>(null);
   const [aceitos, setAceitos] = useState(parada.progresso.aceitos);
   const [ultima, setUltima] = useState<{ card: Card; decisao: Decisao } | null>(null);
+  // Vazio mostra todas as categorias.
+  const [filtro, setFiltro] = useState<ReadonlySet<Categoria>>(new Set());
 
   useEffect(() => {
     let valendo = true;
@@ -119,7 +124,20 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
   const irParaProxima = () =>
     proxima && router.replace({ pathname: "/viagens/[id]/paradas/[paradaId]", params: { id: viagem.id, paradaId: String(proxima.ordem) } });
 
-  const topo = cards?.[0];
+  // Só as categorias que a parada tem, na ordem do design system; com uma só, filtrar não muda nada.
+  const categoriasDaParada = (Object.keys(categorias) as Categoria[]).filter((categoria) =>
+    parada.cards.some((card) => card.categoria === categoria),
+  );
+  const alternar = (categoria: Categoria) =>
+    setFiltro((atual) => {
+      const novo = new Set(atual);
+      if (!novo.delete(categoria)) novo.add(categoria);
+      return novo;
+    });
+  const visiveis =
+    filtro.size === 0 ? cards : (cards?.filter((card) => card.categoria && filtro.has(card.categoria)) ?? null);
+
+  const topo = visiveis?.[0];
   const cidade = parada.uf ? `${parada.nome}, ${parada.uf}` : parada.nome;
   const contagem = `${numero(aceitos)} de ${numero(parada.progresso.total)} escolhidos`;
 
@@ -148,12 +166,27 @@ function Pilha({ viagem, parada }: { viagem: Viagem; parada: ParadaDaViagem }) {
         </Button>
       </View>
 
+      {categoriasDaParada.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filtros} contentContainerStyle={s.filtrosConteudo}>
+          {categoriasDaParada.map((categoria) => (
+            <Chip key={categoria} categoria={categoria} selected={filtro.has(categoria)} onPress={() => alternar(categoria)} />
+          ))}
+        </ScrollView>
+      ) : null}
+
       {/* Com a pilha, os botões ficam embaixo e o toast logo acima deles; sem ela, o aviso no centro. */}
       <View style={[s.meio, topo ? s.meioComPilha : null]}>
-        {cards === null ? (
+        {visiveis === null ? (
           <ActivityIndicator color={c.placa} accessibilityLabel="Carregando os lugares" />
         ) : topo ? (
-          <PilhaSwipe cards={cards.map(paraCardLugar)} onDecisao={decidir} onAbrir={abrirDetalhe} />
+          <PilhaSwipe cards={visiveis.map(paraCardLugar)} onDecisao={decidir} onAbrir={abrirDetalhe} />
+        ) : cards && cards.length > 0 ? (
+          <View style={s.fim}>
+            <Text style={[estiloTexto("body"), s.textoFim, { color: c.ink }]}>
+              {`Você viu todos os lugares dessa categoria em ${parada.nome}.`}
+            </Text>
+            <Button onPress={() => setFiltro(new Set())}>Ver todos</Button>
+          </View>
         ) : (
           <View style={s.fim}>
             <Text style={[estiloTexto("body"), s.textoFim, { color: c.ink }]}>
@@ -214,6 +247,8 @@ const s = StyleSheet.create({
   },
   titulo: { flexShrink: 1, alignItems: "center" },
   km: { textTransform: "uppercase" },
+  filtros: { flexGrow: 0 },
+  filtrosConteudo: { gap: espaco["space-2"], paddingHorizontal: espaco["space-4"], paddingTop: espaco["space-1"], paddingBottom: espaco["space-3"] },
   meio: { flex: 1, justifyContent: "center" },
   meioComPilha: { justifyContent: "flex-end" },
   fim: { alignItems: "center", gap: espaco["space-4"], padding: espaco["space-6"] },
