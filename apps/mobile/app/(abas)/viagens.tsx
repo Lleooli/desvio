@@ -10,7 +10,11 @@ import { Destaque } from "@/componentes/Destaque";
 import { Icon, type IconName } from "@/componentes/Icon";
 import { numero } from "@/componentes/Rating";
 import { espaco, estiloTexto, raio, tamanhoIcone, useCores } from "@/tema";
+import { useSessao } from "@/sessao";
 import { definirViagemAtiva } from "@/viagemAtiva";
+
+/** De quanto em quanto tempo o progresso de uma busca em andamento é consultado com a lista aberta. */
+const INTERVALO_PROGRESSO_MS = 5000;
 
 const veiculos: Record<Veiculo, { icone: IconName; nome: string }> = {
   carro: { icone: "car", nome: "Carro" },
@@ -24,7 +28,9 @@ const nomeStatus = { buscando: "Buscando", pronta: "Pronta", falhou: "Busca falh
 export default function Viagens() {
   const { c } = useCores();
   const margens = useSafeAreaInsets();
-  const { dados, erro, tipoErro, tentarDeNovo } = useCarregar("eu", listarViagens);
+  // A chave é a conta: trocar de conta busca a lista dela, e não mostra a da conta anterior.
+  const usuarioId = useSessao().sessao?.user.id ?? null;
+  const { dados, erro, tipoErro, tentarDeNovo } = useCarregar(usuarioId, listarViagens);
 
   // Status e progresso mudam fora desta tela (worker, swipe): ao voltar para ela, busca de novo.
   const primeiroFoco = useRef(true);
@@ -132,7 +138,15 @@ function ProgressoDasDecisoes({ decididos, total }: ResumoViagem["progresso"]) {
 /** A etapa e o percentual da busca em andamento, pelo job da viagem. */
 function ProgressoDaBusca({ jobId }: { jobId: string | null }) {
   const { c } = useCores();
-  const { dados } = useCarregar(jobId, obterJob);
+  const { dados, tentarDeNovo } = useCarregar(jobId, obterJob);
+  // Com a lista em foco, consulta o job de novo de tempos em tempos; fora de foco, para.
+  useFocusEffect(
+    useCallback(() => {
+      if (!jobId) return;
+      const relogio = setInterval(tentarDeNovo, INTERVALO_PROGRESSO_MS);
+      return () => clearInterval(relogio);
+    }, [jobId, tentarDeNovo]),
+  );
   const etapa = dados?.progresso;
   return (
     <Text style={[estiloTexto("body-strong"), s.progresso, { color: c.placa }]}>
