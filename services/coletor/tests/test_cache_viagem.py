@@ -4,6 +4,7 @@ import time
 
 import httpx
 import psycopg
+import pytest
 from fastapi.testclient import TestClient
 
 from app import coletor, geo, gmaps, ia, instagram, preferencias, worker
@@ -95,6 +96,18 @@ async def _nada():
 
 # ---------- cidades já feitas (parada_cidade) ----------
 
+@pytest.fixture(autouse=True)
+def _dois_por_categoria(monkeypatch):
+    """O Overpass do mock acha um lugar por categoria; com dois, a categoria vai à IA."""
+    from app import osm
+    original = osm.pois
+
+    async def dobrado(*a, **k):
+        res = await original(*a, **k)
+        return res + [{**x, "osm_id": x["osm_id"] + "0", "nome": x["nome"] + " Dois"} for x in res]
+    monkeypatch.setattr(osm, "pois", dobrado)
+
+
 def _coletas(monkeypatch) -> list[dict]:
     """Conta as vezes que o worker chamou a coleta."""
     chamadas, original = [], coletor.planejar_viagem
@@ -146,8 +159,10 @@ def test_outra_origem_pelas_mesmas_cidades_nao_coleta_nem_chama_o_groq(mock_http
     assert cont["overpass"] > 0 and len(groq) >= 1
     assert all(p["ranqueada"] for p in primeira["resultado"]["paradas"])
     with psycopg.connect(pg) as con:
-        linhas = con.execute("select cidade, nome, ordem_ia from parada_cidade").fetchall()
-    assert len(linhas) == len(primeira["resultado"]["paradas"]) and all(l[2] for l in linhas)
+        linhas = con.execute("select cidade, categoria, ordem_ia from parada_cidade").fetchall()
+    assert len({l[0] for l in linhas}) == len(primeira["resultado"]["paradas"])
+    assert len(linhas) == 3 * len(primeira["resultado"]["paradas"])  # uma linha por categoria
+    assert all(l[2] is not None for l in linhas)
     assert any(l[0].startswith("nome:cidade") for l in linhas)  # cidade fora da lista do IBGE
 
     _zerar(cont)
@@ -178,6 +193,68 @@ def test_gosto_diferente_nao_chama_a_ia_de_novo(mock_http, monkeypatch, pg):
     assert groq == []
     assert card["id"] not in _ids(b)[0]  # o gosto (e o que B já avaliou) entra sem IA
     assert _ids(b)[0] == [i for i in _ids(a)[0] if i != card["id"]]
+
+
+def _pois_contando(monkeypatch) -> list[list[str]]:
+    """Anota as categorias pedidas ao Overpass; hospedagem volta com dois hotéis."""
+    from app import osm
+    pedidas, original = [], osm.pois
+
+    async def contando(client, centro, raio_km, categorias, *a, **k):
+        pedidas.append(list(categorias))
+        res = await original(client, centro, raio_km, [c for c in categorias if c != "hospedagem"], *a, **k) \
+            if set(categorias) - {"hospedagem"} else []
+        if "hospedagem" in categorias:
+            lat, lon = centro
+            res += [{"osm_id": f"node/9{n}{abs(round(lat * 10))}", "nome": f"Hotel {n}", "categoria": "hospedagem",
+                     "lat": lat, "lon": lon, "tags": {"name": f"Hotel {n}", "tourism": "hotel"}} for n in (1, 2)]
+        return res
+    monkeypatch.setattr(osm, "pois", contando)
+    return pedidas
+
+
+def test_cidade_feita_com_mais_categorias_atende_viagem_com_menos(mock_http, monkeypatch, pg):
+    """(e) cidade feita com turismo, restaurante e posto atende turismo e restaurante, sem coleta nem IA."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    groq = _groq_falso(monkeypatch)
+    cont = _contar_chamadas(monkeypatch)
+    pedidas = _pois_contando(monkeypatch)
+    primeira = _viajar(cli, cab, categorias=["turismo", "restaurante", "posto"])
+    _zerar(cont)
+    groq.clear()
+    pedidas.clear()
+    segunda = _viajar(cli, cab, categorias=["turismo", "restaurante"])
+    assert pedidas == [] and cont["overpass"] == 0 and groq == []
+    for p1, p2 in zip(primeira["resultado"]["paradas"], segunda["resultado"]["paradas"]):
+        assert p1["nome"] == p2["nome"]
+        cats = [c["categoria"] for c in p2["cards"]]
+        assert set(cats) <= {"turismo", "restaurante"} and cats[0] == "turismo"
+        assert [c["id"] for c in p2["cards"]] == [c["id"] for c in p1["cards"] if c["categoria"] != "posto"]
+
+
+def test_categoria_nova_na_mesma_cidade_coleta_e_ranqueia_so_ela(mock_http, monkeypatch, pg):
+    """(f) viagem com turismo e hospedagem na cidade feita coleta e ranqueia só a hospedagem."""
+    _, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    groq = _groq_falso(monkeypatch)
+    pedidas = _pois_contando(monkeypatch)
+    primeira = _viajar(cli, cab)
+    groq.clear()
+    pedidas.clear()
+    segunda = _viajar(cli, cab, categorias=["turismo", "hospedagem"])
+    assert pedidas and all(p == ["hospedagem"] for p in pedidas)  # o turismo saiu da tabela
+    cards_na_ia = [c for pedido in groq for p in pedido["paradas"] for c in p["cards"]]
+    assert cards_na_ia and all(c["nome"].startswith("Hotel") for c in cards_na_ia)
+    for p1, p2 in zip(primeira["resultado"]["paradas"], segunda["resultado"]["paradas"]):
+        cats = [c["categoria"] for c in p2["cards"]]
+        assert cats[:2] == ["turismo", "hospedagem"]  # intercaladas, na ordem pedida
+        assert [c["id"] for c in p2["cards"] if c["categoria"] == "turismo"] == \
+               [c["id"] for c in p1["cards"] if c["categoria"] == "turismo"]
+        assert sorted(c["nome"] for c in p2["cards"] if c["categoria"] == "hospedagem") == ["Hotel 1", "Hotel 2"]
+    with psycopg.connect(pg) as con:
+        assert con.execute("select count(*) from parada_cidade where categoria = 'hospedagem'").fetchone()[0] \
+            == len(segunda["resultado"]["paradas"])
 
 
 def test_cidade_vencida_ou_incompleta_e_coletada_de_novo(mock_http, monkeypatch, pg):
@@ -239,7 +316,7 @@ def _cidade_feita(km_alvo: float, nome: str) -> None:
     i = min(range(len(ROTA)), key=lambda k: abs(acc[k] - km_alvo))
     lat, lon = ROTA[i]
     card = {"id": f"osm:node/{nome}", "nome": f"Lugar de {nome}", "categoria": "turismo", "lat": lat, "lon": lon}
-    parada_cidade.guardar(parada_cidade.id_cidade(nome, "RS"), "posto,restaurante,turismo",
+    parada_cidade.guardar(parada_cidade.id_cidade(nome, "RS"), "turismo",
                           parada_cidade.variante(8, 5, False), {"nome": nome, "uf": "RS", "lat": lat, "lon": lon},
                           [card], [card["id"]], True)
 
@@ -253,7 +330,10 @@ def test_parada_puxa_para_cidade_feita_so_dentro_da_folga(mock_http, monkeypatch
     nomes = [p["nome"] for p in r["paradas"]]
     assert "Perto" in nomes and "Longe" not in nomes
     perto = next(p for p in r["paradas"] if p["nome"] == "Perto")
-    assert [c["id"] for c in perto["cards"]] == ["osm:node/Perto"]  # os cards vieram da tabela
+    # o turismo veio da tabela (só tinha ele); restaurante e posto foram coletados
+    assert [c["id"] for c in perto["cards"] if c["categoria"] == "turismo"] == ["osm:node/Perto"]
+    assert perto["cards"][0]["id"] == "osm:node/Perto"
+    assert {c["categoria"] for c in perto["cards"]} == {"turismo", "restaurante", "posto"}
     kms = [p["km_na_rota"] for p in r["paradas"]]
     assert kms == sorted(kms)
 
@@ -265,11 +345,21 @@ def test_folga_configuravel(monkeypatch):
     monkeypatch.setattr(coletor, "FOLGA_PARADA", 0.25)
     assert coletor._feita_perto([feitas[1]], 200, 200, 1000, set())["nome"] == "B"
     assert coletor._feita_perto(feitas, 200, 200, 1000, {"a"})["nome"] == "B"  # já é parada
+    # dentro da folga, ganha a cidade com mais categorias pedidas, mesmo um pouco mais longe
+    monkeypatch.setattr(coletor, "FOLGA_PARADA", 0.1)
+    com_mais = [{"nome": "A", "km": 202.0, "n": 1}, {"nome": "B", "km": 215.0, "n": 3}]
+    assert coletor._feita_perto(com_mais, 200, 200, 1000, set())["nome"] == "B"
+
+
+def test_intercala_as_categorias_sem_repetir():
+    t = [{"id": "t1"}, {"id": "t2"}, {"id": "t3"}]
+    r = [{"id": "r1"}, {"id": "t2"}]
+    assert [c["id"] for c in coletor._intercalar([t, r, []])] == ["t1", "r1", "t2", "t3"]
 
 
 def _linhas(pg) -> list[tuple]:
     with psycopg.connect(pg) as con:
-        return con.execute("select cidade, completa from parada_cidade").fetchall()
+        return con.execute("select cidade, completa, categoria from parada_cidade").fetchall()
 
 
 def test_google_vazio_fica_incompleto_e_places_ou_google_fora_nao_grava(mock_http, monkeypatch, pg):
@@ -278,7 +368,7 @@ def test_google_vazio_fica_incompleto_e_places_ou_google_fora_nao_grava(mock_htt
     _groq_falso(monkeypatch)
     # o gosom do mock só acha restaurantes: turismo e posto voltam vazios em toda cidade
     asyncio.run(coletor.planejar_viagem("Alegrete, RS", "Destino, BA", 200, usar_google_maps=True))
-    assert _linhas(pg) and not any(completa for _, completa in _linhas(pg))
+    assert _linhas(pg) and all(completa == (cat == "restaurante") for _, completa, cat in _linhas(pg))
 
     with psycopg.connect(pg) as con:
         con.execute("truncate parada_cidade")
