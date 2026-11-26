@@ -28,9 +28,20 @@ Em Settings > Secrets and variables > Actions, no repositório:
 | `VPS_HOST` | IP ou nome da VPS |
 | `VPS_USER` | Usuário do SSH, com permissão para o Docker |
 | `VPS_SSH_KEY` | Chave privada. A pública correspondente fica em `authorized_keys` na VPS |
+| `VPS_FINGERPRINT` | Impressão digital SHA256 da chave de host da VPS (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`). Sem ela o deploy falha, para não aceitar qualquer servidor |
 | `VPS_PORT` | Opcional. Sem ele, a porta é 22 |
 
-O workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) roda em todo push na `main`. Ele entra por SSH, faz `git pull --ff-only` e `docker compose -f docker-compose.prod.yml pull` e `up -d --build --remove-orphans`. Não roda em pull request e não precisa desses segredos para o CI de testes.
+Prefira criar os segredos no ambiente `producao` (Settings > Environments), limitado à branch `main`.
+
+Quem tem permissão para o Docker é, na prática, root na VPS. Limite a chave do Actions a um único comando no `authorized_keys`:
+
+```
+command="cd /srv/desvio && git pull --ff-only && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --build --remove-orphans",restrict ssh-ed25519 AAAA... deploy-actions
+```
+
+O workflow [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) roda nos pushes na `main` que mexem no coletor, no `docker-compose.prod.yml` ou no Caddy, e também à mão (Run workflow). Ele entra por SSH, faz `git pull --ff-only` e `docker compose -f docker-compose.prod.yml pull` e `up -d --build --remove-orphans`. Não roda em pull request. Enquanto `VPS_HOST` não existir, o passo de deploy é pulado e o check fica verde.
+
+O gosom raspa o Google, o que viola os termos de uso. Ele serve só ao beta fechado; antes do lançamento público, troque pela Places API (abaixo).
 
 ## Trocar o gosom pela Places API
 

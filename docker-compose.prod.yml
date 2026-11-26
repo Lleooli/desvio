@@ -12,10 +12,15 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
-    env_file: .env
+    # Só o domínio e o e-mail: o Caddy não recebe as chaves do .env.
     environment:
-      PV_DOMINIO: ${PV_DOMINIO:-api.exemplo.invalid}
-      PV_ACME_EMAIL: ${PV_ACME_EMAIL:-contato@exemplo.com}
+      PV_DOMINIO: ${PV_DOMINIO:?defina PV_DOMINIO no .env}
+      PV_ACME_EMAIL: ${PV_ACME_EMAIL:?defina PV_ACME_EMAIL no .env}
+    logging: &logs
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     ports:
       - "80:80"
       - "443:443"
@@ -40,6 +45,7 @@ services:
       - gmaps-playwright-cache:/opt
     # teto para caber na VPS de 4 GB junto com a API e o worker (docs/adr/0002-vps-da-api.md)
     mem_limit: 2g
+    logging: *logs
 
   coletor:
     build: ./services/coletor
@@ -48,6 +54,7 @@ services:
     environment:
       - PV_GOSOM_URL=http://gosom:8080
     mem_limit: 512m
+    logging: *logs
     depends_on:
       gosom:
         condition: service_started
@@ -61,6 +68,7 @@ services:
     environment:
       - PV_GOSOM_URL=http://gosom:8080
     mem_limit: 512m
+    logging: *logs
     depends_on:
       coletor:
         condition: service_started
