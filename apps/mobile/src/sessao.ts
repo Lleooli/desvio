@@ -23,8 +23,14 @@ const LIMITE_MS = 10_000;
 function buscarComLimite(entrada: RequestInfo | URL, opcoes: RequestInit = {}): Promise<Response> {
   const controle = new AbortController();
   const relogio = setTimeout(() => controle.abort(), LIMITE_MS);
-  opcoes.signal?.addEventListener("abort", () => controle.abort());
-  return fetch(entrada, { ...opcoes, signal: controle.signal }).finally(() => clearTimeout(relogio));
+  // Repassa o cancelamento de quem chamou, inclusive um sinal que já chega cancelado.
+  const repassar = () => controle.abort();
+  if (opcoes.signal?.aborted) controle.abort();
+  else opcoes.signal?.addEventListener("abort", repassar);
+  return fetch(entrada, { ...opcoes, signal: controle.signal }).finally(() => {
+    clearTimeout(relogio);
+    opcoes.signal?.removeEventListener("abort", repassar);
+  });
 }
 
 const supabase = createClient(
