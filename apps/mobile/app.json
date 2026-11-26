@@ -7,11 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0B6B45"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.desvio",
@@ -24,7 +19,21 @@
         "backgroundColor": "#0B6B45"
       }
     },
-    "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-apple-authentication"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B6B45"
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },
