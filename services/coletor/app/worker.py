@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, observabilidade, preferencias, viagens
+from . import cache, coletor, conta, fila, geo, metricas, observabilidade, preferencias, push, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -41,8 +41,10 @@ async def processar(job: dict) -> dict:
                 except Exception:  # sem o parcial na viagem, a pessoa só espera o final
                     log.warning("não consegui gravar o parcial na viagem %s", viagem, exc_info=True)
             fila.parcial(job["id"], preferencias.personalizar(resultado, usuario))
+            metricas.primeiro_card_servidor(usuario, viagem, job["id"], resultado)
         r = await coletor.planejar_viagem(**e, progresso=progresso, parcial=parcial, forcar=forcar,
                                           job_id=job["id"], viagem_id=viagem)
+        metricas.primeiro_card_servidor(usuario, viagem, job["id"], r)
         if viagem:
             viagens.gravar_resultado(viagem, r)  # antes do personalizar, que tira os já avaliados
     else:
@@ -74,6 +76,8 @@ async def rodar_uma_vez() -> bool:
                 log.exception("não consegui marcar a viagem %s como falhou", viagem)
         return True
     observabilidade.linha(job["id"], "job", "concluido", (time.perf_counter() - inicio) * 1000, viagem)
+    # o job já está pronto; o aviso é por fora, e falhar aqui não desfaz a busca
+    await push.avisar_busca_pronta(job)
     return True
 
 

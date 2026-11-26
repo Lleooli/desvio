@@ -25,6 +25,8 @@ def _isolado(monkeypatch):
     monkeypatch.setattr(conta, "SUPABASE_URL", "")
     monkeypatch.setattr(conta, "SERVICE_ROLE_KEY", "")
     monkeypatch.setattr(conta, "_transporte", None)
+    from app import push
+    monkeypatch.setattr(push, "_transporte", None)
     monkeypatch.setattr(auth, "SUPABASE_URL", "")
     monkeypatch.setattr(auth, "JWT_SECRET", SEGREDO)
     # Fonte do Google previsível: gosom (o mock dos testes), a menos que o teste mude
@@ -59,7 +61,7 @@ def pg(_schema, monkeypatch):
     import psycopg
     from app import banco
     with psycopg.connect(_schema, autocommit=True) as con:
-        con.execute("truncate jobs, cache, parada_cidade, uso_ia, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
+        con.execute("truncate jobs, cache, parada_cidade, uso_ia, evento, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
     monkeypatch.setattr(banco, "URL", _schema)
     return _schema
 

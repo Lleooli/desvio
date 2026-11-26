@@ -25,6 +25,7 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "@sentry/react-native",
+      ["expo-notifications", { "defaultChannel": "busca" }],
       [
         "expo-splash-screen",
         {
