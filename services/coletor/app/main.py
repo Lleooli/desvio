@@ -15,6 +15,7 @@ Fluxo pensado para o front (estilo Tinder):
 4. GET  /perfil                            → resumo do gosto, para a IA
    PATCH /perfil                           → tema, intervalo padrão e resumo da triagem
 5. GET  /eu/exportar e DELETE /eu          → LGPD: exportar os dados e apagar a conta
+   POST /eu/push-token                     → token do Expo Push, para avisar quando a busca termina
    POST /eu/exportar/link                  → link de download de uso único (10 min) para o app
 
 Toda rota, menos /docs, /fotos e /eu/exportar/arquivo, exige o token do Supabase (Authorization: Bearer);
@@ -44,7 +45,7 @@ from typing import Literal
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import banco, cidades, conta, fila, gmaps, ia, metricas, preferencias, roteiro, uso_ia, viagens
+from . import banco, cidades, conta, fila, gmaps, ia, metricas, preferencias, push, roteiro, uso_ia, viagens
 from .auth import Usuario, usuario_atual
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
@@ -197,6 +198,21 @@ def job(job_id: str, eu: Usuario = Depends(usuario_atual)):
 
 class ApagarConta(BaseModel):
     confirmar: str = Field(description='Precisa ser exatamente "APAGAR"', examples=["APAGAR"])
+
+
+class PushToken(BaseModel):
+    """Token do aparelho, ou null para parar de avisar (saída da conta ou aviso desligado)."""
+    model_config = ConfigDict(extra="forbid")
+    token: str | None
+
+
+@app.post("/eu/push-token")
+def guardar_push_token(req: PushToken, eu: Usuario = Depends(usuario_atual)):
+    try:
+        push.guardar_token(eu.id, req.token)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    return {"ok": True}
 
 
 @app.get("/eu/exportar")
