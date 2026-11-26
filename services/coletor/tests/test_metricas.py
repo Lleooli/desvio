@@ -3,7 +3,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app import metricas
+from app import metricas, viagens
 from app.main import app
 from conftest import criar_pessoa
 from test_migracoes import como
@@ -15,6 +15,15 @@ def _eventos(pg, usuario: str) -> list[tuple]:
     with psycopg.connect(pg) as con:
         return [(r[0], r[1]) for r in con.execute(
             "select evento, dados from evento where usuario = %s order by criado_em, evento", (usuario,))]
+
+
+def _coletada(viagem: str, *ids: int) -> None:
+    """A busca da viagem terminou com estes cards, para o roteiro ter o que montar."""
+    cards = [{"id": f"osm:node/{i}", "nome": f"Lugar {i}", "categoria": "turismo", "fonte": "openstreetmap",
+              "lat": -29.7, "lon": -54.0, "km_na_rota": 10.0 * i, "horas_desde_saida": 0.2 * i} for i in ids]
+    viagens.gravar_resultado(viagem, {"rota": {"distancia_km": 250, "duracao_h": 3.5}, "paradas": [
+        {"nome": "Santa Maria", "uf": "RS", "lat": -29.68, "lon": -53.81, "tipo": "destino",
+         "raio_km": 15, "km_na_rota": 250, "horas_desde_saida": 3.5, "cards": cards}]})
 
 
 def test_migracao_cria_evento_so_para_o_servidor(pg):
@@ -34,6 +43,7 @@ def test_fluxos_gravam_evento_sem_dado_pessoal(pg, monkeypatch):
     uid, cab = criar_pessoa(pg)
     cli = TestClient(app)
     vid = cli.post("/viagem", json=PEDIDO, headers=cab).json()["viagem_id"]
+    _coletada(vid, 1)
     assert cli.post("/swipe", json={"card": {"id": "osm:node/1", "nome": "Nome da pessoa", "categoria": "turismo"},
                                     "tipo": "favorito", "viagem": vid}, headers=cab).status_code == 200
     assert cli.post("/viagens/" + vid + "/roteiro", headers=cab).status_code == 200
@@ -85,6 +95,7 @@ def test_painel_calcula_as_seis_metas(pg, monkeypatch):
     va1 = cli.post("/viagem", json=PEDIDO, headers=cab_a).json()["viagem_id"]
     va2 = cli.post("/viagem", json=PEDIDO, headers=cab_a).json()["viagem_id"]
     vb = cli.post("/viagem", json=PEDIDO, headers=cab_b).json()["viagem_id"]
+    _coletada(va2, 3, 4)
 
     def decide(cab, vid, i, tipo):
         assert cli.post("/swipe", json={"card": {"id": f"osm:node/{i}"}, "tipo": tipo, "viagem": vid},
