@@ -5,6 +5,7 @@
     "scheme": "desvio",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
@@ -12,14 +13,27 @@
       "usesAppleSignIn": true
     },
     "android": {
-      "package": "app.desvio"
+      "package": "app.desvio",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B6B45"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-font",
       "expo-web-browser",
       "expo-apple-authentication",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B6B45"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

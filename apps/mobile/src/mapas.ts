@@ -8,7 +8,7 @@ export const LIMITE_PARADAS_GOOGLE = 9;
 export type Trecho = {
   /** 1, 2, 3…: a ordem do trecho na viagem. */
   numero: number;
-  /** Onde o trecho começa e termina, para a pessoa reconhecer. */
+  /** Onde o trecho começa e termina, para a pessoa reconhecer: a cidade do lugar, ou o nome se não houver. */
   de: string;
   ate: string;
   url: string;
@@ -36,7 +36,8 @@ function endereco(lugar: Card): string {
 export function trechosGoogleMaps(origem: string, destino: string, lugares: Card[], veiculo: Veiculo): Trecho[] {
   const pontos: Ponto[] = [
     { nome: origem, endereco: origem },
-    ...lugares.map((lugar) => ({ nome: lugar.nome ?? "Lugar", endereco: endereco(lugar) })),
+    // A ponta do trecho mostra a cidade: o nome do lugar pode ser uma placa ("Bem Vindo a…").
+    ...lugares.map((lugar) => ({ nome: lugar.cidade || lugar.nome || "Lugar", endereco: endereco(lugar) })),
     { nome: destino, endereco: destino },
   ];
   const modo = veiculo === "bicicleta" ? "bicycling" : "driving";
