@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import cache, fronteira, geo, gmaps, ia, instagram, osm, parada_cidade, pernoite
+from . import cache, fronteira, geo, gmaps, ia, instagram, observabilidade, osm, parada_cidade, pernoite
 
 log = logging.getLogger("desvio.coletor")
 
@@ -232,7 +232,8 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                        nota_minima: float = 4.0, progresso: Progresso | None = None,
                        ao_ter_parcial: Callable[[list[dict]], None] | None = None,
                        situacao: dict | None = None, forcar: bool = False,
-                       categorias_por_parada: list[list[str]] | None = None) -> list[dict]:
+                       categorias_por_parada: list[list[str]] | None = None,
+                       *, job_id: str | None = None, viagem_id: str | None = None) -> list[dict]:
     """Recebe paradas {nome, uf, lat, lon, raio_km} e devolve as mesmas com "cards".
 
     Com o Google ligado, `ao_ter_parcial` recebe antes as paradas só com cards do OSM.
@@ -274,40 +275,50 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
     lento = bool(faltam_google) and gmaps.fonte() == "gosom"  # a Places API responde em segundos
     leva = "leva uns 3 minutos" if lento else "leva menos de 1 minuto"
     brutos = []
-    for i, p in enumerate(paradas):
-        _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
-                35 + 40 * i // len(paradas))
-        brutos.append(await _pois_com_cache(client, p, cats(i), forcar))
+    with observabilidade.medir(job_id, "osm", viagem_id):
+        for i, p in enumerate(paradas):
+            _avisar(progresso, "lugares", "Buscando fotos e notas", f'{p["nome"]} agora · {leva}',
+                    35 + 40 * i // len(paradas))
+            brutos.append(await _pois_com_cache(client, p, cats(i), forcar))
 
     # 2) Google Maps (gmaps.py: Places API ou gosom). No gosom é um job só para a viagem
     #    inteira e leva minutos, então antes entrega um parcial só com OpenStreetMap,
     #    para a pessoa já ir deslizando.
     avisos: list[str] = []
     enviados: list[list[dict]] = []  # cards do parcial, por parada
-    if faltam_google:
-        if ao_ter_parcial:
-            enviados = [_escolher(i, p, brutos[i], {}, cats(i), por_categoria, nota_minima)
-                        for i, p in enumerate(paradas)]
-            await _completar_wikipedia(client, [c for cs in enviados for c in cs])
-            ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
-                            for p, cs in zip(paradas, enviados)])
-        _avisar(progresso, "lugares", "Buscando fotos e notas", f"Google Maps · {leva}", 75)
-        try:
-            novos = await gmaps.buscar_lote(client, faltam_google)
-            # os termos da Places API proíbem guardar o conteúdo dos lugares (só o place_id):
-            # com a API oficial, nada do Google vai para o cache compartilhado
-            guardar_google = gmaps.fonte() != "places"
-            for cid, lugares in novos.items() if guardar_google else ():
-                # vazio pode ser cidade que o gosom não alcançou antes do max_time: em vez de
-                # 30 dias de "nada", vale só 1 dia (chave à parte, lida com dias=1)
-                chave = "gmaps|" if lugares else "gmaps-vazio|"
-                cache.guardar(chave + faltam_google[cid], lugares)
-            google.update(novos)
-            google_vazio |= {(int(cid.split("|")[0]), cid.split("|")[1]) for cid in faltam_google
-                             if not novos.get(cid)}
-        except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
-            log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", e)
-            avisos.append("O Google Maps não respondeu, então os lugares vieram só do OpenStreetMap.")
+    google_relogio = observabilidade.relogio(job_id, "google", viagem_id)
+    try:
+        if faltam_google:
+            if ao_ter_parcial:
+                enviados = [_escolher(i, p, brutos[i], {}, cats(i), por_categoria, nota_minima)
+                            for i, p in enumerate(paradas)]
+                await _completar_wikipedia(client, [c for cs in enviados for c in cs])
+                ao_ter_parcial([{**p, "cards": [{k: v for k, v in c.items() if not k.startswith("_")} for c in cs]}
+                                for p, cs in zip(paradas, enviados)])
+            _avisar(progresso, "lugares", "Buscando fotos e notas", f"Google Maps · {leva}", 75)
+            try:
+                novos = await gmaps.buscar_lote(client, faltam_google)
+                # os termos da Places API proíbem guardar o conteúdo dos lugares (só o place_id):
+                # com a API oficial, nada do Google vai para o cache compartilhado
+                guardar_google = gmaps.fonte() != "places"
+                for cid, lugares in novos.items() if guardar_google else ():
+                    # vazio pode ser cidade que o gosom não alcançou antes do max_time: em vez de
+                    # 30 dias de "nada", vale só 1 dia (chave à parte, lida com dias=1)
+                    chave = "gmaps|" if lugares else "gmaps-vazio|"
+                    cache.guardar(chave + faltam_google[cid], lugares)
+                google.update(novos)
+                google_vazio |= {(int(cid.split("|")[0]), cid.split("|")[1]) for cid in faltam_google
+                                 if not novos.get(cid)}
+                google_relogio.concluir()
+            except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
+                google_relogio.falha()
+                log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", e)
+                avisos.append("O Google Maps não respondeu, então os lugares vieram só do OpenStreetMap.")
+        else:
+            google_relogio.concluir()
+    except Exception:
+        google_relogio.falha()
+        raise
 
     # 3) Junta, prioriza e corta por categoria; o que já foi no parcial continua, com o mesmo id
     for i, p in enumerate(paradas):
@@ -469,7 +480,8 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
                           raio_parada_km: float = 8, raio_destino_km: float = 15,
                           progresso: Progresso | None = None,
                           parcial: Callable[[dict], None] | None = None,
-                          forcar: bool = False) -> dict:
+                          forcar: bool = False,
+                          *, job_id: str | None = None, viagem_id: str | None = None) -> dict:
     """Viagem por terra (carro, moto ou bicicleta) com paradas a cada `intervalo_km`.
 
     `saida` (HH:MM, 07:00 sem ela) decide onde cada dia acaba: lá a viagem tem uma parada
@@ -489,53 +501,55 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
     categorias = list(dict.fromkeys(categorias or CATEGORIAS_PADRAO))
     var_parada = parada_cidade.variante(raio_parada_km, por_categoria, usar_google_maps)
     async with httpx.AsyncClient() as client, cache.sessao():  # uma conexão com o cache por job
-        o = await geo.geocodificar(client, origem)
-        d = await geo.geocodificar(client, destino)
-        rota = await geo.rota(client, (o["lat"], o["lon"]), (d["lat"], d["lon"]), veiculo)
-        pontos = rota["pontos"]
-        acc = geo.acumuladas(pontos)
-        total = acc[-1]
-        intervalo_km = intervalo_efetivo(total, intervalo_km)
-        _avisar(progresso, "rota", "Rota calculada",
-                texto_rota(rota["distancia_km"], rota["duracao_h"], veiculo), 20)
+        with observabilidade.medir(job_id, "rota", viagem_id):
+            o = await geo.geocodificar(client, origem)
+            d = await geo.geocodificar(client, destino)
+            rota = await geo.rota(client, (o["lat"], o["lon"]), (d["lat"], d["lon"]), veiculo)
+            pontos = rota["pontos"]
+            acc = geo.acumuladas(pontos)
+            total = acc[-1]
+            intervalo_km = intervalo_efetivo(total, intervalo_km)
+            _avisar(progresso, "rota", "Rota calculada",
+                    texto_rota(rota["distancia_km"], rota["duracao_h"], veiculo), 20)
 
-        feitas = [] if forcar else _cidades_feitas(pontos, acc, categorias, var_parada)
-        paradas: list[dict] = []
-        vistas = {_norm(o["nome"]), _norm(d["nome"])}
-        # viagem entre duas cidades do Brasil não para em outro país (issue #95), nem quando a
-        # rota encosta na fronteira e a cidade maior perto da estrada é Ciudad del Este
-        so_brasil = fronteira.no_brasil((o["lat"], o["lon"])) and fronteira.no_brasil((d["lat"], d["lon"]))
-        if rota.get("sai_do_brasil"):
-            log.warning("rota de %s a %s sai do Brasil; as paradas de fora ficam de fora", origem, destino)
-        if so_brasil:
-            feitas = [f for f in feitas if fronteira.no_brasil((f["lat"], f["lon"]))]
-        for km, ponto in geo.amostrar(pontos, intervalo_km):
-            if total - km < intervalo_km * 0.5:
-                break  # muito perto do destino, que já entra separado
-            feita = _feita_perto(feitas, km, intervalo_km, total, vistas)
-            if feita:  # cidade já coletada no trecho: reaproveita, sem Overpass nem Nominatim
-                vistas.add(_norm(feita["nome"]))
-                paradas.append({"nome": feita["nome"], "lat": feita["lat"], "lon": feita["lon"],
-                                "uf": feita["uf"], "tipo": "parada", "raio_km": raio_parada_km,
-                                "_km": feita["km"]})
-                continue
-            cidade = await _cidade_proxima_com_cache(client, ponto)
-            if not cidade or _norm(cidade["nome"]) in vistas:
-                continue
-            vistas.add(_norm(cidade["nome"]))
-            if so_brasil and not fronteira.no_brasil((cidade["lat"], cidade["lon"])):
-                continue  # longe da fronteira: nem pergunta ao Nominatim
-            _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
-            if so_brasil and pais not in (None, "br"):
-                continue
-            paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km, "_km": km})
-        paradas.sort(key=lambda p: p.pop("_km"))  # a cidade feita pode estar um pouco antes ou depois
-        await _planejar_pernoites(
-            client, paradas, rota, pontos, acc, veiculo, saida, intervalo_km, so_brasil, raio_parada_km, vistas,
-            lambda: [] if forcar else _cidades_feitas(pontos, acc, ["hospedagem"], var_parada))
-        paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
-                        "tipo": "destino", "raio_km": raio_destino_km})
-        _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
+        with observabilidade.medir(job_id, "cidades", viagem_id):
+            feitas = [] if forcar else _cidades_feitas(pontos, acc, categorias, var_parada)
+            paradas: list[dict] = []
+            vistas = {_norm(o["nome"]), _norm(d["nome"])}
+            # viagem entre duas cidades do Brasil não para em outro país (issue #95), nem quando a
+            # rota encosta na fronteira e a cidade maior perto da estrada é Ciudad del Este
+            so_brasil = fronteira.no_brasil((o["lat"], o["lon"])) and fronteira.no_brasil((d["lat"], d["lon"]))
+            if rota.get("sai_do_brasil"):
+                log.warning("rota sai do Brasil; as paradas de fora ficam de fora")
+            if so_brasil:
+                feitas = [f for f in feitas if fronteira.no_brasil((f["lat"], f["lon"]))]
+            for km, ponto in geo.amostrar(pontos, intervalo_km):
+                if total - km < intervalo_km * 0.5:
+                    break  # muito perto do destino, que já entra separado
+                feita = _feita_perto(feitas, km, intervalo_km, total, vistas)
+                if feita:  # cidade já coletada no trecho: reaproveita, sem Overpass nem Nominatim
+                    vistas.add(_norm(feita["nome"]))
+                    paradas.append({"nome": feita["nome"], "lat": feita["lat"], "lon": feita["lon"],
+                                    "uf": feita["uf"], "tipo": "parada", "raio_km": raio_parada_km,
+                                    "_km": feita["km"]})
+                    continue
+                cidade = await _cidade_proxima_com_cache(client, ponto)
+                if not cidade or _norm(cidade["nome"]) in vistas:
+                    continue
+                vistas.add(_norm(cidade["nome"]))
+                if so_brasil and not fronteira.no_brasil((cidade["lat"], cidade["lon"])):
+                    continue  # longe da fronteira: nem pergunta ao Nominatim
+                _, uf, pais = await geo.cidade_uf_pais(client, (cidade["lat"], cidade["lon"]))
+                if so_brasil and pais not in (None, "br"):
+                    continue
+                paradas.append({**cidade, "uf": uf, "tipo": "parada", "raio_km": raio_parada_km, "_km": km})
+            paradas.sort(key=lambda p: p.pop("_km"))  # a cidade feita pode estar um pouco antes ou depois
+            await _planejar_pernoites(
+                client, paradas, rota, pontos, acc, veiculo, saida, intervalo_km, so_brasil, raio_parada_km, vistas,
+                lambda: [] if forcar else _cidades_feitas(pontos, acc, ["hospedagem"], var_parada))
+            paradas.append({"nome": d["nome"], "uf": d["uf"], "lat": d["lat"], "lon": d["lon"],
+                            "tipo": "destino", "raio_km": raio_destino_km})
+            _avisar(progresso, "cidades", *texto_cidades(len(paradas) - 1, intervalo_km), 35)
 
         # o que cada cidade já tem, por categoria; só as categorias que faltam vão para a coleta.
         # Na estadia, hospedagem entra sempre, como categoria própria (#104)
@@ -593,18 +607,23 @@ async def planejar_viagem(origem: str, destino: str, intervalo_km: float = 200,
         if novas:
             await montar_cards(client, [paradas[i] for i in novas], categorias, por_categoria, usar_google_maps,
                                buscar_instagram, progresso=progresso, ao_ter_parcial=ao_ter_parcial,
-                               situacao=situacao, forcar=forcar, categorias_por_parada=[faltam[i] for i in novas])
+                               situacao=situacao, forcar=forcar, categorias_por_parada=[faltam[i] for i in novas],
+                               job_id=job_id, viagem_id=viagem_id)
             for j, i in enumerate(novas):
                 for cat in faltam[i]:
                     por_cat[i][cat] = {"cards": [c for c in paradas[i]["cards"] if c.get("categoria") == cat],
                                        "ordem": None,
                                        "completa": (j, cat) not in situacao.get("google_vazio", set()),
                                        "salva": False}
+        else:
+            observabilidade.linha(job_id, "osm", "concluido", 0, viagem_id)
+            observabilidade.linha(job_id, "google", "concluido", 0, viagem_id)
 
         # ordem genérica da IA, por categoria: as coletadas agora e as guardadas sem ela (a IA
         # não respondeu da outra vez); categoria com ordem guardada não vai ao Groq
         sem_ordem = [(i, cat) for i, cs in enumerate(por_cat) for cat, e in cs.items() if e["ordem"] is None]
-        ordens = await _ordens_genericas(client, [por_cat[i][cat]["cards"] for i, cat in sem_ordem])
+        with observabilidade.medir(job_id, "ranqueamento", viagem_id):
+            ordens = await _ordens_genericas(client, [por_cat[i][cat]["cards"] for i, cat in sem_ordem])
         for (i, cat), (cards, ordem) in zip(sem_ordem, ordens):
             e = por_cat[i][cat]
             e["cards"], e["ordem"] = cards, ordem

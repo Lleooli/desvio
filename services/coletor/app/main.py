@@ -45,14 +45,31 @@ from typing import Literal
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import banco, cidades, conta, fila, gmaps, ia, metricas, preferencias, push, roteiro, uso_ia, viagens
+from . import (banco, cidades, conta, fila, gmaps, ia, metricas, observabilidade, preferencias, push, roteiro,
+               uso_ia, viagens)
 from .auth import Usuario, usuario_atual
+
+observabilidade.iniciar()
 
 app = FastAPI(title="Planejador de Viagem — coleta de lugares")
 # Em produção (PV_AMBIENTE=producao) o CORS fica fechado se PV_CORS_ORIGINS não disser quem pode
 _ORIGENS_PADRAO = "" if os.getenv("PV_AMBIENTE") == "producao" else "*"
 ORIGENS = [o.strip() for o in os.getenv("PV_CORS_ORIGINS", _ORIGENS_PADRAO).split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=ORIGENS, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.get("/observabilidade/teste", include_in_schema=False)
+def observabilidade_teste(x_admin_token: str | None = Header(None)):
+    """Erro de propósito para ver o Sentry. Só em desenvolvimento ou staging, com PV_ADMIN_TOKEN.
+
+    Em produção, ou sem o token, responde 404. A mensagem não leva dado de ninguém.
+    """
+    ambiente = os.getenv("PV_AMBIENTE")
+    esperado = os.getenv("PV_ADMIN_TOKEN")
+    if (ambiente not in ("desenvolvimento", "staging") or not esperado or not x_admin_token
+            or not secrets.compare_digest(x_admin_token, esperado)):
+        raise HTTPException(404, "Não encontrado")
+    raise RuntimeError("erro de teste da observabilidade")
 
 
 @app.exception_handler(banco.ContaApagada)

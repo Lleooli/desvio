@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from . import cache, coletor, conta, fila, geo, metricas, preferencias, push, viagens
+from . import cache, coletor, conta, fila, geo, metricas, observabilidade, preferencias, push, viagens
 
 log = logging.getLogger("desvio.worker")
 INTERVALO_S = float(os.getenv("PV_WORKER_INTERVALO", "2"))
@@ -42,7 +42,8 @@ async def processar(job: dict) -> dict:
                     log.warning("não consegui gravar o parcial na viagem %s", viagem, exc_info=True)
             fila.parcial(job["id"], preferencias.personalizar(resultado, usuario))
             metricas.primeiro_card_servidor(usuario, viagem, job["id"], resultado)
-        r = await coletor.planejar_viagem(**e, progresso=progresso, parcial=parcial, forcar=forcar)
+        r = await coletor.planejar_viagem(**e, progresso=progresso, parcial=parcial, forcar=forcar,
+                                          job_id=job["id"], viagem_id=viagem)
         metricas.primeiro_card_servidor(usuario, viagem, job["id"], r)
         if viagem:
             viagens.gravar_resultado(viagem, r)  # antes do personalizar, que tira os já avaliados
@@ -58,17 +59,23 @@ async def rodar_uma_vez() -> bool:
     job = fila.pegar_proximo()
     if not job:
         return False
+    inicio = time.perf_counter()
+    viagem = (job.get("entrada") or {}).get("viagem")
+    observabilidade.linha(job["id"], "job", "iniciado", viagem_id=viagem)
     try:
         fila.concluir(job["id"], await processar(job))
     except Exception as e:  # o worker não pode morrer por causa de um job
+        observabilidade.linha(job["id"], "job", "falha", (time.perf_counter() - inicio) * 1000, viagem)
+        observabilidade.capturar()
         log.exception("job %s falhou", job["id"])
         fila.falhar(job["id"], mensagem_amigavel(e))  # o erro completo fica só no log
-        if viagem := (job.get("entrada") or {}).get("viagem"):
+        if viagem:
             try:
                 viagens.marcar_falha(viagem)
             except Exception:
                 log.exception("não consegui marcar a viagem %s como falhou", viagem)
         return True
+    observabilidade.linha(job["id"], "job", "concluido", (time.perf_counter() - inicio) * 1000, viagem)
     # o job já está pronto; o aviso é por fora, e falhar aqui não desfaz a busca
     await push.avisar_busca_pronta(job)
     return True
@@ -114,6 +121,8 @@ async def _laco() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    observabilidade.configurar_log()
+    observabilidade.iniciar()
     try:
         log.info("cache: %d itens vencidos apagados", cache.apagar_vencidos())
     except Exception:  # limpeza é opcional; o worker sobe mesmo assim
