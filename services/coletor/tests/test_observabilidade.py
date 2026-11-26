@@ -80,9 +80,13 @@ def test_erro_real_nao_leva_variavel_local_nem_endereco(monkeypatch):
     monkeypatch.setattr(observabilidade, "_transporte", Guarda)
     monkeypatch.setenv("SENTRY_DSN", "https://chave@o0.ingest.sentry.io/1")
     observabilidade.iniciar()
+    # Montados na hora: o Sentry manda as linhas do código-fonte em volta do erro, e o teste
+    # quer saber dos VALORES das variáveis, não do texto do arquivo.
+    segredo = "-".join(["gsk", "segredo", "do", "groq"])
+    endereco = " ".join(["Rua", "da", "Casa,", "10"])
     try:
-        chave = "gsk_segredo_do_groq"  # noqa: F841 (é o que não pode sair)
-        entrada = {"origem": "Rua da Casa, 10, Alegrete"}  # noqa: F841
+        chave = segredo  # noqa: F841 (é o que não pode sair)
+        entrada = {"origem": endereco}  # noqa: F841
         raise RuntimeError("falhou a coleta")
     except RuntimeError:
         observabilidade.capturar()
@@ -91,8 +95,8 @@ def test_erro_real_nao_leva_variavel_local_nem_endereco(monkeypatch):
     observabilidade.desligar()
     texto = b"".join(enviados).decode("utf-8", "replace")
     assert "falhou a coleta" in texto
-    assert "gsk_segredo_do_groq" not in texto
-    assert "Rua da Casa" not in texto
+    assert segredo not in texto
+    assert endereco not in texto
     assert '"sdk"' in texto and "sentry.python" in texto  # o nome do SDK não some mais
 
 
