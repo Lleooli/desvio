@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "tokens": "node scripts/gerar-tokens.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/mapas.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/barlow": "^0.4.1",

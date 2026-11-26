@@ -87,7 +87,7 @@ O primeiro login de uma conta leva à triagem e marca `ja_entrou` no metadata da
 
 ## Pull request
 
-1. `python -m pytest -q` em `services/coletor` e `npm run typecheck` em `apps/mobile` passando
+1. `python -m pytest -q` em `services/coletor` e `npm run typecheck` e `npm test` em `apps/mobile` passando
 2. Se mexeu em tela: prints nos temas claro e escuro
 3. Preencha o template do PR, com a história do PRD
 4. Peça revisão de um colega. O merge só acontece com o CI verde e uma aprovação.
