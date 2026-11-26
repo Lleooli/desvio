@@ -234,10 +234,11 @@ export default function NovaViagem() {
   const mudarSaida = (delta: number) => setSaida((atual) => (atual + delta + MINUTOS_NO_DIA) % MINUTOS_NO_DIA);
 
   return (
-    <View style={{ flex: 1 }}>
+    // A rolagem termina acima da barra de navegação; em cima, a FaixaDoStatus cobre o que rola.
+    <View style={{ flex: 1, paddingBottom: margens.bottom, backgroundColor: c["surface-100"] }}>
       <ScrollView
         style={{ backgroundColor: c["surface-100"] }}
-        contentContainerStyle={[s.tela, { paddingBottom: margens.bottom + espaco["space-6"] }]}
+        contentContainerStyle={[s.tela, { paddingBottom: espaco["space-6"] }]}
         keyboardShouldPersistTaps="handled"
       >
         <Ceu serra>

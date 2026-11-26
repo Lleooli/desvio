@@ -73,6 +73,7 @@ python cli.py "Alegrete, RS" "Vitória da Conquista, BA" --veiculo moto   # cole
 npm install
 npx expo start
 npm run typecheck
+npm test              # testes de unidade (node --test, arquivos src/*.test.mjs)
 npm run tokens        # depois de mudar packages/design-tokens/tokens.json
 ```
 
@@ -108,5 +109,5 @@ npm run tokens        # depois de mudar packages/design-tokens/tokens.json
 ## Antes de dizer que terminou
 
 1. `python -m pytest -q` em `services/coletor`
-2. `npm run typecheck` em `apps/mobile`
+2. `npm run typecheck` e `npm test` em `apps/mobile`
 3. Se mexeu em tela: abra no aparelho ou no emulador, nos temas claro e escuro
