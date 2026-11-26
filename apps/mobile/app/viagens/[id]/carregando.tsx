@@ -118,11 +118,18 @@ function Acompanhar({ viagem }: { viagem: Viagem }) {
   const [erroNovaBusca, setErroNovaBusca] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
+  const leuJob = useRef(false);
+
   useEffect(() => {
-    if (avisouCard.current) return;
-    const lista = (job?.resultado ?? job?.parcial)?.paradas;
+    if (avisouCard.current || !job) return;
+    const primeiraLeitura = !leuJob.current;
+    leuJob.current = true;
+    const lista = (job.resultado ?? job.parcial)?.paradas;
     if (!lista?.some((p) => p.cards.length > 0)) return;
     avisouCard.current = true;
+    // A tela abriu com os cards já prontos (a pessoa saiu e voltou): o relógio daqui não mede a
+    // busca, então fica valendo o tempo do servidor.
+    if (primeiraLeitura) return;
     registrarEvento({ evento: "primeiro_card", viagem: viagem.id, tempo_ms: Date.now() - inicioBusca.current });
   }, [job, viagem.id]);
 

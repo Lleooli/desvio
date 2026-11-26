@@ -325,7 +325,9 @@ async def roteiro_guardado(viagem_id: str, req: RoteiroDaViagem | None = None,
         # a pessoa editou enquanto a IA respondia: vale a ordem dela
         r = await run_in_threadpool(viagens.lugares_do_roteiro, eu.id, viagem_id)
     # a ordem que a pessoa escolheu não volta para a IA, nem é regravada: só o PUT a grava
-    metricas.registrar(eu.id, "roteiro_montado", viagem_id)
+    # Abrir a aba Roteiro sem nenhum Bora não conta como "chegou ao roteiro".
+    if r.get("itens"):
+        await run_in_threadpool(metricas.registrar, eu.id, "roteiro_montado", viagem_id)
     return _com_noites(r, estadias)
 
 

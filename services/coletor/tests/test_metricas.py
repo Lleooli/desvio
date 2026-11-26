@@ -57,6 +57,15 @@ def test_fluxos_gravam_evento_sem_dado_pessoal(pg, monkeypatch):
     assert "Nome da pessoa" not in str(gravados)
 
 
+def test_roteiro_vazio_nao_conta_como_roteiro_montado(pg, monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    uid, cab = criar_pessoa(pg)
+    cli = TestClient(app)
+    vid = cli.post("/viagem", json=PEDIDO, headers=cab).json()["viagem_id"]
+    assert cli.post("/viagens/" + vid + "/roteiro", headers=cab).status_code == 200
+    assert "roteiro_montado" not in dict(_eventos(pg, uid))
+
+
 def test_falha_na_metrica_nao_quebra_o_swipe(pg, monkeypatch):
     def estoura(*a, **k):
         raise RuntimeError("banco de métrica fora")
