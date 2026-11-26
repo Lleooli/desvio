@@ -28,6 +28,11 @@ def guardar_token(usuario: str, token: str | None) -> None:
         raise ValueError("Token de push inválido")
     with banco.conectar() as con:
         banco.garantir_usuario(usuario, con=con)
+        if token is not None:
+            # Um aparelho, uma conta: se outra pessoa já entrou neste celular e não conseguiu
+            # esquecer o token ao sair, os avisos dela não podem chegar aqui.
+            con.execute("update usuario set expo_push_token = null where expo_push_token = %s and id <> %s",
+                        (token, usuario))
         con.execute("update usuario set expo_push_token = %s where id = %s", (token, usuario))
 
 
@@ -64,5 +69,10 @@ async def avisar_busca_pronta(job: dict) -> None:
             detalhe = r.json().get("data") if r.headers.get("content-type", "").startswith("application/json") else None
             if isinstance(detalhe, dict) and detalhe.get("status") == "error":
                 log.warning("Expo Push recusou o aviso do job %s: %s", job["id"], detalhe.get("message"))
+                if (detalhe.get("details") or {}).get("error") == "DeviceNotRegistered":
+                    # o app foi desinstalado ou o token venceu: não adianta chamar o Expo de novo
+                    with banco.conectar() as con:
+                        con.execute("update usuario set expo_push_token = null "
+                                    "where id = %s and expo_push_token = %s", (usuario, token))
     except Exception:
         log.warning("não consegui avisar que a busca %s terminou", job.get("id"), exc_info=True)

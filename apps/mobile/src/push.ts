@@ -40,6 +40,8 @@ function tratarToque(resposta: Notifications.NotificationResponse | null): void 
   const chave = resposta.notification.request.identifier;
   if (jaTratados.has(chave)) return;
   jaTratados.add(chave);
+  // Sem limpar, o mesmo toque volta em toda abertura a frio e reabre uma viagem antiga.
+  void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
   abrirParadasDoAviso(resposta.notification.request.content.data);
 }
 

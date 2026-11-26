@@ -109,6 +109,20 @@ def test_expo_recusa_o_aparelho_e_o_job_fica_pronto(pg, monkeypatch):
     assert asyncio.run(worker.rodar_uma_vez()) is True
     with psycopg.connect(pg) as con:
         assert con.execute("select status from jobs").fetchone()[0] == "pronto"
+        # aparelho desregistrado: o token sai, e a próxima busca não chama o Expo
+        assert con.execute("select expo_push_token from usuario").fetchone()[0] is None
+
+
+def test_mesmo_aparelho_em_outra_conta_tira_o_token_da_anterior(pg):
+    uid_a, cab_a = criar_pessoa(pg)
+    uid_b, cab_b = criar_pessoa(pg)
+    cli = TestClient(app)
+    assert cli.post("/eu/push-token", json={"token": TOKEN}, headers=cab_a).status_code == 200
+    assert cli.post("/eu/push-token", json={"token": TOKEN}, headers=cab_b).status_code == 200
+    with psycopg.connect(pg) as con:
+        tokens = dict(con.execute("select id::text, expo_push_token from usuario where id in (%s, %s)",
+                                  (uid_a, uid_b)).fetchall())
+    assert tokens == {str(uid_a): None, str(uid_b): TOKEN}
 
 
 def test_sem_token_nao_chama_o_expo(pg, monkeypatch):

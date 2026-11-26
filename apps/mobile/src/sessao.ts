@@ -185,7 +185,9 @@ export async function pedirLinkPorEmail(email: string): Promise<void> {
  * no Supabase e a saída global falharia; a sessão some do aparelho de qualquer jeito.
  */
 export async function sair(): Promise<void> {
-  await esquecerTokenDePush();
+  // Sem rede, esquecer o token levaria até 20 s; a saída não espera mais que 3 s. O servidor
+  // ainda tira o token de quem entrar depois neste aparelho.
+  await Promise.race([esquecerTokenDePush(), new Promise<void>((pronto) => setTimeout(pronto, 3_000))]);
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
