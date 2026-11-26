@@ -3,7 +3,9 @@ import { BarlowCondensed_600SemiBold, BarlowCondensed_700Bold } from "@expo-goog
 import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { ouvirToqueNoPush } from "@/push";
 import { useCores, useEscolhaTema } from "@/tema";
 import "@/sessao"; // liga o token da sessão às chamadas à API antes de qualquer tela
 
@@ -21,6 +23,7 @@ export default function RaizLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <AoTocarNoPush />
       <StatusBar style={tema === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c["surface-100"] } }}>
         <Stack.Screen name="(abas)" />
@@ -28,4 +31,12 @@ export default function RaizLayout() {
       </Stack>
     </GestureHandlerRootView>
   );
+}
+
+/** O toque no aviso abre as paradas, com o app em segundo plano ou fechado. */
+function AoTocarNoPush() {
+  useEffect(() => {
+    ouvirToqueNoPush();
+  }, []);
+  return null;
 }

@@ -11,6 +11,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useSyncExternalStore } from "react";
 import { AppState, Platform } from "react-native";
 import { definirFonteToken } from "@/api";
+import { esquecerTokenDePush, registrarTokenDePush } from "@/push";
 
 // No .env do app: EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_ANON_KEY. Sem eles o app abre,
 // mas entrar falha com a mensagem de "não deu para entrar".
@@ -90,9 +91,10 @@ let estado: EstadoSessao = { sessao: null, carregou: false };
 const ouvintes = new Set<() => void>();
 
 // Dispara já ao abrir (INITIAL_SESSION, lida do aparelho) e a cada entrada, renovação e saída.
-supabase.auth.onAuthStateChange((_evento, sessao) => {
+supabase.auth.onAuthStateChange((evento, sessao) => {
   estado = { sessao, carregou: true };
   ouvintes.forEach((ouvir) => ouvir());
+  if (sessao && (evento === "SIGNED_IN" || evento === "INITIAL_SESSION")) void registrarTokenDePush();
 });
 
 /** A sessão atual; `carregou` é false enquanto o aparelho ainda não respondeu. */
@@ -223,6 +225,9 @@ export async function pedirLinkPorEmail(email: string): Promise<void> {
  * no Supabase e a saída global falharia; a sessão some do aparelho de qualquer jeito.
  */
 export async function sair(): Promise<void> {
+  // Sem rede, esquecer o token levaria até 20 s; a saída não espera mais que 3 s. O servidor
+  // ainda tira o token de quem entrar depois neste aparelho.
+  await Promise.race([esquecerTokenDePush(), new Promise<void>((pronto) => setTimeout(pronto, 3_000))]);
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
