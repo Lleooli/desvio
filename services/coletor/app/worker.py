@@ -117,6 +117,7 @@ async def _laco() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    observabilidade.configurar_log()
     observabilidade.iniciar()
     try:
         log.info("cache: %d itens vencidos apagados", cache.apagar_vencidos())

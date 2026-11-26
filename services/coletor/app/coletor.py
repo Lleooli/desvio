@@ -312,7 +312,7 @@ async def montar_cards(client: httpx.AsyncClient, paradas: list[dict], categoria
                 google_relogio.concluir()
             except (gmaps.GosomIndisponivel, RuntimeError, TimeoutError, httpx.HTTPError) as e:
                 google_relogio.falha()
-                log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", type(e).__name__)
+                log.warning("Google Maps indisponível; seguindo só com OpenStreetMap: %s", e)
                 avisos.append("O Google Maps não respondeu, então os lugares vieram só do OpenStreetMap.")
         else:
             google_relogio.concluir()

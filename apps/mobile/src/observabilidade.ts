@@ -9,7 +9,8 @@ const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const BEARER = /Bearer\s+\S+/gi;
 const CHAVES = new Set([
   "authorization", "cookie", "cookies", "set-cookie", "x-admin-token",
-  "email", "e-mail", "username", "ip_address", "name", "nome",
+  "email", "e-mail", "username", "ip_address", "nome",
+  "origem", "destino", "endereco",
   "token", "access_token", "refresh_token", "password", "senha",
   "lat", "lon", "latitude", "longitude",
 ]);

@@ -23,7 +23,9 @@ log = logging.getLogger("desvio.observabilidade")
 RELEASE_PADRAO = "desvio@0.1.0"
 _CHAVES_PESSOAIS = {
     "authorization", "cookie", "cookies", "set-cookie", "x-admin-token",
-    "email", "e-mail", "username", "ip_address", "name", "nome",
+    "email", "e-mail", "username", "ip_address", "nome",
+    # texto livre que a pessoa digitou (endereços) e a chave do Groq, que ficam em variáveis locais
+    "origem", "destino", "endereco", "entrada", "chave", "api_key",
     "token", "access_token", "refresh_token", "password", "senha",
     "lat", "lon", "latitude", "longitude",
 }
@@ -75,6 +77,7 @@ def iniciar() -> None:
         environment=os.getenv("PV_AMBIENTE") or "desenvolvimento",
         release=os.getenv("PV_RELEASE") or RELEASE_PADRAO,
         send_default_pii=False,
+        include_local_variables=False,  # as variáveis do frame trazem chave e endereço
         max_request_body_size="never",
         before_send=antes_de_enviar,
         traces_sample_rate=0,
@@ -103,6 +106,17 @@ def capturar() -> None:
         return
     import sentry_sdk
     sentry_sdk.capture_exception()
+
+
+def configurar_log() -> None:
+    """Cada linha de etapa sai como um JSON puro, sem o prefixo INFO:logger: do basicConfig."""
+    if any(getattr(h, "_desvio_json", False) for h in log.handlers):
+        return
+    saida = logging.StreamHandler()
+    saida.setFormatter(logging.Formatter("%(message)s"))
+    saida._desvio_json = True  # type: ignore[attr-defined]
+    log.addHandler(saida)
+    log.propagate = False
 
 
 def linha(job_id: str | None, etapa: str, status: str, duracao_ms: float | None = None,

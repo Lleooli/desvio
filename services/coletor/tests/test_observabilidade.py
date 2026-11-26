@@ -68,6 +68,49 @@ def test_iniciar_grava_release_e_environment_sem_pii(monkeypatch):
     observabilidade.desligar()
 
 
+def test_erro_real_nao_leva_variavel_local_nem_endereco(monkeypatch):
+    from sentry_sdk.transport import Transport
+
+    enviados = []
+
+    class Guarda(Transport):
+        def capture_envelope(self, envelope):
+            enviados.append(b"".join(item.get_bytes() for item in envelope.items))
+
+    monkeypatch.setattr(observabilidade, "_transporte", Guarda)
+    monkeypatch.setenv("SENTRY_DSN", "https://chave@o0.ingest.sentry.io/1")
+    observabilidade.iniciar()
+    try:
+        chave = "gsk_segredo_do_groq"  # noqa: F841 (é o que não pode sair)
+        entrada = {"origem": "Rua da Casa, 10, Alegrete"}  # noqa: F841
+        raise RuntimeError("falhou a coleta")
+    except RuntimeError:
+        observabilidade.capturar()
+    import sentry_sdk
+    sentry_sdk.flush()
+    observabilidade.desligar()
+    texto = b"".join(enviados).decode("utf-8", "replace")
+    assert "falhou a coleta" in texto
+    assert "gsk_segredo_do_groq" not in texto
+    assert "Rua da Casa" not in texto
+    assert '"sdk"' in texto and "sentry.python" in texto  # o nome do SDK não some mais
+
+
+def test_linha_de_etapa_sai_como_json_puro(capsys):
+    log = observabilidade.log
+    antes = (list(log.handlers), log.propagate, log.level)
+    try:
+        observabilidade.configurar_log()
+        observabilidade.configurar_log()  # chamar de novo não duplica a linha
+        log.setLevel("INFO")
+        observabilidade.linha("job1", "rota", "concluido", 12.4)
+    finally:
+        log.handlers[:], log.propagate = antes[0], antes[1]
+        log.setLevel(antes[2])
+    saida = [l for l in capsys.readouterr().err.splitlines() if l]
+    assert saida == ['{"evento": "etapa_busca", "job_id": "job1", "etapa": "rota", "status": "concluido", "duracao_ms": 12}']
+
+
 def test_sem_dsn_nao_liga_o_sentry(monkeypatch):
     monkeypatch.delenv("SENTRY_DSN", raising=False)
     observabilidade.desligar()
