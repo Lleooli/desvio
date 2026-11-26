@@ -24,3 +24,4 @@ jobs:
       - run: npm run tokens
       - run: git diff --exit-code src/tema/tokens.gerado.ts
       - run: npm run typecheck
+      - run: npm test

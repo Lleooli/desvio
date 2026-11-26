@@ -4,7 +4,7 @@
  */
 import "react-native-url-polyfill/auto"; // o URL do React Native não tem o que o supabase-js usa
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient, type Session } from "@supabase/supabase-js";
+import { createClient, isAuthRetryableFetchError, type Session } from "@supabase/supabase-js";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -14,10 +14,30 @@ import { definirFonteToken } from "@/api";
 
 // No .env do app: EXPO_PUBLIC_SUPABASE_URL e EXPO_PUBLIC_SUPABASE_ANON_KEY. Sem eles o app abre,
 // mas entrar falha com a mensagem de "não deu para entrar".
+const URL_SUPABASE = (process.env.EXPO_PUBLIC_SUPABASE_URL || "http://localhost:54321").replace(/\/+$/, "");
+const CHAVE_SUPABASE = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "sem-chave";
+
+// Sem limite, um Supabase que não responde deixa a tela de login esperando para sempre.
+const LIMITE_MS = 10_000;
+
+function buscarComLimite(entrada: RequestInfo | URL, opcoes: RequestInit = {}): Promise<Response> {
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), LIMITE_MS);
+  // Repassa o cancelamento de quem chamou, inclusive um sinal que já chega cancelado.
+  const repassar = () => controle.abort();
+  if (opcoes.signal?.aborted) controle.abort();
+  else opcoes.signal?.addEventListener("abort", repassar);
+  return fetch(entrada, { ...opcoes, signal: controle.signal }).finally(() => {
+    clearTimeout(relogio);
+    opcoes.signal?.removeEventListener("abort", repassar);
+  });
+}
+
 const supabase = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL || "http://localhost:54321",
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "sem-chave",
+  URL_SUPABASE,
+  CHAVE_SUPABASE,
   {
+    global: { fetch: buscarComLimite },
     auth: {
       storage: AsyncStorage,
       persistSession: true,
@@ -47,10 +67,11 @@ const VOLTA = Linking.createURL("entrar");
 // Marca no metadata da conta, e não no aparelho, para valer em qualquer celular.
 const MARCA_JA_ENTROU = "ja_entrou";
 
-export type TipoErroEntrar = "provedor" | "link-vencido" | "muitos-pedidos";
+export type TipoErroEntrar = "provedor" | "link-vencido" | "muitos-pedidos" | "login-fora-do-ar";
 
 const MENSAGENS: Record<TipoErroEntrar, string> = {
   provedor: "Não deu para entrar agora. Tente de novo.",
+  "login-fora-do-ar": "O login está fora do ar agora. Tente de novo em alguns minutos.",
   "link-vencido": "Esse link venceu. Peça um novo: ele vale por 15 minutos.",
   "muitos-pedidos": "Muitos pedidos seguidos. Espere um minuto e tente de novo.",
 };
@@ -131,7 +152,24 @@ export async function sessaoDoLink(url: string): Promise<Session | null> {
   return troca;
 }
 
+/**
+ * Confere se o Supabase Auth responde antes de abrir o navegador: com o projeto pausado ou fora
+ * do ar, o navegador abriria numa página de erro e o app não diria nada.
+ *
+ * @throws {@link ErroEntrar} `login-fora-do-ar` quando o servidor não responde, demora ou devolve 5xx.
+ */
+async function conferirServidorDeLogin(): Promise<void> {
+  let resposta: Response;
+  try {
+    resposta = await buscarComLimite(`${URL_SUPABASE}/auth/v1/health`, { headers: { apikey: CHAVE_SUPABASE } });
+  } catch {
+    throw new ErroEntrar("login-fora-do-ar");
+  }
+  if (resposta.status >= 500) throw new ErroEntrar("login-fora-do-ar");
+}
+
 async function entrarPeloNavegador(provedor: "google" | "apple"): Promise<Session | null> {
+  await conferirServidorDeLogin();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: provedor,
     options: { redirectTo: VOLTA, skipBrowserRedirect: true },
@@ -170,12 +208,14 @@ export async function entrarComApple(): Promise<Session | null> {
  * Manda o link de acesso para o e-mail. O link abre o app em /entrar; quanto tempo ele vale
  * (15 min) é configurado no projeto do Supabase.
  *
- * @throws {@link ErroEntrar} Pedidos demais ou falha do Supabase.
+ * @throws {@link ErroEntrar} Pedidos demais, Supabase fora do ar ou outra falha do Supabase.
  */
 export async function pedirLinkPorEmail(email: string): Promise<void> {
   const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: VOLTA } });
   if (!error) return;
-  throw new ErroEntrar(error.status === 429 ? "muitos-pedidos" : "provedor");
+  if (error.status === 429) throw new ErroEntrar("muitos-pedidos");
+  // Erro de rede, tempo esgotado ou 5xx: o supabase-js marca como "tente de novo".
+  throw new ErroEntrar(isAuthRetryableFetchError(error) ? "login-fora-do-ar" : "provedor");
 }
 
 /**
