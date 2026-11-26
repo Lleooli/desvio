@@ -65,6 +65,11 @@ O Expo Go da loja só abre a versão de SDK dele; se o projeto estiver em outra,
 
 O perfil `preview` do `eas.json` gera o APK do beta fechado (distribuição interna, por link). A pasta `android/` que o build local cria não vai para o Git.
 
+**Beta e loja.** No GitHub, em Settings > Secrets and variables > Actions, crie `EXPO_TOKEN` (expo.dev > Account settings > Access tokens, do dono do projeto `lleooliv/desvio`). O workflow **eas** não roda nos pull requests.
+
+- **Testadores (beta):** Actions > eas > Run workflow, perfil `preview`, plataforma `android`. O APK sai por link na página do build no Expo. Quem tem convite no projeto instala por esse link.
+- **Loja:** uma tag `v*` (por exemplo `v0.1.0`) dispara o perfil `production` para Android e iOS. O mesmo workflow manual aceita `production`. Com as credenciais da Apple e do Google já no EAS, `npx eas-cli submit --profile production --platform ios` manda para o TestFlight e `--platform android` para a trilha interna do Play. `eas.json` já tem `submit.production`.
+
 **Login (Supabase Auth):** copie `apps/mobile/.env.example` para `apps/mobile/.env` e preencha `EXPO_PUBLIC_SUPABASE_URL` e `EXPO_PUBLIC_SUPABASE_ANON_KEY`. No painel do Supabase, em Authentication:
 
 - **URL Configuration > Redirect URLs:** `desvio://**` (development build e lojas) e `exp://**` (Expo Go). É para lá que voltam o Google, a Apple no navegador e o link por e-mail.
