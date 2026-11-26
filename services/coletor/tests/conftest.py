@@ -58,7 +58,7 @@ def pg(_schema, monkeypatch):
     import psycopg
     from app import banco
     with psycopg.connect(_schema, autocommit=True) as con:
-        con.execute("truncate jobs, cache, parada_cidade, uso_ia, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
+        con.execute("truncate jobs, cache, parada_cidade, uso_ia, evento, exclusao_pendente, decisao, lugar, roteiro, parada_lugar, parada, viagem, usuario, auth.users cascade")
     monkeypatch.setattr(banco, "URL", _schema)
     return _schema
 

@@ -28,7 +28,7 @@ def test_tabelas_do_modelo_de_dados(pg):
         sem_rls = [r[0] for r in con.execute(
             "select relname from pg_class where relnamespace='public'::regnamespace "
             "and relkind='r' and not relrowsecurity")]
-    assert {"usuario", "viagem", "parada", "lugar", "decisao", "roteiro", "jobs", "cache", "parada_cidade"} <= nomes
+    assert {"usuario", "viagem", "parada", "lugar", "decisao", "roteiro", "jobs", "cache", "parada_cidade", "evento"} <= nomes
     assert sem_rls == []
 
 
